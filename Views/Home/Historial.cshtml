@@ -1,0 +1,98 @@
+@{
+    ViewData["Title"] = "Historial";
+    var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
+    var rango = ViewBag.RangoActual ?? "mes";
+}
+
+<div class="panel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">Historial</h2>
+        <div class="btn-group" role="group">
+            <a class="btn btn-sm @(rango == "dia" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="dia">Día</a>
+            <a class="btn btn-sm @(rango == "semana" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="semana">Semana</a>
+            <a class="btn btn-sm @(rango == "mes" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="mes">Mes</a>
+            <a class="btn btn-sm @(rango == "anio" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="anio">Año</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="kpi-card"><span>Ventas totales</span><strong>@(dashboard?.VentasTotales ?? 0)</strong></div></div>
+        <div class="col-md-3"><div class="kpi-card"><span>Mes con mayores ventas</span><strong>@(dashboard?.MesMayorVentas ?? "-")</strong></div></div>
+        <div class="col-md-3"><div class="kpi-card"><span>Venta promedio</span><strong>$@((dashboard?.VentaPromedioPorMes ?? 0).ToString("N2"))</strong></div></div>
+        <div class="col-md-3"><div class="kpi-card"><span>Ganancia neta</span><strong>$@((dashboard?.GananciasPorMesNetas ?? 0).ToString("N2"))</strong></div></div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="panel subpanel">
+                <h3>Podio de productos más vendidos</h3>
+                <ol class="mb-0 ps-3">
+                    @if ((dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).Any())
+                    {
+                        foreach (var item in dashboard.PodioProductosMasVendidos)
+                        {
+                            <li class="mb-2"><strong>@item.Nombre</strong> - @item.Cantidad unidades</li>
+                        }
+                    }
+                    else
+                    {
+                        <li>No hay datos.</li>
+                    }
+                </ol>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="panel subpanel">
+                <h3>Productos con más ganancia</h3>
+                <ol class="mb-0 ps-3">
+                    @if ((dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).Any())
+                    {
+                        foreach (var item in dashboard.PodioProductosMasGanancia)
+                        {
+                            <li class="mb-2"><strong>@item.Nombre</strong> - $@item.Total.ToString("N2")</li>
+                        }
+                    }
+                    else
+                    {
+                        <li>No hay datos.</li>
+                    }
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 panel subpanel">
+        <h3>Últimos productos vendidos</h3>
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Fecha</th>
+                    <th>Método de pago</th>
+                    <th>Cantidad</th>
+                    <th>Precio</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if ((dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).Any())
+                {
+                    foreach (var venta in dashboard.UltimosProductosVendidos)
+                    {
+                        <tr>
+                            <td>@venta.NombreProducto</td>
+                            <td>@venta.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td>@venta.MetodoPago</td>
+                            <td>@venta.Cantidad</td>
+                            <td>$@venta.Precio.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="5" class="text-center text-muted">Sin ventas en este rango.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

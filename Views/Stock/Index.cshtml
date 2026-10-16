@@ -1,0 +1,88 @@
+@model List<Quantitary.Models.Producto>
+@{
+    ViewData["Title"] = "Actualizar stock";
+    var categorias = ViewBag.Categorias as List<string> ?? new List<string>();
+}
+
+<div class="panel">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Actualizar stock</h2>
+        <a class="btn btn-primary" asp-action="Crear">Agregar producto</a>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-4">
+        <div class="col-md-4">
+            <label class="form-label">Buscar por SKU</label>
+            <input type="text" name="sku" value="@ViewBag.Sku" class="form-control" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Filtrar por categoría</label>
+            <select name="categoria" class="form-select">
+                <option value="">Todas</option>
+                @foreach (var categoria in categorias)
+                {
+                    <option value="@categoria" selected="@(ViewBag.Categoria == categoria ? "selected" : null)">@categoria</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-outline-primary w-100">Buscar</button>
+        </div>
+    </form>
+
+    <form asp-action="Importar" method="post" enctype="multipart/form-data" class="row g-2 mb-4">
+        <div class="col-md-8">
+            <input type="file" name="archivo" class="form-control" accept=".csv,.txt" />
+        </div>
+        <div class="col-md-4">
+            <button class="btn btn-success w-100" type="submit">Cargar catálogo</button>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>SKU</th>
+                    <th>Categoría</th>
+                    <th>Precio</th>
+                    <th>Stock</th>
+                    <th>Proveedor</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Any())
+                {
+                    foreach (var producto in Model)
+                    {
+                        <tr>
+                            <td>@producto.Nombre</td>
+                            <td>@producto.Sku</td>
+                            <td>@producto.Categoria</td>
+                            <td>$@producto.Precio.ToString("N2")</td>
+                            <td>@producto.StockActual</td>
+                            <td>@producto.Proveedor</td>
+                            <td>
+                                <div class="d-flex gap-2">
+                                    <a class="btn btn-sm btn-warning" asp-action="Editar" asp-route-id="@producto.Id">Editar</a>
+                                    <form asp-action="Eliminar" method="post">
+                                        <input type="hidden" name="id" value="@producto.Id" />
+                                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">No se encontraron productos.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

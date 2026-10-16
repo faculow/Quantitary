@@ -7,6 +7,6 @@ namespace Quantitary.Models
         public int PermisoID { get; set; }
 
         public Permisos? Permiso { get; set; }
-        public List<Usuarios> Usuarios { get; set; } = new List<Usuarios>();
+        public List<Usuario> Usuarios { get; set; } = new List<Usuario>();
     }
 }

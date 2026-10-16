@@ -1,0 +1,27 @@
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="auth-card">
+    <h2>Iniciar sesión</h2>
+    @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
+    {
+        <div class="alert alert-danger">@ViewBag.Error</div>
+    }
+
+    <form method="post" asp-action="Login" asp-controller="Cuenta">
+        <div class="mb-3">
+            <label class="form-label">Correo</label>
+            <input type="email" name="mail" class="form-control" required />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <input type="password" name="contrasena" class="form-control" required />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+    </form>
+
+    <div class="mt-3 text-center">
+        <a asp-action="Registro" asp-controller="Cuenta">Crear cuenta</a>
+    </div>
+</div>

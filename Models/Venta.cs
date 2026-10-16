@@ -7,7 +7,7 @@ namespace Quantitary.Models
         public int UsuarioID { get; set; }
         public int ProductoID { get; set; }
 
-        public Usuarios? Usuario { get; set; }
+        public Usuario? Usuario { get; set; }
         public Productos? Producto { get; set; }
         public List<DetalleVenta> DetalleVentas { get; set; } = new List<DetalleVenta>();
     }

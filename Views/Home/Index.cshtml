@@ -1,8 +1,80 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Dashboard";
+    var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
+    var nombre = ViewBag.NombreUsuario ?? "Usuario";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="dashboard-shell">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <p class="mb-1 text-uppercase text-muted">Panel principal</p>
+            <h1 class="mb-0">Hola, @nombre</h1>
+        </div>
+        <a class="btn btn-primary" asp-controller="Home" asp-action="Historial" asp-route-rango="mes">Historial</a>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <span>Productos totales</span>
+                <strong>@(dashboard?.TotalProductos ?? 0)</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card warning">
+                <span>Con poco stock</span>
+                <strong>@(dashboard?.ProductosPocoStock ?? 0)</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card danger">
+                <span>Sin stock</span>
+                <strong>@(dashboard?.ProductosSinStock ?? 0)</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card success">
+                <span>Ganancias netas</span>
+                <strong>$@((dashboard?.GananciasPorMesNetas ?? 0).ToString("N2"))</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="panel">
+                <h3>Resumen de la empresa</h3>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between"><span>Ventas totales</span><strong>@(dashboard?.VentasTotales ?? 0)</strong></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Mes con mayores ventas</span><strong>@(dashboard?.MesMayorVentas ?? "Sin ventas")</strong></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Venta promedio por mes</span><strong>$@((dashboard?.VentaPromedioPorMes ?? 0).ToString("N2"))</strong></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Base de datos conectadas</span><strong>@string.Join(", ", dashboard?.BasesDeDatos ?? new List<string>())</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="panel">
+                <h3>Últimos productos vendidos</h3>
+                @if ((dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var venta in dashboard.UltimosProductosVendidos)
+                        {
+                            <li class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <span>@venta.NombreProducto</span>
+                                    <strong>$@venta.Precio.ToString("N2")</strong>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No hay ventas recientes.</p>
+                }
+            </div>
+        </div>
+    </div>
 </div>
