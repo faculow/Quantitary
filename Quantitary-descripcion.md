@@ -1,0 +1,9 @@
+Este proyecto es un sistema el cual permite a pequeñas y medianas empresas de cualquier rubro en el cual se le permite al empleador subir un archivo base el cual contiene los productos (El nombre del producto, el SKU,  la categoría del producto, una descripción, la fecha en la que se subió y el precio). A la hora de que se vende el producto se guarda la información previamente dicha además de la fecha en la que se vendió, el método de pago y el precio en un formato de historial. 
+
+En el apartado de actualizar stock es posible agregar, eliminar o modificar el producto y su información. 
+
+Dentro de este apartado de actualizar stock es posible buscar mediante el SKU del producto, cargar un catálogo de un proveedor y añadir stock de productos. El dueño puede agregar productos los cuales deben poner la información del producto y hay filtros en relación a la información del/los productos para buscarlos dentro de los datos guardados.
+
+Además hay una página de inicio en donde aparece arriba de todo “Hola, y aca el nombre de usuario”, datos en relación a la empresa lo cual te permite ver los productos totales, los productos con poco stock o sin stock, las ganancias por mes netas, las bases de datos conectadas con la información y un botón de historial que deriva a otro apartado.
+
+En el apartado de Historial es posible encontrar la siguiente información: Lista de los últimos productos vendidos, ventas totales, mes con mayores ventas, venta promedio por mes, podio de los productos más vendidos y de los productos que más ganancia generaron. Todo esto es posible verlo dentro de distintos rangos de tiempo como días, semanas, meses o años.

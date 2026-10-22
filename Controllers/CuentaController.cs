@@ -1,75 +1,81 @@
 using Microsoft.AspNetCore.Mvc;
 using Quantitary.Models;
 
-namespace Quantitary.Controllers
+namespace Quantitary.Controllers;
+
+public class CuentaController : Controller
 {
-    public class CuentaController : Controller
+    private readonly IConfiguration _configuration;
+
+    public CuentaController(IConfiguration configuration)
     {
-        [HttpGet]
-        public IActionResult Login()
-        {
-            if (BD.ObtenerUsuarioLogueadoID(HttpContext) != null)
-            {
-                return RedirectToAction("Index", "Home");
-            }
+        _configuration = configuration;
+    }
 
+    [HttpGet]
+    public IActionResult Login()
+    {
+        if (BD.ObtenerUsuarioLogueadoID(HttpContext) != null)
+        {
+            return RedirectToAction("Index", "Home");
+        }
+
+        return View();
+    }
+
+    [HttpPost]
+    public IActionResult Login(string mail, string contrasena)
+    {
+        if (string.IsNullOrWhiteSpace(mail) || string.IsNullOrWhiteSpace(contrasena))
+        {
+            ViewBag.Error = "Completa todos los campos.";
             return View();
         }
 
-        [HttpPost]
-        public IActionResult Login(string mail, string contrasena)
+        var exito = BD.IniciarSesion(mail, contrasena, HttpContext, _configuration);
+        if (exito)
         {
-            if (string.IsNullOrWhiteSpace(mail) || string.IsNullOrWhiteSpace(contrasena))
-            {
-                ViewBag.Error = "Completa todos los campos.";
-                return View();
-            }
-
-            var exito = BD.IniciarSesion(mail, contrasena, HttpContext);
-            if (exito)
-            {
-                return RedirectToAction("Index", "Home");
-            }
-
-            ViewBag.Error = "Correo o contraseña incorrectos.";
-            return View();
+            return RedirectToAction("Index", "Home");
         }
 
-        [HttpGet]
-        public IActionResult Registro()
-        {
-            if (BD.ObtenerUsuarioLogueadoID(HttpContext) != null)
-            {
-                return RedirectToAction("Index", "Home");
-            }
+        ViewBag.Error = "Correo o contraseña incorrectos.";
+        return View();
+    }
 
-            return View();
+    [HttpGet]
+    public IActionResult Registro()
+    {
+        if (BD.ObtenerUsuarioLogueadoID(HttpContext) != null)
+        {
+            return RedirectToAction("Index", "Home");
         }
 
-        [HttpPost]
-        public IActionResult Registro(Usuario usuario)
+        return View();
+    }
+
+    [HttpPost]
+    public IActionResult Registro(Usuario usuario)
+    {
+        if (!ModelState.IsValid)
         {
-            if (!ModelState.IsValid)
-            {
-                ViewBag.Error = "Verifica los datos ingresados.";
-                return View(usuario);
-            }
-
-            var creado = BD.Registrarse(usuario);
-            if (creado)
-            {
-                BD.IniciarSesion(usuario.Mail, usuario.Contrasena, HttpContext);
-                return RedirectToAction("Index", "Home");
-            }
-
-            ViewBag.Error = "El correo ya está registrado.";
+            ViewBag.Error = "Verifica los datos ingresados.";
             return View(usuario);
         }
 
-        public IActionResult Logout()
+        var creado = BD.Registrarse(usuario, _configuration);
+        if (creado)
         {
-            BD.CerrarSesion(HttpContext);
-            return RedirectToAction(nameof(Login));
+            BD.IniciarSesion(usuario.Mail, usuario.Contrasena, HttpContext, _configuration);
+            return RedirectToAction("Index", "Home");
         }
+
+        ViewBag.Error = "El correo ya está registrado.";
+        return View(usuario);
+    }
+
+    public IActionResult Logout()
+    {
+        BD.CerrarSesion(HttpContext);
+        return RedirectToAction(nameof(Login));
     }
 }

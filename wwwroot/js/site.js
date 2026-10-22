@@ -5,8 +5,11 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     const historialLinks = document.querySelectorAll('[asp-route-rango]');
+
     historialLinks.forEach((link) => {
         link.addEventListener('click', async (event) => {
+            event.preventDefault();
+
             const target = event.currentTarget;
             const rango = target.getAttribute('asp-route-rango');
             if (!rango) return;
@@ -23,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const newContent = doc.querySelector('.panel');
+
                 if (newContent) {
                     container.innerHTML = newContent.innerHTML;
                 } else {

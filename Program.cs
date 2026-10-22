@@ -9,6 +9,8 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
+builder.Services.AddScoped<Quantitary.Models.InventoryRepository>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
