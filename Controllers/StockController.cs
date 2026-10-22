@@ -137,7 +137,20 @@ public class StockController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    [HttpGet]
+    public IActionResult Importar()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        return View();
+    }
+
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult Importar(IFormFile archivo)
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -148,42 +161,65 @@ public class StockController : Controller
 
         if (archivo == null || archivo.Length == 0)
         {
-            TempData["Mensaje"] = "Debe seleccionar un archivo para importar.";
+            TempData["MensajeError"] = "Debe seleccionar un archivo Excel para importar.";
             return RedirectToAction(nameof(Index));
         }
 
-        using var reader = new StreamReader(archivo.OpenReadStream());
-        var contenido = reader.ReadToEnd();
-        var lineas = contenido.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var linea in lineas.Skip(1))
+        var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
+        if (extension != ".xlsx" && extension != ".xls")
         {
-            var columnas = linea.Split(',');
-            if (columnas.Length < 6) continue;
-
-            var producto = new Producto
-            {
-                Nombre = columnas[0].Trim(),
-                Sku = columnas[1].Trim(),
-                Categoria = columnas[2].Trim(),
-                Descripcion = columnas[3].Trim(),
-                FechaCarga = DateTime.TryParse(columnas[4], out var fecha) ? fecha : DateTime.Now,
-                Precio = decimal.TryParse(columnas[5], out var precio) ? precio : 0m,
-                StockActual = 0,
-                StockMinimo = 0,
-                Proveedor = "Catalogo importado",
-                CostoCompra = 0m,
-                PrecioVenta = 0m
-            };
-
-            if (!string.IsNullOrWhiteSpace(producto.Nombre) && !string.IsNullOrWhiteSpace(producto.Sku))
-            {
-                _inventoryRepository.AgregarProducto(producto);
-            }
+            TempData["MensajeError"] = "Formato no válido. Solo se permiten archivos Excel .xlsx o .xls.";
+            return RedirectToAction(nameof(Index));
         }
 
-        TempData["Mensaje"] = "Catálogo importado correctamente.";
-        return RedirectToAction(nameof(Index));
+        try
+        {
+            using var stream = archivo.OpenReadStream();
+            var productos = ImportacionExcelHelper.LeerProductos(stream);
+
+            var insertados = 0;
+            var omitidos = 0;
+            var errores = new List<string>();
+
+            foreach (var producto in productos)
+            {
+                try
+                {
+                    _inventoryRepository.AgregarProducto(producto);
+                    insertados++;
+                }
+                catch (Exception ex)
+                {
+                    omitidos++;
+                    errores.Add($"SKU {producto.Sku}: {ex.Message}");
+                }
+            }
+
+            if (insertados > 0 && errores.Count == 0)
+            {
+                TempData["MensajeExito"] = $"Importación exitosa. Se registraron {insertados} productos.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (insertados > 0)
+            {
+                TempData["MensajeAdvertencia"] = $"Se importaron {insertados} productos. Hubo {omitidos} filas descartadas: {string.Join(" | ", errores.Take(3))}";
+                return RedirectToAction(nameof(Index));
+            }
+
+            TempData["MensajeError"] = $"No se pudo importar ningún producto. {string.Join(" | ", errores.Take(5))}";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["MensajeError"] = ex.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (Exception ex)
+        {
+            TempData["MensajeError"] = "Ocurrió un error al leer el archivo Excel. Verifique que el formato sea correcto y que las columnas coincidan con el modelo requerido.";
+            return RedirectToAction(nameof(Index));
+        }
     }
 }
 

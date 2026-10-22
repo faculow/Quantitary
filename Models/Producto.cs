@@ -17,6 +17,7 @@ public class Producto
     public string Proveedor { get; set; } = string.Empty;
     public decimal CostoCompra { get; set; }
     public decimal? PrecioVenta { get; set; }
+    public int CantidadVentas { get; set; }
 }
 
 public class VentaRegistro
@@ -102,11 +103,31 @@ public class InventoryRepository
             throw new ArgumentException("El nombre y el SKU son obligatorios.");
         }
 
-        var sql = @"INSERT INTO Productos (nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta)
-                    VALUES (@Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta);
-                    SELECT CAST(SCOPE_IDENTITY() as int);";
+        producto.Nombre = producto.Nombre.Trim();
+        producto.Sku = producto.Sku.Trim();
+        producto.Categoria = producto.Categoria.Trim();
+        producto.Proveedor = producto.Proveedor.Trim();
+
+        if (producto.Precio <= 0)
+        {
+            throw new ArgumentException($"El producto '{producto.Nombre}' tiene un precio inválido.");
+        }
 
         using var connection = CrearConexion();
+
+        var existe = connection.QuerySingleOrDefault<int?>(
+            "SELECT id FROM Productos WHERE LOWER(LTRIM(RTRIM(sku))) = @Sku",
+            new { Sku = producto.Sku.ToLowerInvariant() });
+
+        if (existe != null)
+        {
+            throw new InvalidOperationException($"El SKU '{producto.Sku}' ya existe en la base de datos.");
+        }
+
+        var sql = @"INSERT INTO Productos (nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
+                    VALUES (@Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
+                    SELECT CAST(SCOPE_IDENTITY() as int);";
+
         producto.Id = connection.QuerySingle<int>(sql, producto);
         return producto;
     }
@@ -123,7 +144,8 @@ public class InventoryRepository
                         stockMinimo = @StockMinimo,
                         proveedor = @Proveedor,
                         costoCompra = @CostoCompra,
-                        precioVenta = @PrecioVenta
+                        precioVenta = @PrecioVenta,
+                        cantidadVentas = @CantidadVentas
                     WHERE id = @Id";
 
         using var connection = CrearConexion();
@@ -139,6 +161,7 @@ public class InventoryRepository
             producto.Proveedor,
             producto.CostoCompra,
             producto.PrecioVenta,
+            producto.CantidadVentas,
             Id = id
         });
 
