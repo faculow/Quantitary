@@ -13,8 +13,29 @@ public class HomeController : Controller
         _inventoryRepository = inventoryRepository;
     }
 
+    private bool HaySesionActiva()
+    {
+        return HttpContext.Session.GetInt32("UsuarioID") != null;
+    }
+
+    private IActionResult? RedirigirSiNoHaySesion()
+    {
+        if (!HaySesionActiva())
+        {
+            return RedirectToAction("Login", "Cuenta");
+        }
+
+        return null;
+    }
+
     public IActionResult Index()
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         var nombre = HttpContext.Session.GetString("NombreUsuario") ?? "Usuario";
         ViewBag.NombreUsuario = nombre;
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes");
@@ -23,6 +44,12 @@ public class HomeController : Controller
 
     public IActionResult Historial(string rango = "mes")
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango);
         ViewBag.RangoActual = rango;
         return View();
@@ -30,6 +57,12 @@ public class HomeController : Controller
 
     public IActionResult Privacy()
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         return View();
     }
 

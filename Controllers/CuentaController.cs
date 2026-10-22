@@ -62,6 +62,34 @@ public class CuentaController : Controller
             return View(usuario);
         }
 
+        if (string.IsNullOrWhiteSpace(usuario.NombreUsuario))
+        {
+            ViewBag.Error = "El nombre de usuario es obligatorio.";
+            return View(usuario);
+        }
+
+        if (string.IsNullOrWhiteSpace(usuario.Mail))
+        {
+            ViewBag.Error = "El correo es obligatorio.";
+            return View(usuario);
+        }
+
+        if (string.IsNullOrWhiteSpace(usuario.Contrasena))
+        {
+            ViewBag.Error = "La contraseña es obligatoria.";
+            return View(usuario);
+        }
+
+        if (usuario.EmpresaID <= 0)
+        {
+            usuario.EmpresaID = 1;
+        }
+
+        if (usuario.RolID <= 0)
+        {
+            usuario.RolID = 1;
+        }
+
         var creado = BD.Registrarse(usuario, _configuration);
         if (creado)
         {
@@ -69,10 +97,12 @@ public class CuentaController : Controller
             return RedirectToAction("Index", "Home");
         }
 
-        ViewBag.Error = "El correo ya está registrado.";
+        ViewBag.Error = "No se pudo crear la cuenta. Verifica que el correo no esté registrado y que los datos sean válidos.";
         return View(usuario);
     }
 
+    [HttpGet]
+    [HttpPost]
     public IActionResult Logout()
     {
         BD.CerrarSesion(HttpContext);

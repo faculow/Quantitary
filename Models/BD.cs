@@ -7,6 +7,11 @@ namespace Quantitary.Models;
 
 public static class BD
 {
+    private static string NormalizarMail(string? mail)
+    {
+        return (mail ?? string.Empty).Trim();
+    }
+
     public static string ObtenerCadenaConexion(IConfiguration configuration)
     {
         return configuration.GetConnectionString("DefaultConnection")
@@ -20,7 +25,11 @@ public static class BD
 
     public static bool Registrarse(Usuario usuario, IConfiguration configuration)
     {
-        if (string.IsNullOrWhiteSpace(usuario.Mail) || string.IsNullOrWhiteSpace(usuario.Contrasena))
+        var mailNormalizado = NormalizarMail(usuario.Mail);
+
+        if (string.IsNullOrWhiteSpace(usuario.NombreUsuario)
+            || string.IsNullOrWhiteSpace(mailNormalizado)
+            || string.IsNullOrWhiteSpace(usuario.Contrasena))
         {
             return false;
         }
@@ -28,9 +37,22 @@ public static class BD
         using var connection = CrearConexion(configuration);
         connection.Open();
 
+        var empresaId = usuario.EmpresaID > 0
+            ? usuario.EmpresaID
+            : connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Empresa ORDER BY id");
+
+        var rolId = usuario.RolID > 0
+            ? usuario.RolID
+            : connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Rol ORDER BY id");
+
+        if (empresaId == null || rolId == null)
+        {
+            return false;
+        }
+
         var existe = connection.QuerySingleOrDefault<int>(
-            "SELECT 1 FROM Usuarios WHERE mail = @Mail",
-            new { usuario.Mail });
+            "SELECT 1 FROM Usuarios WHERE LOWER(LTRIM(RTRIM(mail))) = @Mail",
+            new { Mail = mailNormalizado.ToLowerInvariant() });
 
         if (existe == 1)
         {
@@ -43,12 +65,12 @@ public static class BD
 
         connection.Execute(query, new
         {
-            usuario.NombreUsuario,
-            usuario.Contrasena,
-            usuario.Mail,
-            usuario.NumeroTelefono,
-            usuario.EmpresaID,
-            usuario.RolID
+            NombreUsuario = usuario.NombreUsuario.Trim(),
+            Contrasena = usuario.Contrasena,
+            Mail = mailNormalizado,
+            NumeroTelefono = usuario.NumeroTelefono,
+            EmpresaID = empresaId.Value,
+            RolID = rolId.Value
         });
 
         return true;
@@ -56,12 +78,14 @@ public static class BD
 
     public static bool IniciarSesion(string mail, string contrasena, HttpContext httpContext, IConfiguration configuration)
     {
+        var mailNormalizado = NormalizarMail(mail);
+
         using var connection = CrearConexion(configuration);
         connection.Open();
 
         var usuario = connection.QuerySingleOrDefault<Usuario>(
-            "SELECT TOP 1 * FROM Usuarios WHERE mail = @Mail AND contrasena = @Contrasena",
-            new { Mail = mail.Trim(), Contrasena = contrasena });
+            "SELECT TOP 1 * FROM Usuarios WHERE LOWER(LTRIM(RTRIM(mail))) = @Mail AND contrasena = @Contrasena",
+            new { Mail = mailNormalizado.ToLowerInvariant(), Contrasena = contrasena });
 
         if (usuario == null)
         {

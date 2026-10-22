@@ -12,8 +12,29 @@ public class StockController : Controller
         _inventoryRepository = inventoryRepository;
     }
 
+    private bool HaySesionActiva()
+    {
+        return HttpContext.Session.GetInt32("UsuarioID") != null;
+    }
+
+    private IActionResult? RedirigirSiNoHaySesion()
+    {
+        if (!HaySesionActiva())
+        {
+            return RedirectToAction("Login", "Cuenta");
+        }
+
+        return null;
+    }
+
     public IActionResult Index(string? sku = null, string? categoria = null)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         var productos = _inventoryRepository.ObtenerProductos(sku, categoria);
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
         ViewBag.Sku = sku;
@@ -24,6 +45,12 @@ public class StockController : Controller
     [HttpGet]
     public IActionResult Crear()
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
         return View();
     }
@@ -31,6 +58,12 @@ public class StockController : Controller
     [HttpPost]
     public IActionResult Crear(Producto producto)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         if (!ModelState.IsValid)
         {
             ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
@@ -44,6 +77,12 @@ public class StockController : Controller
     [HttpGet]
     public IActionResult Editar(int id)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         var producto = _inventoryRepository.BuscarPorId(id);
         if (producto == null)
         {
@@ -57,6 +96,12 @@ public class StockController : Controller
     [HttpPost]
     public IActionResult Editar(int id, Producto producto)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         var actualizado = _inventoryRepository.ActualizarProducto(id, producto);
         if (!actualizado)
         {
@@ -69,6 +114,12 @@ public class StockController : Controller
     [HttpPost]
     public IActionResult Eliminar(int id)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         _inventoryRepository.EliminarProducto(id);
         return RedirectToAction(nameof(Index));
     }
@@ -76,6 +127,12 @@ public class StockController : Controller
     [HttpPost]
     public IActionResult AgregarStock(int id, int cantidad, decimal precioUnitario)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         _inventoryRepository.AgregarStock(id, cantidad, precioUnitario);
         return RedirectToAction(nameof(Index));
     }
@@ -83,6 +140,12 @@ public class StockController : Controller
     [HttpPost]
     public IActionResult Importar(IFormFile archivo)
     {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
         if (archivo == null || archivo.Length == 0)
         {
             TempData["Mensaje"] = "Debe seleccionar un archivo para importar.";
