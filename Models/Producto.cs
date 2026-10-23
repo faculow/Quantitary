@@ -134,6 +134,7 @@ public class InventoryRepository
 
         using var connection = CrearConexion();
         return connection.Query<Producto>(sql, parametros).ToList();
+    }
     public List<Producto> ObtenerProductos(string? sku = null, string? categoria = null, int? empresaId = null)
     {
         var sql = @"SELECT * FROM Productos
