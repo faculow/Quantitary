@@ -5,9 +5,9 @@ namespace Quantitary.Controllers;
 
 public class StockController : Controller
 {
-    private readonly InventoryRepository _inventoryRepository;
+    private readonly ProductoRepository _inventoryRepository;
 
-    public StockController(InventoryRepository inventoryRepository)
+    public StockController(ProductoRepository inventoryRepository)
     {
         _inventoryRepository = inventoryRepository;
     }
@@ -48,16 +48,20 @@ public class StockController : Controller
             return redirect;
         }
 
-        var productos = _inventoryRepository.ObtenerProductos(sku, categoria, pocoStock, precioMinimo, orden);
-        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
         var empresaId = HttpContext.Session.GetInt32("EmpresaID");
-        var productos = _inventoryRepository.ObtenerProductos(sku, categoria, empresaId ?? 0);
+        var productos = _inventoryRepository.ObtenerProductos(sku, categoria, pocoStock, precioMinimo, orden, empresaId ?? 0);
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(empresaId ?? 0);
         ViewBag.Sku = sku;
         ViewBag.Categoria = categoria;
         ViewBag.PocoStock = pocoStock;
         ViewBag.PrecioMinimo = precioMinimo;
         ViewBag.Orden = orden;
+
+        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            return PartialView("_ProductosTable", productos);
+        }
+
         return View(productos);
     }
 
@@ -111,6 +115,11 @@ public class StockController : Controller
             return NotFound();
         }
 
+        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            return PartialView("Editar", producto);
+        }
+
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
         return View(producto);
     }
@@ -128,6 +137,11 @@ public class StockController : Controller
         if (!actualizado)
         {
             return NotFound();
+        }
+
+        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            return Json(new { success = true });
         }
 
         return RedirectToAction(nameof(Index));

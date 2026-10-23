@@ -23,6 +23,229 @@ public static class BD
         return new SqlConnection(ObtenerCadenaConexion(configuration));
     }
 
+    public static List<string> ObtenerCategorias(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        var sql = @"SELECT DISTINCT LTRIM(RTRIM(categoria)) AS categoria
+                    FROM Productos
+                    WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+                      AND LTRIM(RTRIM(categoria)) <> ''
+                    ORDER BY LTRIM(RTRIM(categoria))";
+        return connection.Query<string>(sql, new { EmpresaId = empresaId }).ToList();
+    }
+
+    public static List<Producto> ObtenerProductos(IConfiguration configuration, string? sku = null, string? categoria = null, bool? pocoStock = null, decimal? precioMinimo = null, string? orden = null, int? empresaId = null)
+    {
+        var parametros = new DynamicParameters();
+        parametros.Add("@EmpresaId", empresaId == 0 ? null : empresaId);
+        parametros.Add("@Sku", string.IsNullOrWhiteSpace(sku) ? null : sku.Trim());
+        parametros.Add("@Categoria", string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim());
+        parametros.Add("@PocoStock", pocoStock == true ? 1 : 0);
+        parametros.Add("@PrecioMinimo", precioMinimo.HasValue && precioMinimo.Value > 0 ? precioMinimo.Value : null);
+        parametros.Add("@Orden", string.IsNullOrWhiteSpace(orden) ? "nombre_asc" : orden.Trim());
+
+        using var connection = CrearConexion(configuration);
+        return connection.Query<Producto>(
+            "sp_ObtenerProductosStock",
+            parametros,
+            commandType: CommandType.StoredProcedure).ToList();
+    }
+
+    public static List<Producto> ObtenerProductos(IConfiguration configuration, string? sku = null, string? categoria = null, int? empresaId = null)
+        => ObtenerProductos(configuration, sku, categoria, null, null, null, empresaId);
+
+    public static Producto? BuscarPorId(IConfiguration configuration, int id)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.QuerySingleOrDefault<Producto>("SELECT * FROM Productos WHERE id = @Id", new { Id = id });
+    }
+
+    public static Producto AgregarProducto(IConfiguration configuration, Producto producto)
+    {
+        if (string.IsNullOrWhiteSpace(producto.Nombre) || string.IsNullOrWhiteSpace(producto.Sku))
+        {
+            throw new ArgumentException("El nombre y el SKU son obligatorios.");
+        }
+
+        producto.Nombre = producto.Nombre.Trim();
+        producto.Sku = producto.Sku.Trim();
+        producto.Categoria = producto.Categoria.Trim();
+        producto.Proveedor = producto.Proveedor.Trim();
+
+        if (producto.Precio <= 0)
+        {
+            throw new ArgumentException($"El producto '{producto.Nombre}' tiene un precio inválido.");
+        }
+
+        using var connection = CrearConexion(configuration);
+
+        var existe = connection.QuerySingleOrDefault<int?>(
+            "SELECT id FROM Productos WHERE empresaID = @EmpresaID AND LOWER(LTRIM(RTRIM(sku))) = @Sku",
+            new { producto.EmpresaID, Sku = producto.Sku.ToLowerInvariant() });
+
+        if (existe != null)
+        {
+            throw new InvalidOperationException($"El SKU '{producto.Sku}' ya existe en la base de datos para esta empresa.");
+        }
+
+        var sql = @"INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
+                    VALUES (@EmpresaID, @Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
+                    SELECT CAST(SCOPE_IDENTITY() as int);";
+
+        producto.Id = connection.QuerySingle<int>(sql, producto);
+        return producto;
+    }
+
+    public static bool ActualizarProducto(IConfiguration configuration, int id, Producto producto)
+    {
+        var sql = @"UPDATE Productos
+                    SET nombre = @Nombre,
+                        sku = @Sku,
+                        categoria = @Categoria,
+                        descripcion = @Descripcion,
+                        precio = @Precio,
+                        stockActual = @StockActual,
+                        stockMinimo = @StockMinimo,
+                        proveedor = @Proveedor,
+                        costoCompra = @CostoCompra,
+                        precioVenta = @PrecioVenta,
+                        cantidadVentas = @CantidadVentas,
+                        empresaID = @EmpresaID
+                    WHERE id = @Id";
+
+        using var connection = CrearConexion(configuration);
+        var filasAfectadas = connection.Execute(sql, new
+        {
+            producto.Nombre,
+            producto.Sku,
+            producto.Categoria,
+            producto.Descripcion,
+            producto.Precio,
+            producto.StockActual,
+            producto.StockMinimo,
+            producto.Proveedor,
+            producto.CostoCompra,
+            producto.PrecioVenta,
+            producto.CantidadVentas,
+            producto.EmpresaID,
+            Id = id
+        });
+
+        return filasAfectadas > 0;
+    }
+
+    public static bool EliminarProducto(IConfiguration configuration, int id)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.Execute("DELETE FROM Productos WHERE id = @Id", new { Id = id }) > 0;
+    }
+
+    public static bool AgregarStock(IConfiguration configuration, int id, int cantidad, decimal precioUnitario)
+    {
+        var sql = @"UPDATE Productos
+                    SET stockActual = stockActual + @Cantidad,
+                        costoCompra = @PrecioUnitario
+                    WHERE id = @Id";
+
+        using var connection = CrearConexion(configuration);
+        return connection.Execute(sql, new { Id = id, Cantidad = cantidad, PrecioUnitario = precioUnitario }) > 0;
+    }
+
+    public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null)
+    {
+        var ventas = ObtenerVentasPorRango(configuration, range, empresaId);
+
+        var resumen = new DashboardSummary
+        {
+            TotalProductos = ObtenerTotalProductos(configuration, empresaId),
+            ProductosPocoStock = ObtenerProductosConStockBajo(configuration, empresaId),
+            ProductosSinStock = ObtenerProductosSinStock(configuration, empresaId),
+            GananciasPorMesNetas = ventas.Sum(v => v.Precio - v.Costo),
+            VentasTotales = ventas.Count,
+            VentaPromedioPorMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
+            UltimosProductosVendidos = ventas.OrderByDescending(v => v.Fecha).Take(5).ToList(),
+            BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" }
+        };
+
+        var mesMayor = ventas
+            .GroupBy(v => new { v.Fecha.Year, v.Fecha.Month })
+            .Select(g => new { Mes = new DateTime(g.Key.Year, g.Key.Month, 1), Total = g.Sum(x => x.Precio) })
+            .OrderByDescending(x => x.Total)
+            .FirstOrDefault();
+
+        resumen.MesMayorVentas = mesMayor == null ? "Sin ventas" : mesMayor.Mes.ToString("MMMM yyyy");
+
+        resumen.PodioProductosMasVendidos = ventas
+            .GroupBy(v => v.NombreProducto)
+            .Select(g => new ProductoRanking
+            {
+                Nombre = g.Key,
+                Cantidad = g.Sum(v => v.Cantidad),
+                Total = g.Sum(v => v.Precio)
+            })
+            .OrderByDescending(x => x.Cantidad)
+            .Take(3)
+            .ToList();
+
+        resumen.PodioProductosMasGanancia = ventas
+            .GroupBy(v => v.NombreProducto)
+            .Select(g => new ProductoRanking
+            {
+                Nombre = g.Key,
+                Cantidad = g.Sum(v => v.Cantidad),
+                Total = g.Sum(v => v.Precio - v.Costo)
+            })
+            .OrderByDescending(x => x.Total)
+            .Take(3)
+            .ToList();
+
+        return resumen;
+    }
+
+    public static bool TieneProductos(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos WHERE empresaID = @EmpresaId", new { EmpresaId = empresaId }) > 0;
+    }
+
+    private static int ObtenerTotalProductos(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
+    }
+
+    private static int ObtenerProductosConStockBajo(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= stockMinimo";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
+    }
+
+    private static int ObtenerProductosSinStock(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= 0";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
+    }
+
+    private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null)
+    {
+        var fechaInicio = range.ToLowerInvariant() switch
+        {
+            "dia" => DateTime.Now.AddDays(-1),
+            "semana" => DateTime.Now.AddDays(-7),
+            "mes" => DateTime.Now.AddMonths(-1),
+            "anio" => DateTime.Now.AddYears(-1),
+            _ => DateTime.Now.AddMonths(-1)
+        };
+
+        using var connection = CrearConexion(configuration);
+        return connection.Query<VentaRegistro>(
+            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @FechaInicio ORDER BY fecha DESC",
+            new { EmpresaId = empresaId, FechaInicio = fechaInicio }).ToList();
+    }
+
     public static bool Registrarse(Usuario usuario, IConfiguration configuration)
     {
         var mailNormalizado = NormalizarMail(usuario.Mail);

@@ -29,10 +29,10 @@
         <div class="alert alert-danger">@TempData["MensajeError"]</div>
     }
 
-    <form method="get" class="row g-3 align-items-end mb-4">
+    <form id="stockFilterForm" method="get" class="row g-3 align-items-end mb-4">
         <div class="col-md-3">
             <label class="form-label">Buscar por SKU</label>
-            <input type="text" name="sku" value="@ViewBag.Sku" class="form-control" placeholder="Ej: ABC-100" />
+            <input id="skuFilter" type="text" name="sku" value="@ViewBag.Sku" class="form-control" placeholder="Ej: ABC-100" />
         </div>
 
         <div class="col-md-3">
@@ -105,43 +105,147 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody>
-                @if (Model.Any())
-                {
-                    foreach (var producto in Model)
-                    {
-                        <tr>
-                            <td>@producto.Nombre</td>
-                            <td>@producto.Sku</td>
-                            <td>@producto.Categoria</td>
-                            <td>$@producto.Precio.ToString("N2")</td>
-                            <td>
-                                @producto.StockActual
-                                @if (producto.StockActual <= producto.StockMinimo || producto.StockActual == 0)
-                                {
-                                    <span class="badge bg-warning text-dark ms-2">Bajo</span>
-                                }
-                            </td>
-                            <td>@producto.Proveedor</td>
-                            <td>
-                                <div class="d-flex gap-2">
-                                    <a class="btn btn-sm btn-warning" asp-action="Editar" asp-route-id="@producto.Id">Editar</a>
-                                    <form asp-action="Eliminar" method="post">
-                                        <input type="hidden" name="id" value="@producto.Id" />
-                                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                }
-                else
-                {
-                    <tr>
-                        <td colspan="7" class="text-center text-muted">No se encontraron productos.</td>
-                    </tr>
-                }
+            <tbody id="productosTableBody">
+                @await Html.PartialAsync("_ProductosTable", Model)
             </tbody>
         </table>
     </div>
 </div>
+
+<div id="editProductoModal" class="producto-modal" aria-hidden="true">
+    <div class="producto-modal-backdrop" data-close-modal="true"></div>
+    <div class="producto-modal-dialog">
+        <div id="editProductoContent" class="producto-modal-content"></div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('stockFilterForm');
+        const skuInput = document.getElementById('skuFilter');
+        const tableBody = document.getElementById('productosTableBody');
+        const modal = document.getElementById('editProductoModal');
+        const modalContent = document.getElementById('editProductoContent');
+        let latestRequestId = 0;
+        let activeController = null;
+
+        const buildQuery = () => {
+            const formData = new FormData(form);
+            const params = new URLSearchParams(formData);
+            return params.toString();
+        };
+
+        const applyFilters = async () => {
+            const requestId = ++latestRequestId;
+            const query = buildQuery();
+            const url = `@Url.Action("Index", "Stock")?${query}`;
+
+            if (activeController) {
+                activeController.abort();
+            }
+
+            activeController = new AbortController();
+
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: activeController.signal
+                });
+
+                if (requestId !== latestRequestId) {
+                    return;
+                }
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const html = await response.text();
+
+                if (requestId !== latestRequestId) {
+                    return;
+                }
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const tableContainer = doc.querySelector('#productosTableBody');
+
+                if (tableContainer) {
+                    tableBody.innerHTML = tableContainer.innerHTML;
+                    return;
+                }
+
+                const rows = doc.querySelectorAll('tr');
+                if (rows.length > 0) {
+                    tableBody.innerHTML = html;
+                    return;
+                }
+
+                tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No se encontraron productos.</td></tr>';
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                throw error;
+            }
+        };
+
+        if (skuInput) {
+            let timeoutId;
+            skuInput.addEventListener('input', function () {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    applyFilters();
+                }, 350);
+            });
+
+            skuInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    applyFilters();
+                }
+            });
+        }
+
+        form?.addEventListener('submit', function (event) {
+            event.preventDefault();
+            applyFilters();
+        });
+
+        document.addEventListener('change', function (event) {
+            const target = event.target;
+            if (target && target.closest('select, input[type="checkbox"], input[type="number"]')) {
+                if (target.name !== 'sku') {
+                    applyFilters();
+                }
+            }
+        });
+
+        document.addEventListener('click', async function (event) {
+            const editButton = event.target.closest('[data-edit-id]');
+            if (editButton) {
+                const id = editButton.getAttribute('data-edit-id');
+                const response = await fetch(`@Url.Action("Editar", "Stock")/${id}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const html = await response.text();
+                modalContent.innerHTML = html;
+                modal.classList.add('show');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('modal-open');
+            }
+
+            if (event.target.matches('[data-close-modal]')) {
+                modal.classList.remove('show');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('modal-open');
+            }
+        });
+    });
+</script>

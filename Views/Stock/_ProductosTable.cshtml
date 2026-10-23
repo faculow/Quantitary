@@ -1,0 +1,41 @@
+@model List<Quantitary.Models.Producto>
+
+@if (Model.Any())
+{
+    foreach (var producto in Model)
+    {
+        <tr>
+            <td>@producto.Nombre</td>
+            <td>@producto.Sku</td>
+            <td>@producto.Categoria</td>
+            <td>$@producto.Precio.ToString("N2")</td>
+            <td>
+                @producto.StockActual
+                @if (producto.StockActual == 0)
+                {
+                    <span class="badge bg-danger ms-2">Sin stock</span>
+                }
+                else if (producto.StockActual < producto.StockMinimo)
+                {
+                    <span class="badge bg-warning text-dark ms-2">Bajo</span>
+                }
+            </td>
+            <td>@producto.Proveedor</td>
+            <td>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-warning" data-edit-id="@producto.Id">Editar</button>
+                    <form asp-action="Eliminar" method="post">
+                        <input type="hidden" name="id" value="@producto.Id" />
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+    }
+}
+else
+{
+    <tr>
+        <td colspan="7" class="text-center text-muted">No se encontraron productos.</td>
+    </tr>
+}

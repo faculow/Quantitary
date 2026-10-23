@@ -1,9 +1,18 @@
-﻿<!DOCTYPE html>
+﻿@{
+    var controladorActual = ViewContext.RouteData.Values["controller"]?.ToString();
+    var accionActual = ViewContext.RouteData.Values["action"]?.ToString();
+
+    var esInicio = controladorActual == "Home" && accionActual == "Index";
+    var esHistorial = controladorActual == "Home" && accionActual == "Historial";
+    var esStock = controladorActual == "Stock";
+}
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Quantitary</title>
+    <link rel="icon" type="image/png" href="~/imagenes/logo.png" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
@@ -15,15 +24,15 @@
             </div>
 
             <nav class="sidebar-nav">
-                <a asp-controller="Home" asp-action="Index" class="nav-link-side active">
+                <a asp-controller="Home" asp-action="Index" class="nav-link-side @(esInicio ? "active" : "")" aria-current="@(esInicio ? "page" : null)">
                     <img src="~/imagenes/inicio.png" alt="Inicio" class="nav-icon" />
                     <span>Inicio</span>
                 </a>
-                <a asp-controller="Stock" asp-action="Index" class="nav-link-side">
+                <a asp-controller="Stock" asp-action="Index" class="nav-link-side @(esStock ? "active" : "")" aria-current="@(esStock ? "page" : null)">
                     <img src="~/imagenes/stock.png" alt="Stock" class="nav-icon" />
                     <span>Stock</span>
                 </a>
-                <a asp-controller="Home" asp-action="Historial" class="nav-link-side">
+                <a asp-controller="Home" asp-action="Historial" class="nav-link-side @(esHistorial ? "active" : "")" aria-current="@(esHistorial ? "page" : null)">
                     <img src="~/imagenes/historial.png" alt="Historial" class="nav-icon" />
                     <span>Historial</span>
                 </a>

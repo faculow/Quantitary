@@ -9,7 +9,7 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
-builder.Services.AddScoped<Quantitary.Models.InventoryRepository>();
+builder.Services.AddScoped<Quantitary.Models.ProductoRepository>();
 
 var app = builder.Build();
 

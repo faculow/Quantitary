@@ -216,10 +216,17 @@ body {
     transition: 0.2s ease;
 }
 
-.nav-link-side:hover,
-.nav-link-side.active {
+.nav-link-side:hover {
     background: rgba(255,255,255,0.08);
     color: white;
+    text-decoration: none;
+}
+
+.nav-link-side.active {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35);
     text-decoration: none;
 }
 
@@ -294,6 +301,42 @@ body {
 .content-area {
     padding: 24px;
     flex: 1;
+}
+
+.producto-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: 2000;
+}
+
+.producto-modal.show {
+    display: block;
+}
+
+.producto-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.7);
+    z-index: 0;
+}
+
+.producto-modal-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(860px, calc(100% - 32px));
+    margin: 8vh auto 0 auto;
+}
+
+.producto-modal-content {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
+    padding: 22px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    z-index: 2;
 }
 
 @media (max-width: 991px) {

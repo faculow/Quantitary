@@ -6,9 +6,9 @@ namespace Quantitary.Controllers;
 
 public class HomeController : Controller
 {
-    private readonly InventoryRepository _inventoryRepository;
+    private readonly ProductoRepository _inventoryRepository;
 
-    public HomeController(InventoryRepository inventoryRepository)
+    public HomeController(ProductoRepository inventoryRepository)
     {
         _inventoryRepository = inventoryRepository;
     }
