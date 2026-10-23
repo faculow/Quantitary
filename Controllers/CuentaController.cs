@@ -82,7 +82,7 @@ public class CuentaController : Controller
 
         if (usuario.EmpresaID <= 0)
         {
-            usuario.EmpresaID = 1;
+            usuario.EmpresaID = 0;
         }
 
         if (usuario.RolID <= 0)
@@ -94,7 +94,7 @@ public class CuentaController : Controller
         if (creado)
         {
             BD.IniciarSesion(usuario.Mail, usuario.Contrasena, HttpContext, _configuration);
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Importar", "Stock");
         }
 
         ViewBag.Error = "No se pudo crear la cuenta. Verifica que el correo no esté registrado y que los datos sean válidos.";

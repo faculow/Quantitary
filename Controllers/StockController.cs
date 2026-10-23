@@ -48,8 +48,9 @@ public class StockController : Controller
             return redirect;
         }
 
-        var productos = _inventoryRepository.ObtenerProductos(sku, categoria);
-        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID");
+        var productos = _inventoryRepository.ObtenerProductos(sku, categoria, empresaId ?? 0);
+        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(empresaId ?? 0);
         ViewBag.Sku = sku;
         ViewBag.Categoria = categoria;
         return View(productos);
@@ -64,7 +65,8 @@ public class StockController : Controller
             return redirect;
         }
 
-        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID");
+        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(empresaId ?? 0);
         return View();
     }
 
@@ -77,9 +79,11 @@ public class StockController : Controller
             return redirect;
         }
 
+        producto.EmpresaID = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+
         if (!ModelState.IsValid)
         {
-            ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
+            ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(producto.EmpresaID);
             return View(producto);
         }
 

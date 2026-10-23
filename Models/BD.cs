@@ -37,13 +37,22 @@ public static class BD
         using var connection = CrearConexion(configuration);
         connection.Open();
 
-        var empresaId = usuario.EmpresaID > 0
-            ? usuario.EmpresaID
-            : connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Empresa ORDER BY id");
+        int? empresaId = usuario.EmpresaID > 0 ? usuario.EmpresaID : null;
+        int? rolId = usuario.RolID > 0 ? usuario.RolID : null;
 
-        var rolId = usuario.RolID > 0
-            ? usuario.RolID
-            : connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Rol ORDER BY id");
+        if (empresaId == null)
+        {
+            var nombreEmpresa = $"Empresa de {usuario.NombreUsuario.Trim()}";
+            var empresaInsertada = connection.ExecuteScalar<int>(
+                "INSERT INTO Empresa (nombre) VALUES (@Nombre); SELECT CAST(SCOPE_IDENTITY() as int);",
+                new { Nombre = nombreEmpresa });
+            empresaId = empresaInsertada;
+        }
+
+        if (rolId == null)
+        {
+            rolId = connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Rol ORDER BY id");
+        }
 
         if (empresaId == null || rolId == null)
         {
@@ -72,6 +81,9 @@ public static class BD
             EmpresaID = empresaId.Value,
             RolID = rolId.Value
         });
+
+        usuario.EmpresaID = empresaId.Value;
+        usuario.RolID = rolId.Value;
 
         return true;
     }
