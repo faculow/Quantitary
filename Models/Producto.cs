@@ -75,19 +75,63 @@ public class InventoryRepository
         return connection.Query<string>("SELECT DISTINCT categoria FROM Productos ORDER BY categoria").ToList();
     }
 
-    public List<Producto> ObtenerProductos(string? sku = null, string? categoria = null)
+    public List<Producto> ObtenerProductos(string? sku = null, string? categoria = null, bool? pocoStock = null, decimal? precioMinimo = null, string? orden = null)
     {
-        var sql = @"SELECT * FROM Productos
-                    WHERE (@Sku IS NULL OR sku LIKE '%' + @Sku + '%')
-                      AND (@Categoria IS NULL OR categoria = @Categoria)
-                    ORDER BY nombre";
+        var sql = @"SELECT * FROM Productos WHERE 1 = 1";
+        var parametros = new DynamicParameters();
+
+        if (!string.IsNullOrWhiteSpace(sku))
+        {
+            sql += " AND LOWER(sku) LIKE '%' + LOWER(@Sku) + '%'";
+            parametros.Add("@Sku", sku.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(categoria))
+        {
+            sql += " AND categoria = @Categoria";
+            parametros.Add("@Categoria", categoria.Trim());
+        }
+
+        if (pocoStock == true)
+        {
+            sql += " AND (stockActual <= stockMinimo OR stockActual = 0)";
+        }
+
+        if (precioMinimo.HasValue)
+        {
+            sql += " AND precio >= @PrecioMinimo";
+            parametros.Add("@PrecioMinimo", precioMinimo.Value);
+        }
+
+        sql += " ORDER BY";
+
+        switch (orden)
+        {
+            case "precio_desc":
+                sql += " precio DESC, nombre ASC";
+                break;
+            case "precio_asc":
+                sql += " precio ASC, nombre ASC";
+                break;
+            case "nombre_asc":
+                sql += " nombre ASC";
+                break;
+            case "nombre_desc":
+                sql += " nombre DESC";
+                break;
+            case "fecha_nuevo":
+                sql += " fechaCarga DESC, id DESC";
+                break;
+            case "fecha_antiguo":
+                sql += " fechaCarga ASC, id ASC";
+                break;
+            default:
+                sql += " nombre ASC";
+                break;
+        }
 
         using var connection = CrearConexion();
-        return connection.Query<Producto>(sql, new
-        {
-            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku,
-            Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria
-        }).ToList();
+        return connection.Query<Producto>(sql, parametros).ToList();
     }
 
     public Producto? BuscarPorId(int id)

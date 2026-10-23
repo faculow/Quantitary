@@ -40,7 +40,7 @@ public class StockController : Controller
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "plantilla_productos.xlsx");
     }
 
-    public IActionResult Index(string? sku = null, string? categoria = null)
+    public IActionResult Index(string? sku = null, string? categoria = null, bool pocoStock = false, decimal? precioMinimo = null, string? orden = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -48,10 +48,13 @@ public class StockController : Controller
             return redirect;
         }
 
-        var productos = _inventoryRepository.ObtenerProductos(sku, categoria);
+        var productos = _inventoryRepository.ObtenerProductos(sku, categoria, pocoStock, precioMinimo, orden);
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias();
         ViewBag.Sku = sku;
         ViewBag.Categoria = categoria;
+        ViewBag.PocoStock = pocoStock;
+        ViewBag.PrecioMinimo = precioMinimo;
+        ViewBag.Orden = orden;
         return View(productos);
     }
 
