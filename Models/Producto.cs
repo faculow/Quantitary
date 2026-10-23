@@ -6,6 +6,7 @@ namespace Quantitary.Models;
 public class Producto
 {
     public int Id { get; set; }
+    public int EmpresaID { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string Categoria { get; set; } = string.Empty;
@@ -69,10 +70,11 @@ public class InventoryRepository
         return new SqlConnection(_connectionString);
     }
 
-    public List<string> ObtenerCategorias()
+    public List<string> ObtenerCategorias(int? empresaId = null)
     {
         using var connection = CrearConexion();
-        return connection.Query<string>("SELECT DISTINCT categoria FROM Productos ORDER BY categoria").ToList();
+        var sql = @"SELECT DISTINCT categoria FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) ORDER BY categoria";
+        return connection.Query<string>(sql, new { EmpresaId = empresaId }).ToList();
     }
 
     public List<Producto> ObtenerProductos(string? sku = null, string? categoria = null, bool? pocoStock = null, decimal? precioMinimo = null, string? orden = null)
@@ -132,6 +134,21 @@ public class InventoryRepository
 
         using var connection = CrearConexion();
         return connection.Query<Producto>(sql, parametros).ToList();
+    public List<Producto> ObtenerProductos(string? sku = null, string? categoria = null, int? empresaId = null)
+    {
+        var sql = @"SELECT * FROM Productos
+                    WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+                      AND (@Sku IS NULL OR sku LIKE '%' + @Sku + '%')
+                      AND (@Categoria IS NULL OR categoria = @Categoria)
+                    ORDER BY nombre";
+
+        using var connection = CrearConexion();
+        return connection.Query<Producto>(sql, new
+        {
+            EmpresaId = empresaId,
+            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku,
+            Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria
+        }).ToList();
     }
 
     public Producto? BuscarPorId(int id)
@@ -160,16 +177,16 @@ public class InventoryRepository
         using var connection = CrearConexion();
 
         var existe = connection.QuerySingleOrDefault<int?>(
-            "SELECT id FROM Productos WHERE LOWER(LTRIM(RTRIM(sku))) = @Sku",
-            new { Sku = producto.Sku.ToLowerInvariant() });
+            "SELECT id FROM Productos WHERE empresaID = @EmpresaID AND LOWER(LTRIM(RTRIM(sku))) = @Sku",
+            new { producto.EmpresaID, Sku = producto.Sku.ToLowerInvariant() });
 
         if (existe != null)
         {
-            throw new InvalidOperationException($"El SKU '{producto.Sku}' ya existe en la base de datos.");
+            throw new InvalidOperationException($"El SKU '{producto.Sku}' ya existe en la base de datos para esta empresa.");
         }
 
-        var sql = @"INSERT INTO Productos (nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
-                    VALUES (@Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
+        var sql = @"INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
+                    VALUES (@EmpresaID, @Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
                     SELECT CAST(SCOPE_IDENTITY() as int);";
 
         producto.Id = connection.QuerySingle<int>(sql, producto);
@@ -189,7 +206,8 @@ public class InventoryRepository
                         proveedor = @Proveedor,
                         costoCompra = @CostoCompra,
                         precioVenta = @PrecioVenta,
-                        cantidadVentas = @CantidadVentas
+                        cantidadVentas = @CantidadVentas,
+                        empresaID = @EmpresaID
                     WHERE id = @Id";
 
         using var connection = CrearConexion();
@@ -206,6 +224,7 @@ public class InventoryRepository
             producto.CostoCompra,
             producto.PrecioVenta,
             producto.CantidadVentas,
+            producto.EmpresaID,
             Id = id
         });
 
@@ -229,15 +248,15 @@ public class InventoryRepository
         return connection.Execute(sql, new { Id = id, Cantidad = cantidad, PrecioUnitario = precioUnitario }) > 0;
     }
 
-    public DashboardSummary ObtenerDashboard(string range)
+    public DashboardSummary ObtenerDashboard(string range, int? empresaId = null)
     {
-        var ventas = ObtenerVentasPorRango(range);
+        var ventas = ObtenerVentasPorRango(range, empresaId);
 
         var resumen = new DashboardSummary
         {
-            TotalProductos = ObtenerTotalProductos(),
-            ProductosPocoStock = ObtenerProductosConStockBajo(),
-            ProductosSinStock = ObtenerProductosSinStock(),
+            TotalProductos = ObtenerTotalProductos(empresaId),
+            ProductosPocoStock = ObtenerProductosConStockBajo(empresaId),
+            ProductosSinStock = ObtenerProductosSinStock(empresaId),
             GananciasPorMesNetas = ventas.Sum(v => v.Precio - v.Costo),
             VentasTotales = ventas.Count,
             VentaPromedioPorMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
@@ -280,25 +299,28 @@ public class InventoryRepository
         return resumen;
     }
 
-    private int ObtenerTotalProductos()
+    private int ObtenerTotalProductos(int? empresaId = null)
     {
         using var connection = CrearConexion();
-        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos");
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
     }
 
-    private int ObtenerProductosConStockBajo()
+    private int ObtenerProductosConStockBajo(int? empresaId = null)
     {
         using var connection = CrearConexion();
-        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos WHERE stockActual <= stockMinimo");
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= stockMinimo";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
     }
 
-    private int ObtenerProductosSinStock()
+    private int ObtenerProductosSinStock(int? empresaId = null)
     {
         using var connection = CrearConexion();
-        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos WHERE stockActual <= 0");
+        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= 0";
+        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
     }
 
-    private List<VentaRegistro> ObtenerVentasPorRango(string range)
+    private List<VentaRegistro> ObtenerVentasPorRango(string range, int? empresaId = null)
     {
         var fechaInicio = range.ToLowerInvariant() switch
         {
@@ -311,7 +333,14 @@ public class InventoryRepository
 
         using var connection = CrearConexion();
         return connection.Query<VentaRegistro>(
-            "SELECT * FROM Ventas WHERE fecha >= @FechaInicio ORDER BY fecha DESC",
-            new { FechaInicio = fechaInicio }).ToList();
+            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @FechaInicio ORDER BY fecha DESC",
+            new { EmpresaId = empresaId, FechaInicio = fechaInicio }).ToList();
     }
+
+    public bool TieneProductos(int empresaId)
+    {
+        using var connection = CrearConexion();
+        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos WHERE empresaID = @EmpresaId", new { EmpresaId = empresaId }) > 0;
+    }
+}
 }

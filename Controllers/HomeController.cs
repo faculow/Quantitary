@@ -36,9 +36,16 @@ public class HomeController : Controller
             return redirect;
         }
 
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
+        {
+            TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
+            return RedirectToAction("Importar", "Stock");
+        }
+
         var nombre = HttpContext.Session.GetString("NombreUsuario") ?? "Usuario";
         ViewBag.NombreUsuario = nombre;
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes");
+        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
         return View();
     }
 
@@ -50,7 +57,14 @@ public class HomeController : Controller
             return redirect;
         }
 
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango);
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
+        {
+            TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
+            return RedirectToAction("Importar", "Stock");
+        }
+
+        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
         ViewBag.RangoActual = rango;
         return View();
     }
