@@ -12,22 +12,20 @@ public class ProductoImportacionExcel
 
     public static readonly string[] ColumnasEsperadas =
     {
-        "SKU",
         "Nombre",
+        "SKU",
         "Categoria",
         "Precio",
-        "Proveedor",
-        "CantidadVentas"
+        "Proveedor"
     };
 
     public static readonly Dictionary<string, string[]> AliasColumnas = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SKU"] = ["SKU", "Sku", "sku", "Codigo", "Cod", "Código"],
         ["Nombre"] = ["Nombre", "nombre", "Producto", "DescripcionCorta"],
+        ["SKU"] = ["SKU", "Sku", "sku", "Codigo", "Cod", "Código"],
         ["Categoria"] = ["Categoria", "categoria", "Categoría", "Rubro"],
         ["Precio"] = ["Precio", "precio", "PrecioUnitario", "Valor"],
-        ["Proveedor"] = ["Proveedor", "proveedor", "Fabricante", "Marca"],
-        ["CantidadVentas"] = ["CantidadVentas", "cantidadVentas", "Ventas", "Cantidad de ventas", "VentasTotales"]
+        ["Proveedor"] = ["Proveedor", "proveedor", "Fabricante", "Marca"]
     };
 }
 
@@ -76,7 +74,7 @@ public static class ImportacionExcelHelper
                 StockMinimo = 0,
                 CostoCompra = 0m,
                 PrecioVenta = 0m,
-                CantidadVentas = ObtenerEntero(fila, columnas, "CantidadVentas")
+                CantidadVentas = 0
             };
 
             if (string.IsNullOrWhiteSpace(producto.Sku)

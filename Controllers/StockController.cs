@@ -27,6 +27,19 @@ public class StockController : Controller
         return null;
     }
 
+    [HttpGet]
+    public IActionResult DescargarPlantillaProductos()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var bytes = ExcelPlantillaHelper.GenerarPlantillaProductos();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "plantilla_productos.xlsx");
+    }
+
     public IActionResult Index(string? sku = null, string? categoria = null)
     {
         var redirect = RedirigirSiNoHaySesion();

@@ -7,7 +7,13 @@
 
     <div class="alert alert-info">
         <strong>Formato esperado:</strong> el archivo debe tener en la primera fila los encabezados:<br />
-        SKU, Nombre, Categoria, Precio, Proveedor, CantidadVentas
+        Nombre, SKU, Categoria, Precio, Proveedor
+    </div>
+
+    <div class="mb-3">
+        <a asp-controller="Stock" asp-action="DescargarPlantillaProductos" class="btn btn-primary">
+            Descargar Excel vacío
+        </a>
     </div>
 
     <form asp-action="Importar" method="post" enctype="multipart/form-data" class="row g-3">
