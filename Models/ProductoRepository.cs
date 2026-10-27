@@ -22,6 +22,18 @@ public class ProductoRanking
     public decimal Total { get; set; }
 }
 
+public class ChartPoint
+{
+    public string Label { get; set; } = string.Empty;
+    public decimal Valor { get; set; }
+}
+
+public class DashboardCategoryShare
+{
+    public string Nombre { get; set; } = string.Empty;
+    public decimal Valor { get; set; }
+}
+
 public class DashboardSummary
 {
     public int TotalProductos { get; set; }
@@ -35,6 +47,14 @@ public class DashboardSummary
     public List<ProductoRanking> PodioProductosMasGanancia { get; set; } = new();
     public List<VentaRegistro> UltimosProductosVendidos { get; set; } = new();
     public List<string> BasesDeDatos { get; set; } = new();
+    public decimal TotalVentasMes { get; set; }
+    public decimal GananciaNetaMes { get; set; }
+    public decimal GastosTotalesMes { get; set; }
+    public decimal VentaPromedioMes { get; set; }
+    public string MesActualLabel { get; set; } = string.Empty;
+    public List<ChartPoint> VentasPorPeriodo { get; set; } = new();
+    public List<ChartPoint> GananciaPorCategoria { get; set; } = new();
+    public List<DashboardCategoryShare> ParticipacionVentas { get; set; } = new();
 }
 
 public class ProductoRepository

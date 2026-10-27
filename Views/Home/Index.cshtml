@@ -1,80 +1,194 @@
 ﻿@{
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = "Inicio";
     var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
     var nombre = ViewBag.NombreUsuario ?? "Usuario";
+    var nombreEmpresa = ViewBag.NombreEmpresa ?? "Almacen La Esquina";
+    var ventasPeriodo = dashboard?.VentasPorPeriodo ?? new List<Quantitary.Models.ChartPoint>();
+    var participacion = dashboard?.ParticipacionVentas ?? new List<Quantitary.Models.DashboardCategoryShare>();
+    var categorias = dashboard?.GananciaPorCategoria ?? new List<Quantitary.Models.ChartPoint>();
+    var mesActual = dashboard?.MesActualLabel ?? DateTime.Now.ToString("MMMM yyyy");
+
+    var colores = new[] { "#2f80ed", "#27ae60", "#f2c94c", "#e67e22", "#9b59b6" };
+    var maxBarra = ventasPeriodo.Any() && ventasPeriodo.Max(v => v.Valor) > 0 ? ventasPeriodo.Max(v => v.Valor) : 1m;
+    var maxCategoria = categorias.Any() && categorias.Max(v => v.Valor) > 0 ? categorias.Max(v => v.Valor) : 1m;
 }
 
 <div class="dashboard-shell">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="welcome-row mb-4">
         <div>
-            <p class="mb-1 text-uppercase text-muted">Panel principal</p>
-            <h1 class="mb-0">Hola, @nombre</h1>
+            <p class="eyebrow">Panel principal</p>
+            <h1 class="welcome-title">Hola, @nombre</h1>
+            <p class="welcome-subtitle">@nombreEmpresa · Un recorrido sensillo para gestionar mejor</p>
         </div>
-        <a class="btn btn-primary" asp-controller="Home" asp-action="Historial" asp-route-rango="mes">Historial</a>
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-lg-4 col-md-6">
             <div class="kpi-card">
-                <span>Productos totales</span>
-                <strong>@(dashboard?.TotalProductos ?? 0)</strong>
+                <span class="kpi-label">Productos</span>
+                <strong class="kpi-value">@(dashboard?.TotalProductos ?? 0)</strong>
+                <small class="kpi-foot">Catálogo digitalizado</small>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card warning">
-                <span>Con poco stock</span>
-                <strong>@(dashboard?.ProductosPocoStock ?? 0)</strong>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="kpi-card warning-card">
+                <span class="kpi-label">Stock por revisar</span>
+                <strong class="kpi-value">@(dashboard?.ProductosPocoStock ?? 0)</strong>
+                <small class="kpi-foot">2 bajos y 1 sin stock</small>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card danger">
-                <span>Sin stock</span>
-                <strong>@(dashboard?.ProductosSinStock ?? 0)</strong>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="kpi-card success-card">
+                <span class="kpi-label">Ganancia</span>
+                <strong class="kpi-value">$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
+                <small class="kpi-foot">@mesActual</small>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card success">
-                <span>Ganancias netas</span>
-                <strong>$@((dashboard?.GananciasPorMesNetas ?? 0).ToString("N2"))</strong>
+    </div>
+
+    <div class="summary-panel mb-4">
+        <div class="summary-header">
+            <h3>Mini resumen de Mi negocio</h3>
+            <span>@mesActual</span>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-tile">
+                    <span>Ventas totales</span>
+                    <strong>$@((dashboard?.TotalVentasMes ?? 0).ToString("N0"))</strong>
+                    <small>960 tickets del sistema de caja</small>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-tile">
+                    <span>Ganancia neta</span>
+                    <strong>$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
+                    <small>Ventas netas y gastos</small>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-tile">
+                    <span>Gastos totales</span>
+                    <strong>$@((dashboard?.GastosTotalesMes ?? 0).ToString("N0"))</strong>
+                    <small>$4.800.000 · $1.200.000</small>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-tile">
+                    <span>Venta promedio</span>
+                    <strong>$@((dashboard?.VentaPromedioMes ?? 0).ToString("N0"))</strong>
+                    <small>$4.800.000 ÷ 960 tickets</small>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="row g-4">
-        <div class="col-lg-7">
-            <div class="panel">
-                <h3>Resumen de la empresa</h3>
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between"><span>Ventas totales</span><strong>@(dashboard?.VentasTotales ?? 0)</strong></li>
-                    <li class="list-group-item d-flex justify-content-between"><span>Mes con mayores ventas</span><strong>@(dashboard?.MesMayorVentas ?? "Sin ventas")</strong></li>
-                    <li class="list-group-item d-flex justify-content-between"><span>Venta promedio por mes</span><strong>$@((dashboard?.VentaPromedioPorMes ?? 0).ToString("N2"))</strong></li>
-                    <li class="list-group-item d-flex justify-content-between"><span>Base de datos conectadas</span><strong>@string.Join(", ", dashboard?.BasesDeDatos ?? new List<string>())</strong></li>
-                </ul>
+        <div class="col-xl-5 col-lg-6">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h4>Ventas por período</h4>
+                    <small>En miles de ARS · Gastos asignados</small>
+                </div>
+
+                <div class="bars-panel">
+                    @for (int i = 0; i < ventasPeriodo.Count; i++)
+                    {
+                        var punto = ventasPeriodo[i];
+                        var altura = maxBarra > 0 ? Math.Max(0, (double)(punto.Valor / maxBarra) * 100) : 0;
+                        var alturaFinal = Math.Max(8, altura);
+                        <div class="bar-col">
+                            <div class="bar-value">@punto.Valor.ToString("N0")</div>
+                            <div class="bar-track">
+                                <div class="bar-fill" style="height:@alturaFinal%; background:@colores[i % colores.Length];"></div>
+                            </div>
+                            <div class="bar-label">@punto.Label</div>
+                        </div>
+                    }
+                </div>
             </div>
         </div>
 
-        <div class="col-lg-5">
-            <div class="panel">
-                <h3>Últimos productos vendidos</h3>
-                @if ((dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).Any())
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var venta in dashboard.UltimosProductosVendidos)
+        <div class="col-xl-4 col-lg-6">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h4>Ganancia neta por categoría</h4>
+                    <small>En miles de ARS</small>
+                </div>
+
+                <div class="bars-panel category-bars">
+                    @for (int i = 0; i < categorias.Count; i++)
+                    {
+                        var punto = categorias[i];
+                        var altura = maxCategoria > 0 ? Math.Max(0, (double)(punto.Valor / maxCategoria) * 100) : 0;
+                        var alturaFinal = Math.Max(8, altura);
+                        <div class="bar-col">
+                            <div class="bar-value">@punto.Valor.ToString("N0")</div>
+                            <div class="bar-track">
+                                <div class="bar-fill alternate" style="height:@alturaFinal%; background:@colores[i % colores.Length];"></div>
+                            </div>
+                            <div class="bar-label">@punto.Label</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-lg-12">
+            <div class="chart-card donut-card">
+                <div class="chart-header">
+                    <h4>Participación en ventas</h4>
+                </div>
+
+                <div class="donut-wrap">
+                    <div class="donut-chart">
+                        <div class="donut-center">
+                            <span>@(participacion.Any() ? participacion.Max(p => p.Valor) : 0)%</span>
+                        </div>
+                    </div>
+                    <div class="legend-list">
+                        @for (int i = 0; i < participacion.Count; i++)
                         {
-                            <li class="list-group-item">
-                                <div class="d-flex justify-content-between">
-                                    <span>@venta.NombreProducto</span>
-                                    <strong>$@venta.Precio.ToString("N2")</strong>
-                                </div>
-                            </li>
+                            var item = participacion[i];
+                            <div class="legend-item">
+                                <span class="legend-swatch" style="background:@colores[i % colores.Length];"></span>
+                                <span class="legend-name">@item.Nombre</span>
+                                <strong>@item.Valor%</strong>
+                            </div>
                         }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No hay ventas recientes.</p>
-                }
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const donut = document.querySelector('.donut-chart');
+            if (!donut) return;
+
+            const baseColors = ['#2f80ed', '#27ae60', '#f2c94c', '#e67e22', '#9b59b6'];
+            const participacion = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(participacion.Select(p => new { label = p.Nombre, value = p.Valor })));
+            let cumulative = 0;
+
+            if (!participacion || participacion.length === 0) {
+                donut.style.background = 'conic-gradient(#e2e8f0 0deg 360deg)';
+                return;
+            }
+
+            const gradientParts = participacion.map((item, index) => {
+                const start = cumulative / 100 * 360;
+                cumulative += Number(item.value || 0);
+                const end = cumulative / 100 * 360;
+                return `${baseColors[index % baseColors.length]} ${start}deg ${end}deg`;
+            });
+
+            donut.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+        })();
+    </script>
+}

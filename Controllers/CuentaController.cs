@@ -68,6 +68,12 @@ public class CuentaController : Controller
             return View(usuario);
         }
 
+        if (string.IsNullOrWhiteSpace(usuario.NombreEmpresa))
+        {
+            ViewBag.Error = "El nombre de la empresa es obligatorio.";
+            return View(usuario);
+        }
+
         if (string.IsNullOrWhiteSpace(usuario.Mail))
         {
             ViewBag.Error = "El correo es obligatorio.";

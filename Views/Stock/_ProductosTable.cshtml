@@ -4,7 +4,7 @@
 {
     foreach (var producto in Model)
     {
-        <tr>
+        <tr data-sku="@producto.Sku" data-categoria="@producto.Categoria" data-precio="@producto.Precio" data-stock="@producto.StockActual" data-stock-minimo="@producto.StockMinimo">
             <td>@producto.Nombre</td>
             <td>@producto.Sku</td>
             <td>@producto.Categoria</td>

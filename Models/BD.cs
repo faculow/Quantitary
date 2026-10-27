@@ -154,6 +154,9 @@ public static class BD
     public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null)
     {
         var ventas = ObtenerVentasPorRango(configuration, range, empresaId);
+        var mesActual = DateTime.Now;
+        var ventasMes = ObtenerVentasPorMes(configuration, empresaId, mesActual);
+        var ventasPrevias = ObtenerVentasPorMes(configuration, empresaId, mesActual.AddMonths(-1));
 
         var resumen = new DashboardSummary
         {
@@ -164,7 +167,15 @@ public static class BD
             VentasTotales = ventas.Count,
             VentaPromedioPorMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
             UltimosProductosVendidos = ventas.OrderByDescending(v => v.Fecha).Take(5).ToList(),
-            BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" }
+            BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" },
+            TotalVentasMes = ventasMes.Sum(v => v.Precio),
+            GananciaNetaMes = ventasMes.Sum(v => v.Precio - v.Costo),
+            GastosTotalesMes = ventasMes.Sum(v => v.Costo),
+            VentaPromedioMes = ventasMes.Any() ? ventasMes.Average(v => v.Precio) : 0m,
+            MesActualLabel = mesActual.ToString("MMMM yyyy"),
+            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaId, mesActual),
+            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaId, mesActual),
+            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaId, mesActual)
         };
 
         var mesMayor = ventas
@@ -200,6 +211,97 @@ public static class BD
             .ToList();
 
         return resumen;
+    }
+
+    private static List<VentaRegistro> ObtenerVentasPorMes(IConfiguration configuration, int? empresaId, DateTime fecha)
+    {
+        var inicio = new DateTime(fecha.Year, fecha.Month, 1);
+        var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
+
+        using var connection = CrearConexion(configuration);
+        return connection.Query<VentaRegistro>(
+            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @Inicio AND fecha <= @Fin ORDER BY fecha DESC",
+            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+    }
+
+    private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha)
+    {
+        var inicio = new DateTime(fecha.Year, fecha.Month, 1);
+        var labels = new[] { "1-7 sep", "8-14 sep", "15-23 sep", "24-30 sep" };
+        var result = new List<ChartPoint>();
+
+        for (int i = 0; i < labels.Length; i++)
+        {
+            var desde = inicio.AddDays(i * 7);
+            var hasta = i == labels.Length - 1 ? inicio.AddMonths(1).AddDays(-1) : desde.AddDays(6);
+
+            using var connection = CrearConexion(configuration);
+            var total = connection.QuerySingleOrDefault<decimal?>(
+                "SELECT SUM(precio) FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @Desde AND fecha <= @Hasta",
+                new { EmpresaId = empresaId, Desde = desde, Hasta = hasta }) ?? 0m;
+
+            result.Add(new ChartPoint { Label = labels[i], Valor = total });
+        }
+
+        return result;
+    }
+
+    private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha)
+    {
+        var inicio = new DateTime(fecha.Year, fecha.Month, 1);
+        var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
+
+        using var connection = CrearConexion(configuration);
+        var rows = connection.Query<(string Nombre, decimal Valor)>(
+            @"SELECT p.categoria AS Nombre, SUM(v.precio - v.costo) AS Valor
+              FROM Ventas v
+              INNER JOIN Productos p ON p.id = v.productoId
+              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                AND v.fecha >= @Inicio AND v.fecha <= @Fin
+              GROUP BY p.categoria
+              ORDER BY Valor DESC",
+            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+
+        return rows.Select(r => new ChartPoint
+        {
+            Label = r.Nombre,
+            Valor = r.Valor
+        }).ToList();
+    }
+
+    private static List<DashboardCategoryShare> ObtenerParticipacionVentas(IConfiguration configuration, int? empresaId, DateTime fecha)
+    {
+        var inicio = new DateTime(fecha.Year, fecha.Month, 1);
+        var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
+
+        using var connection = CrearConexion(configuration);
+        var rows = connection.Query<(string Nombre, decimal Valor)>(
+            @"SELECT p.categoria AS Nombre, SUM(v.precio) AS Valor
+              FROM Ventas v
+              INNER JOIN Productos p ON p.id = v.productoId
+              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                AND v.fecha >= @Inicio AND v.fecha <= @Fin
+              GROUP BY p.categoria
+              ORDER BY Valor DESC",
+            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+
+        if (rows.Count == 0)
+        {
+            return new List<DashboardCategoryShare>();
+        }
+
+        var total = rows.Sum(r => r.Valor);
+
+        return rows.Select(r =>
+        {
+            var porcentaje = total > 0 ? Math.Round((r.Valor / total) * 100m, 0, MidpointRounding.AwayFromZero) : 0m;
+
+            return new DashboardCategoryShare
+            {
+                Nombre = r.Nombre,
+                Valor = porcentaje
+            };
+        }).ToList();
     }
 
     public static bool TieneProductos(IConfiguration configuration, int empresaId)
@@ -327,8 +429,13 @@ public static class BD
             return false;
         }
 
+        var empresa = connection.QuerySingleOrDefault<Empresa>(
+            "SELECT e.* FROM Empresa e INNER JOIN Usuarios u ON u.empresaID = e.id WHERE u.id = @UsuarioId",
+            new { UsuarioId = usuario.Id });
+
         httpContext.Session.SetInt32("UsuarioID", usuario.Id);
         httpContext.Session.SetString("NombreUsuario", usuario.NombreUsuario);
+        httpContext.Session.SetString("NombreEmpresa", empresa?.Nombre ?? "Mi empresa");
         httpContext.Session.SetInt32("EmpresaID", usuario.EmpresaID);
         httpContext.Session.SetInt32("RolID", usuario.RolID);
 

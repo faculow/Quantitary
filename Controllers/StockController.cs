@@ -257,5 +257,39 @@ public class StockController : Controller
             return RedirectToAction(nameof(Index));
         }
     }
+
+    private static string? NormalizarFiltro(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return null;
+        }
+
+        return valor.Trim();
+    }
+
+    [HttpGet]
+    public IActionResult Filtrar(string? sku = null, string? categoria = null, bool pocoStock = false, decimal? precioMinimo = null, string? orden = null)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID");
+        var skuNormalizado = NormalizarFiltro(sku);
+        var categoriaNormalizada = NormalizarFiltro(categoria);
+
+        var productos = _inventoryRepository.ObtenerProductos(
+            skuNormalizado,
+            categoriaNormalizada,
+            pocoStock,
+            precioMinimo,
+            orden,
+            empresaId ?? 0);
+
+        return PartialView("_ProductosTable", productos);
+    }
 }
 

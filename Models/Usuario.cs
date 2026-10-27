@@ -7,6 +7,7 @@ namespace Quantitary.Models
         public string Contrasena { get; set; } = string.Empty;
         public string Mail { get; set; } = string.Empty;
         public string? NumeroTelefono { get; set; }
+        public string? NombreEmpresa { get; set; }
         public int EmpresaID { get; set; }
         public int RolID { get; set; }
 
