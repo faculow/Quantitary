@@ -79,15 +79,6 @@ public static class BD
 
         using var connection = CrearConexion(configuration);
 
-        var existe = connection.QuerySingleOrDefault<int?>(
-            "SELECT id FROM Productos WHERE empresaID = @EmpresaID AND LOWER(LTRIM(RTRIM(sku))) = @Sku",
-            new { producto.EmpresaID, Sku = producto.Sku.ToLowerInvariant() });
-
-        if (existe != null)
-        {
-            throw new InvalidOperationException($"El SKU '{producto.Sku}' ya existe en la base de datos para esta empresa.");
-        }
-
         var sql = @"INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
                     VALUES (@EmpresaID, @Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
                     SELECT CAST(SCOPE_IDENTITY() as int);";
@@ -164,8 +155,9 @@ public static class BD
             ProductosPocoStock = ObtenerProductosConStockBajo(configuration, empresaId),
             ProductosSinStock = ObtenerProductosSinStock(configuration, empresaId),
             GananciasPorMesNetas = ventas.Sum(v => v.Precio - v.Costo),
+            GananciaPromedioPorProducto = ventas.Any() ? ventas.Average(v => v.Precio - v.Costo) : 0m,
             VentasTotales = ventas.Count,
-            VentaPromedioPorMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
+            VentaPromedioPorMes = ventasMes.Any() ? ventasMes.Average(v => v.Precio) : 0m,
             UltimosProductosVendidos = ventas.OrderByDescending(v => v.Fecha).Take(5).ToList(),
             BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" },
             TotalVentasMes = ventasMes.Sum(v => v.Precio),
@@ -367,7 +359,10 @@ public static class BD
 
         if (empresaId == null)
         {
-            var nombreEmpresa = $"Empresa de {usuario.NombreUsuario.Trim()}";
+            var nombreEmpresa = !string.IsNullOrWhiteSpace(usuario.NombreEmpresa)
+                ? usuario.NombreEmpresa.Trim()
+                : $"Empresa de {usuario.NombreUsuario.Trim()}";
+
             var empresaInsertada = connection.ExecuteScalar<int>(
                 "INSERT INTO Empresa (nombre) VALUES (@Nombre); SELECT CAST(SCOPE_IDENTITY() as int);",
                 new { Nombre = nombreEmpresa });
@@ -435,7 +430,7 @@ public static class BD
 
         httpContext.Session.SetInt32("UsuarioID", usuario.Id);
         httpContext.Session.SetString("NombreUsuario", usuario.NombreUsuario);
-        httpContext.Session.SetString("NombreEmpresa", empresa?.Nombre ?? "Mi empresa");
+        httpContext.Session.SetString("NombreEmpresa", empresa?.Nombre ?? $"Empresa de {usuario.NombreUsuario}");
         httpContext.Session.SetInt32("EmpresaID", usuario.EmpresaID);
         httpContext.Session.SetInt32("RolID", usuario.RolID);
 
@@ -455,5 +450,43 @@ public static class BD
     public static string? ObtenerNombreUsuario(HttpContext httpContext)
     {
         return httpContext.Session.GetString("NombreUsuario");
+    }
+
+    public static int ObtenerEmpresaIdActual(IConfiguration configuration, HttpContext httpContext)
+    {
+        var empresaId = httpContext.Session.GetInt32("EmpresaID");
+        if (empresaId is > 0)
+        {
+            return empresaId.Value;
+        }
+
+        var usuarioId = httpContext.Session.GetInt32("UsuarioID");
+        if (usuarioId is > 0)
+        {
+            using var connection = CrearConexion(configuration);
+            var empresa = connection.QuerySingleOrDefault<int?>(
+                "SELECT empresaID FROM Usuarios WHERE id = @UsuarioId",
+                new { UsuarioId = usuarioId.Value });
+
+            if (empresa is > 0)
+            {
+                httpContext.Session.SetInt32("EmpresaID", empresa.Value);
+                return empresa.Value;
+            }
+        }
+
+        using (var connection = CrearConexion(configuration))
+        {
+            var empresaDefault = connection.QuerySingleOrDefault<int?>(
+                "SELECT TOP 1 id FROM Empresa ORDER BY id");
+
+            if (empresaDefault is > 0)
+            {
+                httpContext.Session.SetInt32("EmpresaID", empresaDefault.Value);
+                return empresaDefault.Value;
+            }
+        }
+
+        return 1;
     }
 }

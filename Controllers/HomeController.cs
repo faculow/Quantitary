@@ -39,12 +39,16 @@ public class HomeController : Controller
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
+            TempData.Remove("MensajeExito");
+            TempData.Remove("MensajeError");
             TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
             return RedirectToAction("Importar", "Stock");
         }
 
         var nombre = HttpContext.Session.GetString("NombreUsuario") ?? "Usuario";
+        var nombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         ViewBag.NombreUsuario = nombre;
+        ViewBag.NombreEmpresa = nombreEmpresa;
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
         return View();
     }
@@ -60,12 +64,15 @@ public class HomeController : Controller
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
+            TempData.Remove("MensajeExito");
+            TempData.Remove("MensajeError");
             TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
             return RedirectToAction("Importar", "Stock");
         }
 
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
         ViewBag.RangoActual = rango;
+        ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         return View();
     }
 

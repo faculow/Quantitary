@@ -212,6 +212,12 @@ public class StockController : Controller
         {
             using var stream = archivo.OpenReadStream();
             var productos = ImportacionExcelHelper.LeerProductos(stream);
+            var empresaId = BD.ObtenerEmpresaIdActual(_inventoryRepository.GetConfiguration(), HttpContext);
+
+            if (empresaId <= 0)
+            {
+                throw new InvalidOperationException("No se pudo identificar la empresa activa. Inicie sesión nuevamente.");
+            }
 
             var insertados = 0;
             var omitidos = 0;
@@ -219,6 +225,10 @@ public class StockController : Controller
 
             foreach (var producto in productos)
             {
+                producto.EmpresaID = empresaId;
+                if (producto.StockActual < 0) producto.StockActual = 0;
+                if (producto.StockMinimo < 0) producto.StockMinimo = 0;
+
                 try
                 {
                     _inventoryRepository.AgregarProducto(producto);
@@ -233,26 +243,36 @@ public class StockController : Controller
 
             if (insertados > 0 && errores.Count == 0)
             {
+                TempData.Remove("MensajeAdvertencia");
+                TempData.Remove("MensajeError");
                 TempData["MensajeExito"] = $"Importación exitosa. Se registraron {insertados} productos.";
                 return RedirectToAction(nameof(Index));
             }
 
             if (insertados > 0)
             {
+                TempData.Remove("MensajeAdvertencia");
+                TempData.Remove("MensajeError");
                 TempData["MensajeAdvertencia"] = $"Se importaron {insertados} productos. Hubo {omitidos} filas descartadas: {string.Join(" | ", errores.Take(3))}";
                 return RedirectToAction(nameof(Index));
             }
 
+            TempData.Remove("MensajeAdvertencia");
+            TempData.Remove("MensajeExito");
             TempData["MensajeError"] = $"No se pudo importar ningún producto. {string.Join(" | ", errores.Take(5))}";
             return RedirectToAction(nameof(Index));
         }
         catch (InvalidOperationException ex)
         {
+            TempData.Remove("MensajeAdvertencia");
+            TempData.Remove("MensajeExito");
             TempData["MensajeError"] = ex.Message;
             return RedirectToAction(nameof(Index));
         }
         catch (Exception ex)
         {
+            TempData.Remove("MensajeAdvertencia");
+            TempData.Remove("MensajeExito");
             TempData["MensajeError"] = "Ocurrió un error al leer el archivo Excel. Verifique que el formato sea correcto y que las columnas coincidan con el modelo requerido.";
             return RedirectToAction(nameof(Index));
         }

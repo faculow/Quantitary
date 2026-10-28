@@ -36,7 +36,9 @@ public static class ExcelPlantillaHelper
                 "SKU",
                 "Categoria",
                 "Precio",
-                "Proveedor"
+                "Proveedor",
+                "StockInicial",
+                "StockMinimo"
             };
 
             foreach (var nombre in columnas)

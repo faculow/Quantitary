@@ -2,6 +2,8 @@
     ViewData["Title"] = "Historial";
     var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
     var rango = ViewBag.RangoActual ?? "mes";
+    var podioVentas = (dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
+    var podioGanancia = (dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
 }
 
 <div class="panel">
@@ -19,45 +21,69 @@
         <div class="col-md-3"><div class="kpi-card"><span>Ventas totales</span><strong>@(dashboard?.VentasTotales ?? 0)</strong></div></div>
         <div class="col-md-3"><div class="kpi-card"><span>Mes con mayores ventas</span><strong>@(dashboard?.MesMayorVentas ?? "-")</strong></div></div>
         <div class="col-md-3"><div class="kpi-card"><span>Venta promedio</span><strong>$@((dashboard?.VentaPromedioPorMes ?? 0).ToString("N2"))</strong></div></div>
-        <div class="col-md-3"><div class="kpi-card"><span>Ganancia neta</span><strong>$@((dashboard?.GananciasPorMesNetas ?? 0).ToString("N2"))</strong></div></div>
+        <div class="col-md-3"><div class="kpi-card"><span>Ganancia promedio por producto</span><strong>$@((dashboard?.GananciaPromedioPorProducto ?? 0).ToString("N2"))</strong></div></div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
         <div class="col-lg-6">
-            <div class="panel subpanel">
+            <div class="panel subpanel podium-card">
                 <h3>Podio de productos más vendidos</h3>
-                <ol class="mb-0 ps-3">
-                    @if ((dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).Any())
-                    {
-                        foreach (var item in dashboard.PodioProductosMasVendidos)
+                @if (podioVentas.Any())
+                {
+                    <div class="podium-wrap">
+                        @for (var i = 0; i < podioVentas.Count; i++)
                         {
-                            <li class="mb-2"><strong>@item.Nombre</strong> - @item.Cantidad unidades</li>
+                            var item = podioVentas[i];
+                            var podiumClass = i == 0 ? "first" : i == 1 ? "second" : "third";
+                            var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                            var height = Math.Max(40, 100 - (i * 18));
+
+                            <div class="podium-item @podiumClass">
+                                <div class="podium-rank">@medal</div>
+                                <div class="podium-content">
+                                    <div class="podium-name">@item.Nombre</div>
+                                    <div class="podium-meta">@($"{item.Cantidad} unidades")</div>
+                                </div>
+                                <div class="podium-bar" style="height:@height%"></div>
+                            </div>
                         }
-                    }
-                    else
-                    {
-                        <li>No hay datos.</li>
-                    }
-                </ol>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted">No hay datos.</div>
+                }
             </div>
         </div>
 
         <div class="col-lg-6">
-            <div class="panel subpanel">
-                <h3>Productos con más ganancia</h3>
-                <ol class="mb-0 ps-3">
-                    @if ((dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).Any())
-                    {
-                        foreach (var item in dashboard.PodioProductosMasGanancia)
+            <div class="panel subpanel podium-card">
+                <h3>Podio de productos con más ganancia</h3>
+                @if (podioGanancia.Any())
+                {
+                    <div class="podium-wrap">
+                        @for (var i = 0; i < podioGanancia.Count; i++)
                         {
-                            <li class="mb-2"><strong>@item.Nombre</strong> - $@item.Total.ToString("N2")</li>
+                            var item = podioGanancia[i];
+                            var podiumClass = i == 0 ? "first" : i == 1 ? "second" : "third";
+                            var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                            var height = Math.Max(40, 100 - (i * 18));
+
+                            <div class="podium-item @podiumClass">
+                                <div class="podium-rank">@medal</div>
+                                <div class="podium-content">
+                                    <div class="podium-name">@item.Nombre</div>
+                                    <div class="podium-meta">$@item.Total.ToString("N2")</div>
+                                </div>
+                                <div class="podium-bar" style="height:@height%"></div>
+                            </div>
                         }
-                    }
-                    else
-                    {
-                        <li>No hay datos.</li>
-                    }
-                </ol>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted">No hay datos.</div>
+                }
             </div>
         </div>
     </div>

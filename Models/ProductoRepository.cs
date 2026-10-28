@@ -40,6 +40,7 @@ public class DashboardSummary
     public int ProductosPocoStock { get; set; }
     public int ProductosSinStock { get; set; }
     public decimal GananciasPorMesNetas { get; set; }
+    public decimal GananciaPromedioPorProducto { get; set; }
     public int VentasTotales { get; set; }
     public string MesMayorVentas { get; set; } = string.Empty;
     public decimal VentaPromedioPorMes { get; set; }
@@ -98,4 +99,7 @@ public class ProductoRepository
 
     public bool TieneProductos(int empresaId)
         => BD.TieneProductos(_configuration, empresaId);
+
+    public IConfiguration GetConfiguration()
+        => _configuration;
 }

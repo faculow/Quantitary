@@ -19,13 +19,21 @@ public class ProductoImportacionExcel
         "Proveedor"
     };
 
+    public static readonly string[] ColumnasOpcionales =
+    {
+        "StockInicial",
+        "StockMinimo"
+    };
+
     public static readonly Dictionary<string, string[]> AliasColumnas = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Nombre"] = ["Nombre", "nombre", "Producto", "DescripcionCorta"],
-        ["SKU"] = ["SKU", "Sku", "sku", "Codigo", "Cod", "Código"],
-        ["Categoria"] = ["Categoria", "categoria", "Categoría", "Rubro"],
-        ["Precio"] = ["Precio", "precio", "PrecioUnitario", "Valor"],
-        ["Proveedor"] = ["Proveedor", "proveedor", "Fabricante", "Marca"]
+        ["Nombre"] = ["Nombre", "nombre", "Producto", "DescripcionCorta", "Producto Nombre"],
+        ["SKU"] = ["SKU", "Sku", "sku", "Codigo", "Cod", "Código", "Codigo Producto", "CodigoProducto"],
+        ["Categoria"] = ["Categoria", "categoria", "Categoría", "Rubro", "Categoria Producto"],
+        ["Precio"] = ["Precio", "precio", "PrecioUnitario", "Valor", "PrecioUnitario", "Precio Unitario"],
+        ["Proveedor"] = ["Proveedor", "proveedor", "Fabricante", "Marca", "Proveedor Nombre"],
+        ["StockInicial"] = ["StockInicial", "stockInicial", "StockActual", "stockActual", "Stock", "CantidadInicial", "cantidadInicial", "InventarioInicial", "inventarioInicial", "Stock actual", "Cantidad inicial", "Stock Actual", "Cantidad Inicial"],
+        ["StockMinimo"] = ["StockMinimo", "stockMinimo", "Minimo", "minimo", "CantidadMinima", "cantidadMinima", "InventarioMinimo", "inventarioMinimo", "Stock mínimo", "Stock Minimo", "Cantidad mínima", "Cantidad Minima", "StockMinimo"]
     };
 }
 
@@ -70,8 +78,8 @@ public static class ImportacionExcelHelper
                 Descripcion = "Importado desde Excel",
                 FechaCarga = DateTime.Now,
                 Precio = ObtenerDecimal(fila, columnas, "Precio"),
-                StockActual = 0,
-                StockMinimo = 0,
+                StockActual = ObtenerEntero(fila, columnas, "StockInicial"),
+                StockMinimo = ObtenerEntero(fila, columnas, "StockMinimo"),
                 CostoCompra = 0m,
                 PrecioVenta = 0m,
                 CantidadVentas = 0
@@ -103,12 +111,12 @@ public static class ImportacionExcelHelper
 
         foreach (DataColumn columna in tabla.Columns)
         {
-            columnas[columna.ColumnName.Trim()] = columna.Ordinal;
+            columnas[NormalizarNombreColumna(columna.ColumnName)] = columna.Ordinal;
         }
 
         var faltantes = ProductoImportacionExcel.ColumnasEsperadas
-            .Where(columnaEsperada => !columnas.Keys.Any(columnaReal => ProductoImportacionExcel.AliasColumnas[columnaEsperada]
-                .Any(alias => string.Equals(columnaReal.Trim(), alias, StringComparison.OrdinalIgnoreCase))))
+            .Where(columnaEsperada => !ProductoImportacionExcel.AliasColumnas[columnaEsperada]
+                .Any(alias => columnas.ContainsKey(NormalizarNombreColumna(alias))))
             .ToList();
 
         if (faltantes.Count > 0)
@@ -123,7 +131,8 @@ public static class ImportacionExcelHelper
     {
         foreach (var alias in ProductoImportacionExcel.AliasColumnas[nombreEsperado])
         {
-            if (columnas.TryGetValue(alias, out var indice))
+            var claveNormalizada = NormalizarNombreColumna(alias);
+            if (columnas.TryGetValue(claveNormalizada, out var indice))
             {
                 var valor = fila[indice]?.ToString();
                 return valor?.Trim() ?? string.Empty;
@@ -159,5 +168,21 @@ public static class ImportacionExcelHelper
         }
 
         return int.TryParse(valor, out var resultado) ? resultado : 0;
+    }
+
+    private static string NormalizarNombreColumna(string valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return string.Empty;
+        }
+
+        var sinAcentos = new string(
+            valor.Normalize(NormalizationForm.FormD)
+                .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+                .ToArray());
+
+        var limpio = new string(sinAcentos.Where(ch => char.IsLetterOrDigit(ch)).ToArray());
+        return limpio.ToLowerInvariant();
     }
 }
