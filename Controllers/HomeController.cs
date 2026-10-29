@@ -66,6 +66,7 @@ public class HomeController : Controller
 
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId, nombreProducto, sku, categoria);
         ViewBag.RangoActual = rango;
+        ViewBag.Busqueda = busquedaNormalizada;
         ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(empresaId);
         ViewBag.NombreProducto = nombreProducto;

@@ -9,6 +9,7 @@
     var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
     var podioVentas = (dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
     var podioGanancia = (dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
+    var ventas = (dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).ToList();
 }
 
 @if (!string.IsNullOrWhiteSpace(mensajeAdvertencia))
@@ -129,7 +130,15 @@
     </div>
 
     <div class="mt-4 panel subpanel">
-        <h3>Últimos productos vendidos</h3>
+        <div class="d-flex justify-content-between align-items-center mb-3 gap-3 flex-wrap">
+            <h3 class="mb-0">Últimos productos vendidos</h3>
+            <form method="get" asp-action="Historial" class="d-flex align-items-center gap-2 ms-auto" style="max-width: 460px; width: 100%;">
+                <input type="hidden" name="rango" value="@rango" />
+                <input type="text" name="busqueda" class="form-control" value="@busqueda" placeholder="Buscar por nombre, SKU o categoría" />
+                <button type="submit" class="btn btn-primary">Buscar</button>
+            </form>
+        </div>
+
         <table class="table table-striped align-middle">
             <thead>
                 <tr>
@@ -143,9 +152,9 @@
                 </tr>
             </thead>
             <tbody>
-                @if ((dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).Any())
+                @if (ventas.Any())
                 {
-                    foreach (var venta in dashboard.UltimosProductosVendidos)
+                    foreach (var venta in ventas)
                     {
                         <tr>
                             <td>@venta.NombreProducto</td>
