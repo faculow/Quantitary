@@ -1,0 +1,210 @@
+@{
+    ViewData["Title"] = "Análisis por producto";
+    var fechaInicio = ViewBag.FechaInicio as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    var fechaFin = ViewBag.FechaFin as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
+    var analisis = ViewBag.AnalisisProductos as List<Quantitary.Controllers.HomeController.ProductoAnalisisResumen> ?? new List<Quantitary.Controllers.HomeController.ProductoAnalisisResumen>();
+    var ventasPorMes = ViewBag.VentasPorMes as List<dynamic> ?? new List<dynamic>();
+    var interesCompraPorMes = ViewBag.InteresCompraPorMes as List<dynamic> ?? new List<dynamic>();
+    var ventasSemana = ViewBag.VentasSemana as List<dynamic> ?? new List<dynamic>();
+}
+
+<div class="panel">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h2 class="mb-1">Análisis producto</h2>
+            <p class="text-muted mb-0">Rango actual: @fechaInicio.ToString("dd/MM/yyyy") - @fechaFin.ToString("dd/MM/yyyy")</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-primary" asp-controller="Stock" asp-action="Index">Registrar</a>
+            <a class="btn btn-outline-secondary" asp-controller="Stock" asp-action="Crear">Agregar producto</a>
+        </div>
+    </div>
+
+    <form method="get" asp-action="AnalisisProducto" class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label class="form-label">Fecha inicio</label>
+            <input type="date" name="fechaInicio" value="@fechaInicio.ToString("yyyy-MM-dd")" class="form-control" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Fecha fin</label>
+            <input type="date" name="fechaFin" value="@fechaFin.ToString("yyyy-MM-dd")" class="form-control" />
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary w-100">Aplicar filtro</button>
+        </div>
+    </form>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <span class="kpi-label">Productos</span>
+                <strong class="kpi-value">@analisis.Count</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card warning-card">
+                <span class="kpi-label">Stock bajo</span>
+                <strong class="kpi-value">@(analisis.Count(x => x.Stock <= x.Costo))</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card success-card">
+                <span class="kpi-label">Margen promedio</span>
+                <strong class="kpi-value">@((analisis.Any() ? analisis.Average(x => x.Margen) : 0m).ToString("N2"))%</strong>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card info-card">
+                <span class="kpi-label">Ventas</span>
+                <strong class="kpi-value">@analisis.Sum(x => x.VentasMes)</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Ventas por mes</h5>
+                    @if (ventasPorMes.Any())
+                    {
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Mes</th>
+                                    <th>Ventas</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in ventasPorMes)
+                                {
+                                    <tr>
+                                        <td>@item.Mes</td>
+                                        <td>@item.Cantidad</td>
+                                        <td>$@Convert.ToDecimal(item.Total).ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Sin ventas en el período.</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Interés/compra por mes</h5>
+                    @if (interesCompraPorMes.Any())
+                    {
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Mes</th>
+                                    <th>Interés</th>
+                                    <th>Compras</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in interesCompraPorMes)
+                                {
+                                    <tr>
+                                        <td>@item.Mes</td>
+                                        <td>@item.InteresCompra</td>
+                                        <td>@item.Cantidad</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Sin datos de interés de compra.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Ventas semanales por día</h5>
+            @if (ventasSemana.Any())
+            {
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Día</th>
+                            <th>Cantidad</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in ventasSemana)
+                        {
+                            <tr>
+                                <td>@item.Dia</td>
+                                <td>@item.Cantidad</td>
+                                <td>$@Convert.ToDecimal(item.Total).ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted mb-0">Sin datos semanales.</p>
+            }
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>SKU</th>
+                    <th>Precio</th>
+                    <th>Costo</th>
+                    <th>Gasto</th>
+                    <th>Ganancia</th>
+                    <th>Margen</th>
+                    <th>Stock</th>
+                    <th>Reposición</th>
+                    <th>Rotación</th>
+                    <th>Ventas</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var producto in analisis)
+                {
+                    <tr>
+                        <td>@producto.Nombre</td>
+                        <td>@producto.Sku</td>
+                        <td>$@producto.Precio.ToString("N2")</td>
+                        <td>$@producto.Costo.ToString("N2")</td>
+                        <td>$@producto.Gasto.ToString("N2")</td>
+                        <td>$@producto.Ganancia.ToString("N2")</td>
+                        <td>@producto.Margen.ToString("N2")%</td>
+                        <td>@producto.Stock</td>
+                        <td><span class="badge @(producto.Reposicion == "Reponer" ? "bg-warning text-dark" : "bg-success")">@producto.Reposicion</span></td>
+                        <td>@producto.Rotacion.ToString("N2")</td>
+                        <td>@producto.VentasMes</td>
+                        <td>
+                            <div class="d-flex gap-2">
+                                <a asp-controller="Stock" asp-action="Editar" asp-route-id="@producto.Id" class="btn btn-sm btn-warning">Editar</a>
+                                <a asp-controller="Pdv" asp-action="Index" class="btn btn-sm btn-primary">Registrar</a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
