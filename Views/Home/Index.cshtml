@@ -32,7 +32,7 @@
         <div class="col-lg-4 col-md-6">
             <div class="kpi-card">
                 <span class="kpi-label">Productos</span>
-                <strong class="kpi-value">@(dashboard?.TotalProductos ?? 0)</strong>
+                <strong class="kpi-value" id="totalProductos">@(dashboard?.TotalProductos ?? 0)</strong>
                 <small class="kpi-foot">Catálogo digitalizado</small>
             </div>
         </div>
@@ -40,7 +40,7 @@
         <div class="col-lg-4 col-md-6">
             <div class="kpi-card warning-card">
                 <span class="kpi-label">Stock por revisar</span>
-                <strong class="kpi-value">@(dashboard?.ProductosPocoStock ?? 0)</strong>
+                <strong class="kpi-value" id="productosPocoStock">@(dashboard?.ProductosPocoStock ?? 0)</strong>
                 <small class="kpi-foot">2 bajos y 1 sin stock</small>
             </div>
         </div>
@@ -48,8 +48,8 @@
         <div class="col-lg-4 col-md-6">
             <div class="kpi-card success-card">
                 <span class="kpi-label">Ganancia</span>
-                <strong class="kpi-value">$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
-                <small class="kpi-foot">@mesActual</small>
+                <strong class="kpi-value" id="gananciaNetaMes">$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
+                <small class="kpi-foot" id="mesActual">@mesActual</small>
             </div>
         </div>
     </div>
@@ -57,35 +57,35 @@
     <div class="summary-panel mb-4">
         <div class="summary-header">
             <h3>Mini resumen de Mi negocio</h3>
-            <span>@mesActual</span>
+            <span id="mesActualHeader">@mesActual</span>
         </div>
 
         <div class="row g-3">
             <div class="col-lg-3 col-md-6">
                 <div class="summary-tile">
                     <span>Ventas totales</span>
-                    <strong>$@((dashboard?.TotalVentasMes ?? 0).ToString("N0"))</strong>
+                    <strong id="totalVentasMes">$@((dashboard?.TotalVentasMes ?? 0).ToString("N0"))</strong>
                     <small>960 tickets del sistema de caja</small>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6">
                 <div class="summary-tile">
                     <span>Ganancia neta</span>
-                    <strong>$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
+                    <strong id="gananciaNetaMesResumen">$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
                     <small>Ventas netas y gastos</small>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6">
                 <div class="summary-tile">
                     <span>Gastos totales</span>
-                    <strong>$@((dashboard?.GastosTotalesMes ?? 0).ToString("N0"))</strong>
+                    <strong id="gastosTotalesMes">$@((dashboard?.GastosTotalesMes ?? 0).ToString("N0"))</strong>
                     <small>$4.800.000 · $1.200.000</small>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6">
                 <div class="summary-tile">
                     <span>Venta promedio</span>
-                    <strong>$@((dashboard?.VentaPromedioMes ?? 0).ToString("N0"))</strong>
+                    <strong id="ventaPromedioMes">$@((dashboard?.VentaPromedioMes ?? 0).ToString("N0"))</strong>
                     <small>$4.800.000 ÷ 960 tickets</small>
                 </div>
             </div>
@@ -100,7 +100,7 @@
                     <small>En miles de ARS · Gastos asignados</small>
                 </div>
 
-                <div class="bars-panel">
+                <div id="ventasPorPeriodoContainer" class="bars-panel">
                     @for (int i = 0; i < ventasPeriodo.Count; i++)
                     {
                         var punto = ventasPeriodo[i];
@@ -125,7 +125,7 @@
                     <small>En miles de ARS</small>
                 </div>
 
-                <div class="bars-panel category-bars">
+                <div id="gananciaPorCategoriaContainer" class="bars-panel category-bars">
                     @for (int i = 0; i < categorias.Count; i++)
                     {
                         var punto = categorias[i];
@@ -150,12 +150,12 @@
                 </div>
 
                 <div class="donut-wrap">
-                    <div class="donut-chart">
+                    <div class="donut-chart" id="donutChart">
                         <div class="donut-center">
-                            <span>@(participacion.Any() ? participacion.Max(p => p.Valor) : 0)%</span>
+                            <span id="participacionTop">@(participacion.Any() ? participacion.Max(p => p.Valor) : 0)%</span>
                         </div>
                     </div>
-                    <div class="legend-list">
+                    <div id="legendList" class="legend-list">
                         @for (int i = 0; i < participacion.Count; i++)
                         {
                             var item = participacion[i];
@@ -175,26 +175,103 @@
 @section Scripts {
     <script>
         (() => {
-            const donut = document.querySelector('.donut-chart');
-            if (!donut) return;
-
             const baseColors = ['#2f80ed', '#27ae60', '#f2c94c', '#e67e22', '#9b59b6'];
-            const participacion = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(participacion.Select(p => new { label = p.Nombre, value = p.Valor })));
-            let cumulative = 0;
+            const donut = document.getElementById('donutChart');
+            const legendList = document.getElementById('legendList');
+            const ventasPorPeriodoContainer = document.getElementById('ventasPorPeriodoContainer');
+            const gananciaPorCategoriaContainer = document.getElementById('gananciaPorCategoriaContainer');
+            let ultimaVentaConocida = '@(ViewBag.UltimaVentaTimestamp ?? string.Empty)';
 
-            if (!participacion || participacion.length === 0) {
-                donut.style.background = 'conic-gradient(#e2e8f0 0deg 360deg)';
-                return;
-            }
+            const renderDonut = (participacion) => {
+                if (!donut || !participacion || participacion.length === 0) {
+                    if (donut) {
+                        donut.style.background = 'conic-gradient(#e2e8f0 0deg 360deg)';
+                    }
+                    return;
+                }
 
-            const gradientParts = participacion.map((item, index) => {
-                const start = cumulative / 100 * 360;
-                cumulative += Number(item.value || 0);
-                const end = cumulative / 100 * 360;
-                return `${baseColors[index % baseColors.length]} ${start}deg ${end}deg`;
-            });
+                let cumulative = 0;
+                const gradientParts = participacion.map((item, index) => {
+                    const start = cumulative / 100 * 360;
+                    cumulative += Number(item.valor || 0);
+                    const end = cumulative / 100 * 360;
+                    return `${baseColors[index % baseColors.length]} ${start}deg ${end}deg`;
+                });
 
-            donut.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+                donut.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+                const top = document.getElementById('participacionTop');
+                if (top) {
+                    top.textContent = `${Math.max(...participacion.map(p => Number(p.valor || 0))) || 0}%`;
+                }
+
+                if (legendList) {
+                    legendList.innerHTML = participacion.map((item, index) => `
+                        <div class="legend-item">
+                            <span class="legend-swatch" style="background:${baseColors[index % baseColors.length]};"></span>
+                            <span class="legend-name">${item.nombre}</span>
+                            <strong>${item.valor}%</strong>
+                        </div>
+                    `).join('');
+                }
+            };
+
+            const renderBars = (container, items, type) => {
+                if (!container || !items || items.length === 0) {
+                    return;
+                }
+
+                const maxValue = items.reduce((max, item) => Math.max(max, Number(item.valor || 0)), 1);
+                container.innerHTML = items.map((item, index) => {
+                    const altura = maxValue > 0 ? Math.max(10, (Number(item.valor || 0) / maxValue) * 100) : 10;
+                    const color = baseColors[index % baseColors.length];
+                    return `
+                        <div class="bar-col">
+                            <div class="bar-value">${Number(item.valor || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</div>
+                            <div class="bar-track">
+                                <div class="bar-fill ${type === 'categoria' ? 'alternate' : ''}" style="height:${altura}%; background:${color};"></div>
+                            </div>
+                            <div class="bar-label">${item.label}</div>
+                        </div>
+                    `;
+                }).join('');
+            };
+
+            const actualizarDashboard = () => {
+                fetch('@Url.Action("DashboardData", "Home")?rango=mes', {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.ok ? response.json() : null)
+                .then(data => {
+                    if (!data) return;
+
+                    const nuevaUltimaVenta = data.ultimaVenta || '';
+                    if (nuevaUltimaVenta && nuevaUltimaVenta === ultimaVentaConocida) {
+                        return;
+                    }
+
+                    ultimaVentaConocida = nuevaUltimaVenta;
+
+                    document.getElementById('totalProductos').textContent = data.totalProductos ?? 0;
+                    document.getElementById('productosPocoStock').textContent = data.productosPocoStock ?? 0;
+                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
+                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
+                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
+                    renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
+                    renderDonut(data.participacionVentas || []);
+                })
+                .catch(() => {
+                    // ignorar errores de actualización automática
+                });
+            };
+
+            renderDonut(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(participacion.Select(p => new { nombre = p.Nombre, valor = p.Valor }))));
+            setInterval(actualizarDashboard, 15000);
         })();
     </script>
 }

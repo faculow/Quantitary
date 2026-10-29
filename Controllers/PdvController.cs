@@ -260,6 +260,7 @@ public class PdvController : Controller
             _productoRepository.ActualizarProducto(producto.Id, producto);
         }
 
+        HttpContext.Session.SetString("UltimaVentaTimestamp", DateTime.Now.ToString("O"));
         HttpContext.Session.Remove("PdvCarrito");
         TempData["PdvSuccess"] = $"Venta registrada con pago por {metodo}.";
         return RedirectToAction(nameof(Index));

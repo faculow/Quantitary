@@ -47,6 +47,7 @@ public class HomeController : Controller
         ViewBag.NombreUsuario = nombre;
         ViewBag.NombreEmpresa = nombreEmpresa;
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
+        ViewBag.UltimaVentaTimestamp = HttpContext.Session.GetString("UltimaVentaTimestamp");
         return View();
     }
 
@@ -92,5 +93,39 @@ public class HomeController : Controller
     public IActionResult Error()
     {
         return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+    }
+
+    [HttpGet]
+    public IActionResult DashboardData(string rango = "mes")
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
+        var ultimaVenta = HttpContext.Session.GetString("UltimaVentaTimestamp");
+
+        return Json(new
+        {
+            totalProductos = dashboard.TotalProductos,
+            productosPocoStock = dashboard.ProductosPocoStock,
+            productosSinStock = dashboard.ProductosSinStock,
+            gananciaNetaMes = dashboard.GananciaNetaMes,
+            totalVentasMes = dashboard.TotalVentasMes,
+            ventaPromedioMes = dashboard.VentaPromedioMes,
+            gastosTotalesMes = dashboard.GastosTotalesMes,
+            mesActual = dashboard.MesActualLabel,
+            ventasTotales = dashboard.VentasTotales,
+            ventaPromedioPorMes = dashboard.VentaPromedioPorMes,
+            ventasPorPeriodo = dashboard.VentasPorPeriodo.Select(x => new { label = x.Label, valor = x.Valor }),
+            participacionVentas = dashboard.ParticipacionVentas.Select(x => new { nombre = x.Nombre, valor = x.Valor }),
+            gananciaPorCategoria = dashboard.GananciaPorCategoria.Select(x => new { label = x.Label, valor = x.Valor }),
+            actualizadoEn = DateTime.Now,
+            ultimaVenta = ultimaVenta,
+            ultimaVentaValor = !string.IsNullOrWhiteSpace(ultimaVenta) ? DateTime.Parse(ultimaVenta).ToString("O") : null
+        });
     }
 }
