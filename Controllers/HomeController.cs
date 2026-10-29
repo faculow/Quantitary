@@ -50,7 +50,7 @@ public class HomeController : Controller
         return View();
     }
 
-    public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null)
+    public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -59,6 +59,8 @@ public class HomeController : Controller
         }
 
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var busquedaNormalizada = string.IsNullOrWhiteSpace(busqueda) ? null : busqueda.Trim();
+
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
             ViewBag.MensajeAdvertencia = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";

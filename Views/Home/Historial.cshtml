@@ -6,6 +6,7 @@
     var nombreProducto = ViewBag.NombreProducto as string ?? string.Empty;
     var sku = ViewBag.Sku as string ?? string.Empty;
     var categoria = ViewBag.Categoria as string ?? string.Empty;
+    var busqueda = ViewBag.Busqueda as string ?? string.Empty;
     var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
     var podioVentas = (dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
     var podioGanancia = (dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).ToList();

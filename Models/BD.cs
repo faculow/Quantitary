@@ -45,10 +45,27 @@ public static class BD
         parametros.Add("@Orden", string.IsNullOrWhiteSpace(orden) ? "nombre_asc" : orden.Trim());
 
         using var connection = CrearConexion(configuration);
-        return connection.Query<Producto>(
-            "sp_ObtenerProductosStock",
-            parametros,
-            commandType: CommandType.StoredProcedure).ToList();
+
+        var sql = @"
+            SELECT *
+            FROM Productos
+            WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+              AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+              AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
+              AND (@PocoStock = 0 OR stockActual <= stockMinimo OR stockActual = 0)
+              AND (@PrecioMinimo IS NULL OR precio >= @PrecioMinimo)
+            ORDER BY 
+              CASE WHEN @Orden = 'nombre_asc' THEN nombre END ASC,
+              CASE WHEN @Orden = 'nombre_desc' THEN nombre END DESC,
+              CASE WHEN @Orden = 'precio_asc' THEN precio END ASC,
+              CASE WHEN @Orden = 'precio_desc' THEN precio END DESC,
+              CASE WHEN @Orden = 'stock_asc' THEN stockActual END ASC,
+              CASE WHEN @Orden = 'stock_desc' THEN stockActual END DESC,
+              CASE WHEN @Orden = 'sku_asc' THEN sku END ASC,
+              CASE WHEN @Orden = 'sku_desc' THEN sku END DESC;
+        ";
+
+        return connection.Query<Producto>(sql, parametros).ToList();
     }
 
     public static List<Producto> ObtenerProductos(IConfiguration configuration, string? sku = null, string? categoria = null, int? empresaId = null)
