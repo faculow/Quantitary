@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Quantitary.Models;
@@ -90,6 +91,7 @@ public class HomeController : Controller
             return redirect;
         }
 
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         var inicio = fechaInicio ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var fin = fechaFin ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
 
@@ -100,19 +102,52 @@ public class HomeController : Controller
             fin = intercambio;
         }
 
-        var ventasTotales = await _context.Database
-            .SqlQuery<decimal>($"SELECT CAST(COALESCE(SUM(precio), 0) AS decimal(18,2)) FROM Ventas WHERE fecha >= {inicio} AND fecha <= {fin}")
-            .SingleAsync();
+        var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
 
-        var ganancias = await _context.Database
-            .SqlQuery<decimal>($"SELECT CAST(COALESCE(SUM((precio - costo) * cantidad), 0) AS decimal(18,2)) FROM Ventas WHERE fecha >= {inicio} AND fecha <= {fin}")
-            .SingleAsync();
+        var sqlBase = @"
+            SELECT COALESCE(SUM(v.precio), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlGastos = @"
+            SELECT COALESCE(SUM(v.costo), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlPromedio = @"
+            SELECT COALESCE(AVG(v.precio), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlGanancias = @"
+            SELECT COALESCE(SUM(v.precio - v.costo), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
 
         ViewBag.FechaInicio = inicio;
         ViewBag.FechaFin = fin;
         ViewBag.VentasTotales = ventasTotales;
+        ViewBag.GastosTotales = gastosTotales;
+        ViewBag.VentaPromedio = ventaPromedio;
         ViewBag.Ganancias = ganancias;
         ViewBag.MargenNeto = margenNeto;
         return View();
