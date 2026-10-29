@@ -39,10 +39,7 @@ public class HomeController : Controller
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
-            TempData.Remove("MensajeExito");
-            TempData.Remove("MensajeError");
-            TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
-            return RedirectToAction("Importar", "Stock");
+            ViewBag.MensajeAdvertencia = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
         }
 
         var nombre = HttpContext.Session.GetString("NombreUsuario") ?? "Usuario";
@@ -53,7 +50,7 @@ public class HomeController : Controller
         return View();
     }
 
-    public IActionResult Historial(string rango = "mes")
+    public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -64,15 +61,16 @@ public class HomeController : Controller
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
-            TempData.Remove("MensajeExito");
-            TempData.Remove("MensajeError");
-            TempData["MensajeAdvertencia"] = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
-            return RedirectToAction("Importar", "Stock");
+            ViewBag.MensajeAdvertencia = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
         }
 
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
+        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId, nombreProducto, sku, categoria);
         ViewBag.RangoActual = rango;
         ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
+        ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(empresaId);
+        ViewBag.NombreProducto = nombreProducto;
+        ViewBag.Sku = sku;
+        ViewBag.Categoria = categoria;
         return View();
     }
 

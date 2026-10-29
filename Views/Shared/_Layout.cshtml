@@ -5,6 +5,7 @@
     var esInicio = controladorActual == "Home" && accionActual == "Index";
     var esHistorial = controladorActual == "Home" && accionActual == "Historial";
     var esStock = controladorActual == "Stock";
+    var esPdv = controladorActual == "Pdv" && accionActual == "Index";
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -27,6 +28,10 @@
                 <a asp-controller="Home" asp-action="Index" class="nav-link-side @(esInicio ? "active" : "")" aria-current="@(esInicio ? "page" : null)">
                     <img src="~/imagenes/inicio.png" alt="Inicio" class="nav-icon" />
                     <span>Inicio</span>
+                </a>
+                <a asp-controller="Pdv" asp-action="Index" class="nav-link-side @(esPdv ? "active" : "")" aria-current="@(esPdv ? "page" : null)">
+                    <img src="~/imagenes/stock.png" alt="Punto de venta" class="nav-icon" />
+                    <span>PDV</span>
                 </a>
                 <a asp-controller="Stock" asp-action="Index" class="nav-link-side @(esStock ? "active" : "")" aria-current="@(esStock ? "page" : null)">
                     <img src="~/imagenes/stock.png" alt="Stock" class="nav-icon" />

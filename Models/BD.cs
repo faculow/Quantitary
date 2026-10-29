@@ -142,12 +142,49 @@ public static class BD
         return connection.Execute(sql, new { Id = id, Cantidad = cantidad, PrecioUnitario = precioUnitario }) > 0;
     }
 
-    public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null)
+    public static int ObtenerTotalProductos(IConfiguration configuration, int? empresaId = null)
     {
-        var ventas = ObtenerVentasPorRango(configuration, range, empresaId);
+        using var connection = CrearConexion(configuration);
+        return connection.ExecuteScalar<int>(
+            "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)",
+            new { EmpresaId = empresaId == 0 ? null : empresaId });
+    }
+
+    public static int ObtenerProductosConStockBajo(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.ExecuteScalar<int>(
+            @"SELECT COUNT(*)
+              FROM Productos
+              WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+                AND (stockActual <= stockMinimo OR stockActual = 0)",
+            new { EmpresaId = empresaId == 0 ? null : empresaId });
+    }
+
+    public static int ObtenerProductosSinStock(IConfiguration configuration, int? empresaId = null)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.ExecuteScalar<int>(
+            @"SELECT COUNT(*)
+              FROM Productos
+              WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+                AND stockActual <= 0",
+            new { EmpresaId = empresaId == 0 ? null : empresaId });
+    }
+
+    public static bool TieneProductos(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.ExecuteScalar<int>(
+            "SELECT COUNT(*) FROM Productos WHERE empresaID = @EmpresaId",
+            new { EmpresaId = empresaId }) > 0;
+    }
+
+    public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null)
+    {
+        var ventas = ObtenerVentasPorRango(configuration, range, empresaId, nombreProducto, sku, categoria);
         var mesActual = DateTime.Now;
-        var ventasMes = ObtenerVentasPorMes(configuration, empresaId, mesActual);
-        var ventasPrevias = ObtenerVentasPorMes(configuration, empresaId, mesActual.AddMonths(-1));
+        var ventasMes = ObtenerVentasPorMes(configuration, empresaId, mesActual, nombreProducto, sku, categoria);
 
         var resumen = new DashboardSummary
         {
@@ -165,9 +202,9 @@ public static class BD
             GastosTotalesMes = ventasMes.Sum(v => v.Costo),
             VentaPromedioMes = ventasMes.Any() ? ventasMes.Average(v => v.Precio) : 0m,
             MesActualLabel = mesActual.ToString("MMMM yyyy"),
-            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaId, mesActual),
-            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaId, mesActual),
-            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaId, mesActual)
+            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaId, mesActual, nombreProducto, sku, categoria),
+            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaId, mesActual, nombreProducto, sku, categoria),
+            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaId, mesActual, nombreProducto, sku, categoria)
         };
 
         var mesMayor = ventas
@@ -205,21 +242,37 @@ public static class BD
         return resumen;
     }
 
-    private static List<VentaRegistro> ObtenerVentasPorMes(IConfiguration configuration, int? empresaId, DateTime fecha)
+    private static List<VentaRegistro> ObtenerVentasPorMes(IConfiguration configuration, int? empresaId, DateTime fecha, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var inicio = new DateTime(fecha.Year, fecha.Month, 1);
         var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
 
         using var connection = CrearConexion(configuration);
-        return connection.Query<VentaRegistro>(
-            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @Inicio AND fecha <= @Fin ORDER BY fecha DESC",
-            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+        var sql = @"SELECT v.*, p.sku, p.categoria
+                    FROM Ventas v
+                    INNER JOIN Productos p ON p.id = v.productoId
+                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                      AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                      AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                      AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                      AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))) )
+                    ORDER BY v.fecha DESC";
+
+        return connection.Query<VentaRegistro>(sql, new
+        {
+            EmpresaId = empresaId,
+            Inicio = inicio,
+            Fin = fin,
+            NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
+            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+            Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
+        }).ToList();
     }
 
-    private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha)
+    private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var inicio = new DateTime(fecha.Year, fecha.Month, 1);
-        var labels = new[] { "1-7 sep", "8-14 sep", "15-23 sep", "24-30 sep" };
+        var labels = new[] { "1-7", "8-14", "15-23", "24-30" };
         var result = new List<ChartPoint>();
 
         for (int i = 0; i < labels.Length; i++)
@@ -229,8 +282,23 @@ public static class BD
 
             using var connection = CrearConexion(configuration);
             var total = connection.QuerySingleOrDefault<decimal?>(
-                "SELECT SUM(precio) FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @Desde AND fecha <= @Hasta",
-                new { EmpresaId = empresaId, Desde = desde, Hasta = hasta }) ?? 0m;
+                @"SELECT SUM(v.precio)
+                  FROM Ventas v
+                  INNER JOIN Productos p ON p.id = v.productoId
+                  WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                    AND v.fecha >= @Desde AND v.fecha <= @Hasta
+                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))",
+                new
+                {
+                    EmpresaId = empresaId,
+                    Desde = desde,
+                    Hasta = hasta,
+                    NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
+                    Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+                    Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
+                }) ?? 0m;
 
             result.Add(new ChartPoint { Label = labels[i], Valor = total });
         }
@@ -238,7 +306,7 @@ public static class BD
         return result;
     }
 
-    private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha)
+    private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var inicio = new DateTime(fecha.Year, fecha.Month, 1);
         var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
@@ -250,9 +318,20 @@ public static class BD
               INNER JOIN Productos p ON p.id = v.productoId
               WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
               GROUP BY p.categoria
               ORDER BY Valor DESC",
-            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+            new
+            {
+                EmpresaId = empresaId,
+                Inicio = inicio,
+                Fin = fin,
+                NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
+                Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+                Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
+            }).ToList();
 
         return rows.Select(r => new ChartPoint
         {
@@ -261,7 +340,7 @@ public static class BD
         }).ToList();
     }
 
-    private static List<DashboardCategoryShare> ObtenerParticipacionVentas(IConfiguration configuration, int? empresaId, DateTime fecha)
+    private static List<DashboardCategoryShare> ObtenerParticipacionVentas(IConfiguration configuration, int? empresaId, DateTime fecha, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var inicio = new DateTime(fecha.Year, fecha.Month, 1);
         var fin = inicio.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
@@ -273,9 +352,20 @@ public static class BD
               INNER JOIN Productos p ON p.id = v.productoId
               WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
               GROUP BY p.categoria
               ORDER BY Valor DESC",
-            new { EmpresaId = empresaId, Inicio = inicio, Fin = fin }).ToList();
+            new
+            {
+                EmpresaId = empresaId,
+                Inicio = inicio,
+                Fin = fin,
+                NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
+                Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+                Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
+            }).ToList();
 
         if (rows.Count == 0)
         {
@@ -296,34 +386,7 @@ public static class BD
         }).ToList();
     }
 
-    public static bool TieneProductos(IConfiguration configuration, int empresaId)
-    {
-        using var connection = CrearConexion(configuration);
-        return connection.QuerySingle<int>("SELECT COUNT(*) FROM Productos WHERE empresaID = @EmpresaId", new { EmpresaId = empresaId }) > 0;
-    }
-
-    private static int ObtenerTotalProductos(IConfiguration configuration, int? empresaId = null)
-    {
-        using var connection = CrearConexion(configuration);
-        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)";
-        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
-    }
-
-    private static int ObtenerProductosConStockBajo(IConfiguration configuration, int? empresaId = null)
-    {
-        using var connection = CrearConexion(configuration);
-        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= stockMinimo";
-        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
-    }
-
-    private static int ObtenerProductosSinStock(IConfiguration configuration, int? empresaId = null)
-    {
-        using var connection = CrearConexion(configuration);
-        var sql = "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId) AND stockActual <= 0";
-        return connection.QuerySingle<int>(sql, new { EmpresaId = empresaId });
-    }
-
-    private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null)
+    private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
         var fechaInicio = range.ToLowerInvariant() switch
         {
@@ -335,9 +398,24 @@ public static class BD
         };
 
         using var connection = CrearConexion(configuration);
-        return connection.Query<VentaRegistro>(
-            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @FechaInicio ORDER BY fecha DESC",
-            new { EmpresaId = empresaId, FechaInicio = fechaInicio }).ToList();
+        var sql = @"SELECT v.*, p.sku, p.categoria
+                    FROM Ventas v
+                    INNER JOIN Productos p ON p.id = v.productoId
+                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio
+                      AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                      AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                      AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                    ORDER BY v.fecha DESC";
+
+        return connection.Query<VentaRegistro>(sql, new
+        {
+            EmpresaId = empresaId,
+            FechaInicio = fechaInicio,
+            NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
+            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+            Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
+        }).ToList();
     }
 
     public static bool Registrarse(Usuario usuario, IConfiguration configuration)

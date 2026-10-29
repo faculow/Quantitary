@@ -1,5 +1,7 @@
-var builder = WebApplication.CreateBuilder(args);
+using Microsoft.EntityFrameworkCore;
+using Quantitary.Models;
 
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSession(options =>
@@ -9,15 +11,16 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
-builder.Services.AddScoped<Quantitary.Models.ProductoRepository>();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(BD.ObtenerCadenaConexion(builder.Configuration)));
+
+builder.Services.AddScoped<ProductoRepository>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
@@ -31,7 +34,6 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Cuenta}/{action=Login}/{id?}");
 
-// app.Run();
 app.Run();
 
 

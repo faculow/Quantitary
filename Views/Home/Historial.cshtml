@@ -2,20 +2,60 @@
     ViewData["Title"] = "Historial";
     var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
     var rango = ViewBag.RangoActual ?? "mes";
+    var categorias = ViewBag.Categorias as List<string> ?? new List<string>();
+    var nombreProducto = ViewBag.NombreProducto as string ?? string.Empty;
+    var sku = ViewBag.Sku as string ?? string.Empty;
+    var categoria = ViewBag.Categoria as string ?? string.Empty;
+    var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
     var podioVentas = (dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
     var podioGanancia = (dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
 }
 
+@if (!string.IsNullOrWhiteSpace(mensajeAdvertencia))
+{
+    <div class="alert alert-warning mt-3">@mensajeAdvertencia</div>
+}
+
 <div class="panel">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="mb-0">Historial</h2>
         <div class="btn-group" role="group">
-            <a class="btn btn-sm @(rango == "dia" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="dia">Día</a>
-            <a class="btn btn-sm @(rango == "semana" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="semana">Semana</a>
-            <a class="btn btn-sm @(rango == "mes" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="mes">Mes</a>
-            <a class="btn btn-sm @(rango == "anio" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="anio">Año</a>
+            <a class="btn btn-sm @(rango == "dia" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="dia" asp-route-nombreProducto="@nombreProducto" asp-route-sku="@sku" asp-route-categoria="@categoria">Día</a>
+            <a class="btn btn-sm @(rango == "semana" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="semana" asp-route-nombreProducto="@nombreProducto" asp-route-sku="@sku" asp-route-categoria="@categoria">Semana</a>
+            <a class="btn btn-sm @(rango == "mes" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="mes" asp-route-nombreProducto="@nombreProducto" asp-route-sku="@sku" asp-route-categoria="@categoria">Mes</a>
+            <a class="btn btn-sm @(rango == "año" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="año" asp-route-nombreProducto="@nombreProducto" asp-route-sku="@sku" asp-route-categoria="@categoria">Año</a>
         </div>
     </div>
+
+    <form method="get" asp-action="Historial" class="row g-3 align-items-end mb-4">
+        <input type="hidden" name="rango" value="@rango" />
+
+        <div class="col-md-4">
+            <label class="form-label">Buscar por nombre</label>
+            <input type="text" name="nombreProducto" value="@nombreProducto" class="form-control" placeholder="Ej: Yogur" />
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Buscar por SKU</label>
+            <input type="text" name="sku" value="@sku" class="form-control" placeholder="Ej: LA-001" />
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Categoría</label>
+            <select name="categoria" class="form-select">
+                <option value="">Todas</option>
+                @foreach (var item in categorias)
+                {
+                    <option value="@item" selected="@(string.Equals(item, categoria, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@item</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary w-100">Buscar</button>
+            <a asp-action="Historial" asp-route-rango="@rango" class="btn btn-outline-secondary">Limpiar</a>
+        </div>
+    </form>
 
     <div class="row g-3 mb-4">
         <div class="col-md-3"><div class="kpi-card"><span>Ventas totales</span><strong>@(dashboard?.VentasTotales ?? 0)</strong></div></div>
@@ -94,6 +134,8 @@
             <thead>
                 <tr>
                     <th>Producto</th>
+                    <th>SKU</th>
+                    <th>Categoría</th>
                     <th>Fecha</th>
                     <th>Método de pago</th>
                     <th>Cantidad</th>
@@ -107,6 +149,8 @@
                     {
                         <tr>
                             <td>@venta.NombreProducto</td>
+                            <td>@venta.Sku</td>
+                            <td>@venta.Categoria</td>
                             <td>@venta.Fecha.ToString("dd/MM/yyyy")</td>
                             <td>@venta.MetodoPago</td>
                             <td>@venta.Cantidad</td>
@@ -116,7 +160,7 @@
                 }
                 else
                 {
-                    <tr><td colspan="5" class="text-center text-muted">Sin ventas en este rango.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">Sin ventas en este rango.</td></tr>
                 }
             </tbody>
         </table>

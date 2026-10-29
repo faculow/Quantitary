@@ -8,6 +8,8 @@ public class VentaRegistro
     public int Id { get; set; }
     public int ProductoId { get; set; }
     public string NombreProducto { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
     public DateTime Fecha { get; set; } = DateTime.Now;
     public string MetodoPago { get; set; } = string.Empty;
     public int Cantidad { get; set; } = 1;
@@ -96,6 +98,9 @@ public class ProductoRepository
 
     public DashboardSummary ObtenerDashboard(string range, int? empresaId = null)
         => BD.ObtenerDashboard(_configuration, range, empresaId);
+
+    public DashboardSummary ObtenerDashboard(string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null)
+        => BD.ObtenerDashboard(_configuration, range, empresaId, nombreProducto, sku, categoria);
 
     public bool TieneProductos(int empresaId)
         => BD.TieneProductos(_configuration, empresaId);

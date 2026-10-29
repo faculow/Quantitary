@@ -1,0 +1,155 @@
+@model Quantitary.Models.PdvIndexViewModel
+@{
+    ViewData["Title"] = "Punto de venta";
+    var categorias = Model.Categorias ?? new List<string>();
+}
+
+<div class="pdv-shell">
+    <div class="pdv-left panel">
+        <div class="pdv-header">
+            <div>
+                <p class="eyebrow">Punto de venta</p>
+                <h2>Venta rápida</h2>
+            </div>
+            <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+        </div>
+
+        <form asp-action="Index" asp-controller="Pdv" method="get" class="row g-2 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Buscar producto</label>
+                <input type="text" name="filtro" value="@Model.Filtro" class="form-control" placeholder="Nombre o SKU" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option value="">Todas</option>
+                    @foreach (var item in categorias)
+                    {
+                        <option value="@item" selected="@(item == Model.Categoria ? "selected" : null)">@item</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Buscar</button>
+            </div>
+        </form>
+
+        @if (TempData["PdvError"] != null)
+        {
+            <div class="alert alert-danger">@TempData["PdvError"]</div>
+        }
+
+        @if (TempData["PdvSuccess"] != null)
+        {
+            <div class="alert alert-success">@TempData["PdvSuccess"]</div>
+        }
+
+        <div class="pdv-grid">
+            @if (Model.Productos.Any())
+            {
+                foreach (var producto in Model.Productos)
+                {
+                    <div class="product-card">
+                        <div class="product-card-top">
+                            <span class="product-sku">@producto.Sku</span>
+                            <span class="stock-badge @(producto.StockActual <= 0 ? "danger" : producto.StockActual <= producto.StockMinimo ? "warning" : "ok")">
+                                @producto.StockActual uds.
+                            </span>
+                        </div>
+
+                        <h5>@producto.Nombre</h5>
+                        <p class="mb-1"><strong>Marca:</strong> @(string.IsNullOrWhiteSpace(producto.Marca) ? "Sin marca" : producto.Marca)</p>
+                        <p class="mb-1"><strong>Peso:</strong> @(producto.Peso.HasValue ? $"{producto.Peso.Value} {producto.UnidadMedida}" : "N/A")</p>
+                        <p class="mb-1"><strong>Categoría:</strong> @producto.Categoria</p>
+                        <p class="product-price">$@producto.Precio.ToString("N2")</p>
+
+                        <div class="product-card-actions">
+                            <button type="submit" form="add-@producto.Id" class="btn btn-primary btn-sm">+</button>
+                        </div>
+
+                        <form id="add-@producto.Id" asp-action="Agregar" asp-controller="Pdv" method="post">
+                            <input type="hidden" name="id" value="@producto.Id" />
+                        </form>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="alert alert-info w-100">No se encontraron productos para la búsqueda.</div>
+            }
+        </div>
+    </div>
+
+    <aside class="pdv-right panel">
+        <div class="pdv-side-header">
+            <h3>Carrito</h3>
+            <span>@Model.Carrito.Count productos</span>
+        </div>
+
+        @if (!Model.Carrito.Any())
+        {
+            <div class="empty-cart">El carrito está vacío.</div>
+        }
+        else
+        {
+            <div class="cart-items">
+                @foreach (var item in Model.Carrito)
+                {
+                    <div class="cart-item">
+                        <div>
+                            <div class="cart-name">@item.Nombre</div>
+                            <small>@item.Sku · $@item.PrecioUnitario.ToString("N2")</small>
+                        </div>
+
+                        <div class="cart-controls">
+                            <form asp-action="ActualizarCantidad" asp-controller="Pdv" method="post">
+                                <input type="hidden" name="id" value="@item.ProductoId" />
+                                <div class="qty-box">
+                                    <button type="submit" name="cantidad" value="@(item.Cantidad - 1)" class="btn btn-light btn-sm">-</button>
+                                    <span>@item.Cantidad</span>
+                                    <button type="submit" name="cantidad" value="@(item.Cantidad + 1)" class="btn btn-light btn-sm">+</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="totals-card">
+            <div class="total-row">
+                <span>Subtotal</span>
+                <strong>$@Model.TotalCarrito.ToString("N2")</strong>
+            </div>
+        </div>
+
+        <form asp-action="Cobrar" asp-controller="Pdv" method="post" class="mt-3">
+            @Html.AntiForgeryToken()
+            <div class="mb-3">
+                <label class="form-label">Método de pago</label>
+                <select name="metodoPago" class="form-select">
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Tarjeta">Tarjeta</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-success w-100">Completar venta</button>
+        </form>
+    </aside>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.querySelector('.pdv-shell form');
+            if (form) {
+                form.addEventListener('submit', function () {
+                    if (document.activeElement && document.activeElement.type === 'submit') {
+                        const btn = document.activeElement;
+                        btn.disabled = true;
+                    }
+                });
+            }
+        });
+    </script>
+}

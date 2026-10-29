@@ -7,10 +7,16 @@
     var participacion = dashboard?.ParticipacionVentas ?? new List<Quantitary.Models.DashboardCategoryShare>();
     var categorias = dashboard?.GananciaPorCategoria ?? new List<Quantitary.Models.ChartPoint>();
     var mesActual = dashboard?.MesActualLabel ?? DateTime.Now.ToString("MMMM yyyy");
+    var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
 
     var colores = new[] { "#2f80ed", "#27ae60", "#f2c94c", "#e67e22", "#9b59b6" };
     var maxBarra = ventasPeriodo.Any() && ventasPeriodo.Max(v => v.Valor) > 0 ? ventasPeriodo.Max(v => v.Valor) : 1m;
     var maxCategoria = categorias.Any() && categorias.Max(v => v.Valor) > 0 ? categorias.Max(v => v.Valor) : 1m;
+}
+
+@if (!string.IsNullOrWhiteSpace(mensajeAdvertencia))
+{
+    <div class="alert alert-warning mt-3">@mensajeAdvertencia</div>
 }
 
 <div class="dashboard-shell">
