@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -88,6 +89,57 @@ public class HomeController : Controller
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
         ViewBag.UltimaVentaTimestamp = HttpContext.Session.GetString("UltimaVentaTimestamp");
         return View();
+    }
+
+    public IActionResult IndicadoresYOportunidades()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
+
+        ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
+        return View(model);
+    }
+
+    public IActionResult ExportarResumenIndicadores()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
+
+        var csv = new StringBuilder();
+        csv.AppendLine("Producto,Categoria,Rotacion,StockActual,StockMinimo,AccionSugerida,FechaCompraSugerida,FechaVentaSugerida,AjustePrecio");
+
+        foreach (var item in model.Productos)
+        {
+            csv.AppendLine($"\"{item.Nombre}\",\"{item.Categoria}\",{item.Rotacion.ToString("0.##")},{item.StockActual},{item.StockMinimo},\"{item.AccionSugerida}\",\"{item.FechaCompraSugerida}\",\"{item.FechaVentaSugerida}\",\"{item.AjustePrecio}\"");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+        return File(bytes, "text/csv", "indicadores_oportunidades.csv");
+    }
+
+    [HttpPost]
+    public IActionResult ProgramarReporteIndicadores()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        TempData["ReporteProgramado"] = "El reporte de indicadores quedó programado para el próximo ciclo.";
+        return RedirectToAction(nameof(IndicadoresYOportunidades));
     }
 
     public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
