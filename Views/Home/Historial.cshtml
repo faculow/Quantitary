@@ -146,7 +146,7 @@
                     <th>Producto</th>
                     <th>SKU</th>
                     <th>Categoría</th>
-                    <th>Fecha</th>
+                    <th>Fecha y horario</th>
                     <th>Método de pago</th>
                     <th>Cantidad</th>
                     <th>Precio</th>
@@ -161,7 +161,7 @@
                             <td>@venta.NombreProducto</td>
                             <td>@venta.Sku</td>
                             <td>@venta.Categoria</td>
-                            <td>@venta.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td>@venta.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
                             <td>@venta.MetodoPago</td>
                             <td>@venta.Cantidad</td>
                             <td>$@venta.Precio.ToString("N2")</td>
