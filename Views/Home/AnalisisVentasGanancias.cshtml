@@ -3,14 +3,21 @@
     var fechaInicio = ViewBag.FechaInicio as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     var fechaFin = ViewBag.FechaFin as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
     var ventasTotales = ViewBag.VentasTotales as decimal? ?? 0m;
+    var ventasTotalesCantidad = ViewBag.VentasTotalesCantidad as int? ?? 0;
     var gastosTotales = ViewBag.GastosTotales as decimal? ?? 0m;
     var ventaPromedio = ViewBag.VentaPromedio as decimal? ?? 0m;
     var ganancias = ViewBag.Ganancias as decimal? ?? 0m;
     var margenNeto = ViewBag.MargenNeto as decimal? ?? 0m;
+    var formulaGanancia = ViewBag.FormulaGanancia as decimal? ?? 0m;
     var ventaPorSemana = ViewBag.VentaPorSemana as List<Quantitary.Models.ChartPoint> ?? new List<Quantitary.Models.ChartPoint>();
+    var ventasDiarias = ViewBag.VentasDiarias as List<Quantitary.Models.ChartPoint> ?? new List<Quantitary.Models.ChartPoint>();
     var gananciaPorCategoria = ViewBag.GananciaPorCategoria as List<Quantitary.Models.ChartPoint> ?? new List<Quantitary.Models.ChartPoint>();
     var maxVentaSemana = ventaPorSemana.Any() && ventaPorSemana.Max(v => v.Valor) > 0 ? ventaPorSemana.Max(v => v.Valor) : 1m;
     var maxGananciaCategoria = gananciaPorCategoria.Any() && gananciaPorCategoria.Max(v => v.Valor) > 0 ? gananciaPorCategoria.Max(v => v.Valor) : 1m;
+    var maxVentasDiarias = ventasDiarias.Any() && ventasDiarias.Max(v => v.Valor) > 0 ? ventasDiarias.Max(v => v.Valor) : 1m;
+    var ventasTotalesValor = ventasTotales > 0 ? ventasTotales : 1m;
+    var divisorVisual = Math.Max(1m, Math.Round(gastosTotales / ventasTotalesValor, 0, MidpointRounding.AwayFromZero));
+    var resultadoVisual = Math.Abs(formulaGanancia);
 }
 
 <div class="panel">
@@ -61,10 +68,61 @@
                 <strong class="kpi-value">$@ganancias.ToString("N2")</strong>
             </div>
         </div>
-        <div class="col-md-12">
+        <div class="col-md-6">
             <div class="kpi-card">
                 <span class="kpi-label">Margen Neto</span>
                 <strong class="kpi-value">@margenNeto.ToString("N2")%</strong>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="kpi-card">
+                <span class="kpi-label">Ventas Totales (cantidad)</span>
+                <strong class="kpi-value">@ventasTotalesCantidad</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-lg-6">
+            <div class="chart-card h-100">
+                <div class="chart-header">
+                    <h4>Ventas diarias</h4>
+                    <small>Detallado por día</small>
+                </div>
+
+                <div class="bars-panel">
+                    @for (int i = 0; i < ventasDiarias.Count; i++)
+                    {
+                        var ventaDiaria = ventasDiarias[i];
+                        var altura = maxVentasDiarias > 0 ? Math.Max(8, (double)(ventaDiaria.Valor / maxVentasDiarias) * 100) : 8;
+                        <div class="bar-col">
+                            <div class="bar-value">@ventaDiaria.Valor.ToString("N0")</div>
+                            <div class="bar-track">
+                                <div class="bar-fill" style="height:@altura%; background:#2f80ed;"></div>
+                            </div>
+                            <div class="bar-label">@ventaDiaria.Label</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="chart-card h-100">
+                <div class="chart-header">
+                    <h4>Fórmula de ganancia</h4>
+                    <button type="button" class="gain-help-button" aria-label="Mostrar cálculo de ganancia" aria-expanded="false">?</button>
+                </div>
+
+                <div class="ganancia-visual-card">
+                    <div class="ganancia-visual">
+                        <div class="ganancia-visual-value">$@ganancias.ToString("N2")</div>
+                    </div>
+
+                    <div class="gain-formula-detail" aria-live="polite">
+                        <div class="gain-formula-line">$@ventasTotales.ToString("N2") - $@gastosTotales.ToString("N2") = $@ganancias.ToString("N2")</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

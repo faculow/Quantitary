@@ -37,4 +37,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    const gainHelpButton = document.querySelector('.gain-help-button');
+    if (gainHelpButton) {
+        const gainFormulaDetail = document.querySelector('.gain-formula-detail');
+
+        gainHelpButton.addEventListener('click', () => {
+            const isVisible = gainFormulaDetail.classList.toggle('is-visible');
+            gainHelpButton.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
+        });
+    }
 });

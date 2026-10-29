@@ -176,6 +176,28 @@ public class HomeController : Controller
 
         var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
+        var sqlCantidadVentas = @"
+            SELECT COALESCE(SUM(v.cantidad), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlVentasDiarias = @"
+            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY CAST(v.fecha AS date)
+            ORDER BY CAST(v.fecha AS date)";
+
+        var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var formulaGanancia = ventasTotales - gastosTotales;
+
         var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
 
         var ventaPorSemana = new List<ChartPoint>();
@@ -227,12 +249,15 @@ public class HomeController : Controller
         ViewBag.FechaInicio = inicio;
         ViewBag.FechaFin = fin;
         ViewBag.VentasTotales = ventasTotales;
+        ViewBag.VentasTotalesCantidad = ventasTotalesCantidad;
         ViewBag.GastosTotales = gastosTotales;
         ViewBag.VentaPromedio = ventaPromedio;
         ViewBag.Ganancias = ganancias;
         ViewBag.MargenNeto = margenNeto;
         ViewBag.VentaPorSemana = ventaPorSemana;
+        ViewBag.VentasDiarias = ventasDiarias;
         ViewBag.GananciaPorCategoria = gananciaPorCategoria;
+        ViewBag.FormulaGanancia = formulaGanancia;
         return View();
     }
 

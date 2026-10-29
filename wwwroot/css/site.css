@@ -924,3 +924,79 @@ body {
     align-items: center;
     font-size: 1.05rem;
 }
+
+.ganancia-visual-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 210px;
+    padding: 8px 6px 0;
+}
+
+.ganancia-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 300px;
+    min-height: 150px;
+    margin: 0 auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(17, 24, 39, 0.02);
+}
+
+.ganancia-visual-value {
+    font-size: clamp(1.5rem, 3vw, 2.4rem);
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.2;
+    letter-spacing: -0.04em;
+}
+
+.gain-help-button {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: #2f80ed;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 12px rgba(47, 128, 237, 0.25);
+    cursor: pointer;
+    padding: 0;
+}
+
+.gain-formula-detail {
+    width: 100%;
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f3f8ff;
+    border: 1px solid #dbeafe;
+    text-align: center;
+}
+
+.gain-formula-detail.is-visible {
+    display: block;
+}
+
+.gain-formula-line {
+    font-size: 0.92rem;
+    color: #1f2937;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .ganancia-visual {
+        max-width: 260px;
+    }
+}
