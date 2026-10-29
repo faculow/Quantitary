@@ -6,6 +6,7 @@
     var esHistorial = controladorActual == "Home" && accionActual == "Historial";
     var esStock = controladorActual == "Stock";
     var esPdv = controladorActual == "Pdv" && accionActual == "Index";
+    var esAnalisis = controladorActual == "Home" && accionActual == "AnalisisVentasGanancias";
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -40,6 +41,10 @@
                 <a asp-controller="Home" asp-action="Historial" class="nav-link-side @(esHistorial ? "active" : "")" aria-current="@(esHistorial ? "page" : null)">
                     <img src="~/imagenes/historial.png" alt="Historial" class="nav-icon" />
                     <span>Historial</span>
+                </a>
+                <a asp-controller="Home" asp-action="AnalisisVentasGanancias" class="nav-link-side @(esAnalisis ? "active" : "")" aria-current="@(esAnalisis ? "page" : null)">
+                    <img src="~/imagenes/historial.png" alt="Análisis" class="nav-icon" />
+                    <span>Análisis</span>
                 </a>
             </nav>
 
