@@ -1,0 +1,192 @@
+@model Quantitary.Models.IndicadoresYOportunidadesViewModel
+@{
+    ViewData["Title"] = "Indicadores y oportunidades";
+    var resumenProgramado = TempData["ReporteProgramado"] as string;
+}
+
+<div class="dashboard-indicadores compact-dashboard">
+    @if (!string.IsNullOrWhiteSpace(resumenProgramado))
+    {
+        <div class="alert alert-info alert-compact mt-2 mb-3">@resumenProgramado</div>
+    }
+
+    <div class="indicadores-header-row compact-header">
+        <div>
+            <p class="eyebrow">Indicadores</p>
+            <h1 class="page-title">Indicadores y oportunidades</h1>
+        </div>
+        <div class="d-flex gap-2 compact-actions">
+            <form asp-action="ExportarResumenIndicadores" method="get">
+                <button type="submit" class="btn btn-primary btn-sm">Exportar</button>
+            </form>
+            <form asp-action="ProgramarReporteIndicadores" method="post">
+                <button type="submit" class="btn btn-outline-primary btn-sm">Programar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3 compact-kpis">
+        <div class="col-lg-3 col-md-6">
+            <div class="kpi-tile kpi-primary">
+                <div class="kpi-label">Margen neto</div>
+                <div class="kpi-value">@Model.MargenNetoGeneral.ToString("0.##")%</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="kpi-tile kpi-success">
+                <div class="kpi-label">Rotación</div>
+                <div class="kpi-value small">@Model.ProductoMayorRotacion</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="kpi-tile kpi-warning">
+                <div class="kpi-label">Interés</div>
+                <div class="kpi-value">@Model.RelacionInteresCompra</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="kpi-tile kpi-info">
+                <div class="kpi-label">Categoría</div>
+                <div class="kpi-value small">@Model.CategoriaMasVentas</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section compact-panel mb-3">
+        <div class="section-head">
+            <h3>Qué hacer ahora</h3>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="list-card compact-card">
+                    <h4>Reponer</h4>
+                    @if (Model.ProductosReponer.Any())
+                    {
+                        <ul>
+                            @foreach (var producto in Model.ProductosReponer)
+                            {
+                                <li>@producto</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p>Sin urgencias</p>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="list-card compact-card">
+                    <h4>Comprar menos</h4>
+                    @if (Model.ProductosComprarMenos.Any())
+                    {
+                        <ul>
+                            @foreach (var producto in Model.ProductosComprarMenos)
+                            {
+                                <li>@producto</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p>Todo bien</p>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="list-card compact-card">
+                    <h4>Comprar más</h4>
+                    @if (Model.ProductosComprarMas.Any())
+                    {
+                        <ul>
+                            @foreach (var producto in Model.ProductosComprarMas)
+                            {
+                                <li>@producto</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p>Sin acción</p>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="list-card compact-card">
+                    <h4>Mín. reposición</h4>
+                    @if (Model.ProductosCambiarMinimo.Any())
+                    {
+                        <ul>
+                            @foreach (var producto in Model.ProductosCambiarMinimo)
+                            {
+                                <li>@producto</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p>En orden</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section compact-panel mb-3">
+        <div class="section-head">
+            <h3>Productos clave</h3>
+        </div>
+        <div class="table-responsive">
+            <table class="table modern-table compact-table">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Rot.</th>
+                        <th>Acción</th>
+                        <th>Stock</th>
+                        <th>Mín. rep.</th>
+                        <th>Compra</th>
+                        <th>Venta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Productos)
+                    {
+                        <tr>
+                            <td>@item.Nombre</td>
+                            <td>@item.Rotacion.ToString("0.##")</td>
+                            <td>
+                                <span class="badge @(item.AccionSugerida == "Reponer" ? "badge-danger" : item.AccionSugerida == "Comprar menos" ? "badge-warning" : "badge-success")">
+                                    @item.AccionSugerida
+                                </span>
+                            </td>
+                            <td>@item.StockActual</td>
+                            <td>
+                                <span class="reorder-pill @(item.MinimoReposicionTexto.Contains("Subir") ? "reorder-up" : item.MinimoReposicionTexto.Contains("Bajar") ? "reorder-down" : "reorder-stable")">
+                                    @item.MinimoReposicionTexto
+                                </span>
+                            </td>
+                            <td>@item.CompraPlazoTexto</td>
+                            <td>@item.FechaVentaSugerida</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel-section compact-panel">
+        <div class="section-head">
+            <h3>Resumen</h3>
+        </div>
+        <div class="status-summary compact-summary">
+            <span class="status-label">Estado:</span>
+            <strong>@Model.ResumenEstado</strong>
+        </div>
+        <div class="mini-help">
+            <div><strong>Más vendido:</strong> @Model.ProductoMayorRotacion</div>
+            <div><strong>Más ventas:</strong> @Model.CategoriaMasVentas</div>
+            <div><strong>Próximo paso:</strong> @Model.MensajePersonalizadoProximoPaso</div>
+        </div>
+    </div>
+</div>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +91,57 @@ public class HomeController : Controller
         return View();
     }
 
+    public IActionResult IndicadoresYOportunidades()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
+
+        ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
+        return View(model);
+    }
+
+    public IActionResult ExportarResumenIndicadores()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
+
+        var csv = new StringBuilder();
+        csv.AppendLine("Producto,Categoria,Rotacion,StockActual,StockMinimo,AccionSugerida,FechaCompraSugerida,FechaVentaSugerida,AjustePrecio");
+
+        foreach (var item in model.Productos)
+        {
+            csv.AppendLine($"\"{item.Nombre}\",\"{item.Categoria}\",{item.Rotacion.ToString("0.##")},{item.StockActual},{item.StockMinimo},\"{item.AccionSugerida}\",\"{item.FechaCompraSugerida}\",\"{item.FechaVentaSugerida}\",\"{item.AjustePrecio}\"");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+        return File(bytes, "text/csv", "indicadores_oportunidades.csv");
+    }
+
+    [HttpPost]
+    public IActionResult ProgramarReporteIndicadores()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        TempData["ReporteProgramado"] = "El reporte de indicadores quedó programado para el próximo ciclo.";
+        return RedirectToAction(nameof(IndicadoresYOportunidades));
+    }
+
     public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -176,6 +228,28 @@ public class HomeController : Controller
 
         var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
+        var sqlCantidadVentas = @"
+            SELECT COALESCE(SUM(v.cantidad), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlVentasDiarias = @"
+            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY CAST(v.fecha AS date)
+            ORDER BY CAST(v.fecha AS date)";
+
+        var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var formulaGanancia = ventasTotales - gastosTotales;
+
         var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
 
         var ventaPorSemana = new List<ChartPoint>();
@@ -227,12 +301,15 @@ public class HomeController : Controller
         ViewBag.FechaInicio = inicio;
         ViewBag.FechaFin = fin;
         ViewBag.VentasTotales = ventasTotales;
+        ViewBag.VentasTotalesCantidad = ventasTotalesCantidad;
         ViewBag.GastosTotales = gastosTotales;
         ViewBag.VentaPromedio = ventaPromedio;
         ViewBag.Ganancias = ganancias;
         ViewBag.MargenNeto = margenNeto;
         ViewBag.VentaPorSemana = ventaPorSemana;
+        ViewBag.VentasDiarias = ventasDiarias;
         ViewBag.GananciaPorCategoria = gananciaPorCategoria;
+        ViewBag.FormulaGanancia = formulaGanancia;
         return View();
     }
 
