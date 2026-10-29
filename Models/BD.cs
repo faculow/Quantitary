@@ -106,6 +106,8 @@ public static class BD
 
     public static bool ActualizarProducto(IConfiguration configuration, int id, Producto producto)
     {
+        System.Console.WriteLine($"Actualizando producto con ID: {id}");
+
         var sql = @"UPDATE Productos
                     SET nombre = @Nombre,
                         sku = @Sku,
@@ -117,8 +119,7 @@ public static class BD
                         proveedor = @Proveedor,
                         costoCompra = @CostoCompra,
                         precioVenta = @PrecioVenta,
-                        cantidadVentas = @CantidadVentas,
-                        empresaID = @EmpresaID
+                        cantidadVentas = @CantidadVentas
                     WHERE id = @Id";
 
         using var connection = CrearConexion(configuration);
@@ -135,7 +136,6 @@ public static class BD
             producto.CostoCompra,
             producto.PrecioVenta,
             producto.CantidadVentas,
-            producto.EmpresaID,
             Id = id
         });
 
