@@ -178,6 +178,52 @@ public class HomeController : Controller
 
         var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
 
+        var ventaPorSemana = new List<ChartPoint>();
+        var semanaActual = inicio.Date;
+
+        while (semanaActual <= fin.Date)
+        {
+            var semanaFin = semanaActual.AddDays(6) > fin.Date ? fin.Date : semanaActual.AddDays(6);
+
+            var sqlVentaSemana = @"
+                SELECT COALESCE(SUM(v.precio), 0)
+                FROM Ventas v
+                INNER JOIN Productos p ON p.id = v.productoId
+                WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+                  AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin";
+
+            var totalSemana = await connection.QuerySingleAsync<decimal>(sqlVentaSemana, new
+            {
+                EmpresaId = empresaId,
+                SemanaInicio = semanaActual.Date,
+                SemanaFin = semanaFin.Date.AddDays(1).AddTicks(-1)
+            });
+
+            ventaPorSemana.Add(new ChartPoint
+            {
+                Label = $"{semanaActual:dd/MM} - {semanaFin:dd/MM}",
+                Valor = totalSemana
+            });
+
+            semanaActual = semanaActual.AddDays(7);
+        }
+
+        var sqlGananciaPorCategoria = @"
+            SELECT p.categoria AS Label, COALESCE(SUM(v.precio - v.costo), 0) AS Valor
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY p.categoria
+            ORDER BY Valor DESC";
+
+        var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(sqlGananciaPorCategoria, new
+        {
+            EmpresaId = empresaId,
+            Inicio = inicio,
+            Fin = fin
+        })).ToList();
+
         ViewBag.FechaInicio = inicio;
         ViewBag.FechaFin = fin;
         ViewBag.VentasTotales = ventasTotales;
@@ -185,6 +231,8 @@ public class HomeController : Controller
         ViewBag.VentaPromedio = ventaPromedio;
         ViewBag.Ganancias = ganancias;
         ViewBag.MargenNeto = margenNeto;
+        ViewBag.VentaPorSemana = ventaPorSemana;
+        ViewBag.GananciaPorCategoria = gananciaPorCategoria;
         return View();
     }
 
