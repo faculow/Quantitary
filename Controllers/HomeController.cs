@@ -53,7 +53,7 @@ public class HomeController : Controller
         return View();
     }
 
-    public IActionResult Historial(string rango = "mes")
+    public IActionResult Historial(string rango = "mes", string? busqueda = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -70,8 +70,22 @@ public class HomeController : Controller
             return RedirectToAction("Importar", "Stock");
         }
 
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
+        var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
+        var busquedaNormalizada = busqueda?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(busquedaNormalizada))
+        {
+            dashboard.UltimosProductosVendidos = dashboard.UltimosProductosVendidos
+                .Where(v =>
+                    v.NombreProducto.Contains(busquedaNormalizada, StringComparison.OrdinalIgnoreCase)
+                    || v.Sku.Contains(busquedaNormalizada, StringComparison.OrdinalIgnoreCase)
+                    || v.Categoria.Contains(busquedaNormalizada, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        ViewBag.Dashboard = dashboard;
         ViewBag.RangoActual = rango;
+        ViewBag.Busqueda = busquedaNormalizada;
         ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         return View();
     }

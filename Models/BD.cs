@@ -336,7 +336,12 @@ public static class BD
 
         using var connection = CrearConexion(configuration);
         return connection.Query<VentaRegistro>(
-            "SELECT * FROM Ventas WHERE productoId IN (SELECT id FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)) AND fecha >= @FechaInicio ORDER BY fecha DESC",
+            @"SELECT v.*, p.sku AS Sku, p.categoria AS Categoria
+              FROM Ventas v
+              LEFT JOIN Productos p ON p.id = v.productoId
+              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                AND v.fecha >= @FechaInicio
+              ORDER BY v.fecha DESC",
             new { EmpresaId = empresaId, FechaInicio = fechaInicio }).ToList();
     }
 

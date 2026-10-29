@@ -2,18 +2,20 @@
     ViewData["Title"] = "Historial";
     var dashboard = ViewBag.Dashboard as Quantitary.Models.DashboardSummary;
     var rango = ViewBag.RangoActual ?? "mes";
+    var busqueda = ViewBag.Busqueda ?? string.Empty;
     var podioVentas = (dashboard?.PodioProductosMasVendidos ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
     var podioGanancia = (dashboard?.PodioProductosMasGanancia ?? new List<Quantitary.Models.ProductoRanking>()).ToList();
+    var ventas = (dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).ToList();
 }
 
 <div class="panel">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 gap-3 flex-wrap">
         <h2 class="mb-0">Historial</h2>
         <div class="btn-group" role="group">
-            <a class="btn btn-sm @(rango == "dia" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="dia">Día</a>
-            <a class="btn btn-sm @(rango == "semana" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="semana">Semana</a>
-            <a class="btn btn-sm @(rango == "mes" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="mes">Mes</a>
-            <a class="btn btn-sm @(rango == "anio" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="anio">Año</a>
+            <a class="btn btn-sm @(rango == "dia" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="dia" asp-route-busqueda="@busqueda">Día</a>
+            <a class="btn btn-sm @(rango == "semana" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="semana" asp-route-busqueda="@busqueda">Semana</a>
+            <a class="btn btn-sm @(rango == "mes" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="mes" asp-route-busqueda="@busqueda">Mes</a>
+            <a class="btn btn-sm @(rango == "anio" ? "btn-primary" : "btn-outline-primary")" asp-route-rango="anio" asp-route-busqueda="@busqueda">Año</a>
         </div>
     </div>
 
@@ -89,11 +91,21 @@
     </div>
 
     <div class="mt-4 panel subpanel">
-        <h3>Últimos productos vendidos</h3>
+        <div class="d-flex justify-content-between align-items-center mb-3 gap-3 flex-wrap">
+            <h3 class="mb-0">Últimos productos vendidos</h3>
+            <form method="get" asp-action="Historial" class="d-flex align-items-center gap-2 ms-auto" style="max-width: 460px; width: 100%;">
+                <input type="hidden" name="rango" value="@rango" />
+                <input type="text" name="busqueda" class="form-control" value="@busqueda" placeholder="Buscar por nombre, SKU o categoría" />
+                <button type="submit" class="btn btn-primary">Buscar</button>
+            </form>
+        </div>
+
         <table class="table table-striped align-middle">
             <thead>
                 <tr>
                     <th>Producto</th>
+                    <th>SKU</th>
+                    <th>Categoría</th>
                     <th>Fecha</th>
                     <th>Método de pago</th>
                     <th>Cantidad</th>
@@ -101,12 +113,14 @@
                 </tr>
             </thead>
             <tbody>
-                @if ((dashboard?.UltimosProductosVendidos ?? new List<Quantitary.Models.VentaRegistro>()).Any())
+                @if (ventas.Any())
                 {
-                    foreach (var venta in dashboard.UltimosProductosVendidos)
+                    foreach (var venta in ventas)
                     {
                         <tr>
                             <td>@venta.NombreProducto</td>
+                            <td>@venta.Sku</td>
+                            <td>@venta.Categoria</td>
                             <td>@venta.Fecha.ToString("dd/MM/yyyy")</td>
                             <td>@venta.MetodoPago</td>
                             <td>@venta.Cantidad</td>
@@ -116,7 +130,7 @@
                 }
                 else
                 {
-                    <tr><td colspan="5" class="text-center text-muted">Sin ventas en este rango.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">Sin ventas en este rango.</td></tr>
                 }
             </tbody>
         </table>
