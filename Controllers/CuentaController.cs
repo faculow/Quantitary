@@ -35,6 +35,12 @@ public class CuentaController : Controller
         var exito = BD.IniciarSesion(mail, contrasena, HttpContext, _configuration);
         if (exito)
         {
+            var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+            if (empresaId > 0 && !BD.TieneProductos(_configuration, empresaId))
+            {
+                return RedirectToAction("Importar", "Stock");
+            }
+
             return RedirectToAction("Index", "Home");
         }
 
@@ -58,7 +64,14 @@ public class CuentaController : Controller
     {
         if (!ModelState.IsValid)
         {
-            ViewBag.Error = "Verifica los datos ingresados.";
+            var errores = ModelState
+                .Where(x => x.Value != null && x.Value.Errors.Count > 0)
+                .SelectMany(x => x.Value!.Errors)
+                .Select(e => e.ErrorMessage)
+                .Distinct()
+                .ToList();
+
+            ViewBag.Error = errores.Any() ? string.Join(" ", errores) : "Verifica los datos ingresados.";
             return View(usuario);
         }
 
@@ -101,6 +114,30 @@ public class CuentaController : Controller
         {
             BD.IniciarSesion(usuario.Mail, usuario.Contrasena, HttpContext, _configuration);
             return RedirectToAction("Importar", "Stock");
+        }
+
+        if (string.IsNullOrWhiteSpace(usuario.NombreUsuario) || usuario.NombreUsuario.Length < 3)
+        {
+            ViewBag.Error = "El nombre de usuario debe tener al menos 3 caracteres.";
+            return View(usuario);
+        }
+
+        if (usuario.Contrasena.Length < 6)
+        {
+            ViewBag.Error = "La contraseña debe tener al menos 6 caracteres.";
+            return View(usuario);
+        }
+
+        if (!usuario.Contrasena.Any(char.IsDigit) || !usuario.Contrasena.Any(char.IsUpper) || !usuario.Contrasena.Any(char.IsLower))
+        {
+            ViewBag.Error = "La contraseña debe incluir mayúsculas, minúsculas y números.";
+            return View(usuario);
+        }
+
+        if (string.IsNullOrWhiteSpace(usuario.Mail) || !usuario.Mail.Contains("@"))
+        {
+            ViewBag.Error = "El email no tiene un formato válido.";
+            return View(usuario);
         }
 
         ViewBag.Error = "No se pudo crear la cuenta. Verifica que el correo no esté registrado y que los datos sean válidos.";

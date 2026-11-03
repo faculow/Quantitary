@@ -79,7 +79,7 @@ public class HomeController : Controller
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
-            ViewBag.MensajeAdvertencia = "Primero debes cargar tu catálogo inicial desde Excel para poder continuar.";
+            return RedirectToAction("Importar", "Stock");
         }
 
         var nombre = HttpContext.Session.GetString("NombreUsuario") ?? "Usuario";
