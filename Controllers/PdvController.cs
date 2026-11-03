@@ -209,6 +209,13 @@ public class PdvController : Controller
 
         var metodo = string.IsNullOrWhiteSpace(metodoPago) ? "Efectivo" : metodoPago.Trim();
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var usuarioId = HttpContext.Session.GetInt32("UsuarioID");
+
+        if (usuarioId is null or <= 0)
+        {
+            TempData["PdvError"] = "Debe iniciar sesión para registrar una venta.";
+            return RedirectToAction("Login", "Cuenta");
+        }
 
         using var connection = BD.CrearConexion(_configuration);
         connection.Open();
@@ -228,9 +235,13 @@ public class PdvController : Controller
                 return RedirectToAction(nameof(Index));
             }
 
+            var precioVentaTotal = item.PrecioUnitario * item.Cantidad;
+            var precioCompraTotal = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad;
+            var porcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m;
+
             var ventaId = connection.ExecuteScalar<int>(
-                @"INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo)
-                  VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo);
+                @"INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID)
+                  VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId);
                   SELECT CAST(SCOPE_IDENTITY() as int);",
                 new
                 {
@@ -239,20 +250,23 @@ public class PdvController : Controller
                     Fecha = DateTime.Now,
                     MetodoPago = metodo,
                     Cantidad = item.Cantidad,
-                    Precio = item.PrecioUnitario * item.Cantidad,
-                    Costo = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad
+                    Precio = precioVentaTotal,
+                    Costo = precioCompraTotal,
+                    UsuarioId = usuarioId.Value
                 });
 
             connection.Execute(
-                @"INSERT INTO DetalleVenta (ventaID, productoID, precioVenta, precioCompra, porcentajeGanancia)
-                  VALUES (@VentaId, @ProductoId, @PrecioVenta, @PrecioCompra, @PorcentajeGanancia)",
+                @"INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, precioCompra, porcentajeGanancia, ganancia)
+                  VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @PrecioCompra, @PorcentajeGanancia, @Ganancia)",
                 new
                 {
                     VentaId = ventaId,
                     ProductoId = producto.Id,
-                    PrecioVenta = item.PrecioUnitario * item.Cantidad,
-                    PrecioCompra = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad,
-                    PorcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m
+                    Cantidad = item.Cantidad,
+                    PrecioVenta = precioVentaTotal,
+                    PrecioCompra = precioCompraTotal,
+                    PorcentajeGanancia = porcentajeGanancia,
+                    Ganancia = precioVentaTotal - precioCompraTotal
                 });
 
             producto.StockActual -= item.Cantidad;
