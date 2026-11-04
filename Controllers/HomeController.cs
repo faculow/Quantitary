@@ -86,7 +86,7 @@ public class HomeController : Controller
         var nombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         ViewBag.NombreUsuario = nombre;
         ViewBag.NombreEmpresa = nombreEmpresa;
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
+        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("todos", empresaId);
         ViewBag.UltimaVentaTimestamp = HttpContext.Session.GetString("UltimaVentaTimestamp");
         return View();
     }
@@ -142,7 +142,7 @@ public class HomeController : Controller
         return RedirectToAction(nameof(IndicadoresYOportunidades));
     }
 
-    public IActionResult Historial(string rango = "anio", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
+    public IActionResult Historial(string rango = "todos", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -179,8 +179,15 @@ public class HomeController : Controller
         }
 
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
-        var inicio = fechaInicio ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-        var fin = fechaFin ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
+        var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        var fechaInicioMin = await connection.QuerySingleOrDefaultAsync<DateTime?>(
+            "SELECT MIN(fecha) FROM Ventas WHERE (@EmpresaId = 0 OR empresaID = @EmpresaId)",
+            new { EmpresaId = empresaId });
+
+        var inicio = fechaInicio ?? fechaInicioMin ?? new DateTime(DateTime.Today.Year - 10, 1, 1);
+        var fin = fechaFin ?? DateTime.Today;
 
         if (fin < inicio)
         {
@@ -188,9 +195,6 @@ public class HomeController : Controller
             inicio = fin;
             fin = intercambio;
         }
-
-        var connection = _context.Database.GetDbConnection();
-        await connection.OpenAsync();
 
         var sqlBase = @"
             SELECT COALESCE(SUM(v.precio), 0)
@@ -249,7 +253,6 @@ public class HomeController : Controller
         var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
 
         var formulaGanancia = ventasTotales - gastosTotales;
-
         var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
 
         var ventaPorSemana = new List<ChartPoint>();
@@ -469,7 +472,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
-    public IActionResult DashboardData(string rango = "mes")
+    public IActionResult DashboardData(string rango = "todos", DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -478,7 +481,7 @@ public class HomeController : Controller
         }
 
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
-        var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId);
+        var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId, null, null, null, fechaInicio, fechaFin);
         var ultimaVenta = HttpContext.Session.GetString("UltimaVentaTimestamp");
 
         return Json(new

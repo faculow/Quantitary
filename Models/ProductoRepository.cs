@@ -149,6 +149,12 @@ public class ProductoRepository
     public DashboardSummary ObtenerDashboard(string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null)
         => BD.ObtenerDashboard(_configuration, range, empresaId, nombreProducto, sku, categoria);
 
+    public DashboardSummary ObtenerDashboard(string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
+        => BD.ObtenerDashboard(_configuration, range, empresaId, nombreProducto, sku, categoria, fechaInicio, fechaFin);
+
+    public DashboardSummary ObtenerDashboard(string range, int? empresaId, DateTime? fechaInicio, DateTime? fechaFin)
+        => BD.ObtenerDashboard(_configuration, range, empresaId, null, null, null, fechaInicio, fechaFin);
+
     public IndicadoresYOportunidadesViewModel ObtenerIndicadoresYOportunidades(int? empresaId = null)
     {
         using var connection = BD.CrearConexion(_configuration);

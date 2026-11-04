@@ -106,7 +106,12 @@
             <div class="chart-card">
                 <div class="chart-header">
                     <h4>Ventas por período</h4>
-                    <small>En miles de ARS · Gastos asignados</small>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="date" id="fechaInicioPeriodo" class="form-control form-control-sm" style="width: 150px;" />
+                        <span class="text-muted">a</span>
+                        <input type="date" id="fechaFinPeriodo" class="form-control form-control-sm" style="width: 150px;" />
+                        <button type="button" id="aplicarRangoPeriodo" class="btn btn-sm btn-primary">Aplicar</button>
+                    </div>
                 </div>
 
                 <div id="ventasPorPeriodoContainer" class="bars-panel">
@@ -281,6 +286,90 @@
 
             renderDonut(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(participacion.Select(p => new { nombre = p.Nombre, valor = p.Valor }))));
             setInterval(actualizarDashboard, 15000);
+
+            // Lógica para el cambio de rango en ventas por período
+            const rangoVentasPeriodo = document.getElementById('rangoVentasPeriodo');
+            const cargarDashboardPorRango = (rango) => {
+                fetch(`@Url.Action("DashboardData", "Home")?rango=${encodeURIComponent(rango)}`, {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.ok ? response.json() : null)
+                .then(data => {
+                    if (!data) return;
+
+                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
+                    renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
+                    renderDonut(data.participacionVentas || []);
+
+                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
+                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
+                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                })
+                .catch(() => {
+                    // ignorar errores del filtro
+                });
+            };
+
+            if (rangoVentasPeriodo) {
+                rangoVentasPeriodo.addEventListener('change', (event) => {
+                    cargarDashboardPorRango(event.target.value || 'todos');
+                });
+            }
+
+            // Lógica para el rango de fechas personalizado
+            const fechaInicioPeriodo = document.getElementById('fechaInicioPeriodo');
+            const fechaFinPeriodo = document.getElementById('fechaFinPeriodo');
+            const aplicarRangoPeriodo = document.getElementById('aplicarRangoPeriodo');
+
+            const cargarDashboardPorFechas = () => {
+                if (!fechaInicioPeriodo || !fechaFinPeriodo) return;
+
+                const inicio = fechaInicioPeriodo.value;
+                const fin = fechaFinPeriodo.value;
+
+                if (!inicio || !fin) {
+                    return;
+                }
+
+                const params = new URLSearchParams({
+                    rango: 'personalizado',
+                    fechaInicio: inicio,
+                    fechaFin: fin
+                });
+
+                fetch(`@Url.Action("DashboardData", "Home")?${params.toString()}`, {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.ok ? response.json() : null)
+                .then(data => {
+                    if (!data) return;
+
+                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
+                    renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
+                    renderDonut(data.participacionVentas || []);
+
+                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
+                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
+                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                })
+                .catch(() => {
+                    // ignorar errores del filtro
+                });
+            };
+
+            if (aplicarRangoPeriodo) {
+                aplicarRangoPeriodo.addEventListener('click', cargarDashboardPorFechas);
+            }
         })();
     </script>
 }
