@@ -2,6 +2,7 @@ using System.Data;
 using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
+using System.Globalization;
 
 namespace Quantitary.Models;
 
@@ -491,123 +492,20 @@ public static class BD
     private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var rangoNormalizado = (range ?? "todos").Trim();
-        var inicio = fechaInicio ?? fecha;
-        var fin = fechaFin ?? DateTime.Now;
-        var result = new List<ChartPoint>();
+        var inicio = (fechaInicio ?? fecha).Date;
+        var fin = (fechaFin ?? DateTime.Now).Date;
 
-        if (rangoNormalizado.Equals("dia", StringComparison.OrdinalIgnoreCase))
+        if (fin < inicio)
         {
-            for (var h = 0; h < 24; h++)
-            {
-                var desde = inicio.Date.AddHours(h);
-                var hasta = desde.AddHours(1).AddTicks(-1);
-
-                using var connection = CrearConexion(configuration);
-                var total = connection.QuerySingleOrDefault<decimal?>(
-                    @"SELECT SUM(v.precio)
-                      FROM Ventas v
-                      INNER JOIN Productos p ON p.id = v.productoId
-                      WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                        AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                        AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                        AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                        AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))",
-                    new
-                    {
-                        EmpresaId = empresaId,
-                        Desde = desde,
-                        Hasta = hasta,
-                        NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                        Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                        Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-                    }) ?? 0m;
-
-                result.Add(new ChartPoint { Label = h.ToString("00") + ":00", Valor = total });
-            }
-
-            return result;
+            var intercambio = inicio;
+            inicio = fin;
+            fin = intercambio;
         }
 
-        if (rangoNormalizado.Equals("semana", StringComparison.OrdinalIgnoreCase))
+        decimal ObtenerTotal(DateTime desde, DateTime hasta)
         {
-            var dayCount = Math.Max(1, (fin - inicio).Days + 1);
-            for (var i = 0; i < dayCount; i++)
-            {
-                var desde = inicio.AddDays(i);
-                var hasta = desde.Date.AddDays(1).AddTicks(-1);
-
-                using var connection = CrearConexion(configuration);
-                var total = connection.QuerySingleOrDefault<decimal?>(
-                    @"SELECT SUM(v.precio)
-                      FROM Ventas v
-                      INNER JOIN Productos p ON p.id = v.productoId
-                      WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                        AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                        AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                        AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                        AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))",
-                    new
-                    {
-                        EmpresaId = empresaId,
-                        Desde = desde,
-                        Hasta = hasta,
-                        NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                        Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                        Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-                    }) ?? 0m;
-
-                result.Add(new ChartPoint { Label = desde.ToString("dd/MM"), Valor = total });
-            }
-
-            return result;
-        }
-
-        if (rangoNormalizado.Equals("mes", StringComparison.OrdinalIgnoreCase))
-        {
-            var dayCount = Math.Max(1, (fin - inicio).Days + 1);
-            for (var i = 0; i < dayCount; i++)
-            {
-                var desde = inicio.AddDays(i);
-                var hasta = desde.Date.AddDays(1).AddTicks(-1);
-
-                using var connection = CrearConexion(configuration);
-                var total = connection.QuerySingleOrDefault<decimal?>(
-                    @"SELECT SUM(v.precio)
-                      FROM Ventas v
-                      INNER JOIN Productos p ON p.id = v.productoId
-                      WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                        AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                        AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                        AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                        AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))",
-                    new
-                    {
-                        EmpresaId = empresaId,
-                        Desde = desde,
-                        Hasta = hasta,
-                        NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                        Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                        Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-                    }) ?? 0m;
-
-                result.Add(new ChartPoint { Label = desde.ToString("dd/MM"), Valor = total });
-            }
-
-            return result;
-        }
-
-        for (var i = 0; i < 12; i++)
-        {
-            var mesInicio = new DateTime(inicio.Year, inicio.Month, 1).AddMonths(i);
-            var mesFin = new DateTime(mesInicio.Year, mesInicio.Month, 1).AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
-
-            if (mesFin < inicio || mesInicio > fin)
-            {
-                continue;
-            }
-
             using var connection = CrearConexion(configuration);
-            var total = connection.QuerySingleOrDefault<decimal?>(
+            return connection.QuerySingleOrDefault<decimal?>(
                 @"SELECT SUM(v.precio)
                   FROM Ventas v
                   INNER JOIN Productos p ON p.id = v.productoId
@@ -619,17 +517,120 @@ public static class BD
                 new
                 {
                     EmpresaId = empresaId,
-                    Desde = new DateTime(mesInicio.Year, mesInicio.Month, 1),
-                    Hasta = mesFin,
+                    Desde = desde,
+                    Hasta = hasta,
                     NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
                     Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
                     Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
                 }) ?? 0m;
-
-            result.Add(new ChartPoint { Label = mesInicio.ToString("MMM"), Valor = total });
         }
 
-        return result;
+        if (rangoNormalizado.Equals("dia", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = new List<ChartPoint>();
+            var diaActual = inicio;
+
+            while (diaActual <= fin)
+            {
+                var desde = diaActual.Date;
+                var hasta = diaActual.Date.AddDays(1).AddTicks(-1);
+                result.Add(new ChartPoint
+                {
+                    Label = desde.ToString("dd/MM/yyyy"),
+                    Valor = ObtenerTotal(desde, hasta)
+                });
+
+                diaActual = diaActual.AddDays(1);
+            }
+
+            return result;
+        }
+
+        if (rangoNormalizado.Equals("semana", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = new List<ChartPoint>();
+            var semanaInicio = inicio;
+
+            while (semanaInicio <= fin)
+            {
+                var semanaFin = semanaInicio.AddDays(6) > fin ? fin : semanaInicio.AddDays(6);
+                result.Add(new ChartPoint
+                {
+                    Label = $"{semanaInicio:dd/MM} - {semanaFin:dd/MM}",
+                    Valor = ObtenerTotal(semanaInicio, semanaFin)
+                });
+
+                semanaInicio = semanaFin.AddDays(1);
+            }
+
+            return result;
+        }
+
+        if (rangoNormalizado.Equals("mes", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = new List<ChartPoint>();
+            var mesActual = new DateTime(inicio.Year, inicio.Month, 1);
+            var mesFin = new DateTime(fin.Year, fin.Month, 1);
+            var cultura = new CultureInfo("es-ES");
+
+            while (mesActual <= mesFin)
+            {
+                var mesDesde = new DateTime(mesActual.Year, mesActual.Month, 1);
+                var mesHasta = new DateTime(mesActual.Year, mesActual.Month, DateTime.DaysInMonth(mesActual.Year, mesActual.Month), 23, 59, 59, 999);
+
+                result.Add(new ChartPoint
+                {
+                    Label = mesDesde.ToString("MMM", cultura),
+                    Valor = ObtenerTotal(mesDesde, mesHasta)
+                });
+
+                mesActual = mesActual.AddMonths(1);
+            }
+
+            return result;
+        }
+
+        if (rangoNormalizado.Equals("anio", StringComparison.OrdinalIgnoreCase) || rangoNormalizado.Equals("año", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = new List<ChartPoint>();
+            var anioActual = inicio.Year;
+            var anioFinal = fin.Year;
+
+            while (anioActual <= anioFinal)
+            {
+                var desde = new DateTime(anioActual, 1, 1);
+                var hasta = new DateTime(anioActual, 12, 31, 23, 59, 59, 999);
+                result.Add(new ChartPoint
+                {
+                    Label = anioActual.ToString(CultureInfo.InvariantCulture),
+                    Valor = ObtenerTotal(desde, hasta)
+                });
+
+                anioActual++;
+            }
+
+            return result;
+        }
+
+        var resultFallback = new List<ChartPoint>();
+        var mesActualFallback = new DateTime(inicio.Year, inicio.Month, 1);
+        var mesFinFallback = new DateTime(fin.Year, fin.Month, 1);
+        var culturaFallback = new CultureInfo("es-ES");
+
+        while (mesActualFallback <= mesFinFallback)
+        {
+            var mesDesde = new DateTime(mesActualFallback.Year, mesActualFallback.Month, 1);
+            var mesHasta = new DateTime(mesActualFallback.Year, mesActualFallback.Month, DateTime.DaysInMonth(mesActualFallback.Year, mesActualFallback.Month), 23, 59, 59, 999);
+            resultFallback.Add(new ChartPoint
+            {
+                Label = mesDesde.ToString("MMM", culturaFallback),
+                Valor = ObtenerTotal(mesDesde, mesHasta)
+            });
+
+            mesActualFallback = mesActualFallback.AddMonths(1);
+        }
+
+        return resultFallback;
     }
 
     private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)

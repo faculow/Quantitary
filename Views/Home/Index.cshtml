@@ -115,6 +115,12 @@
                 <div class="chart-header">
                     <h4>Ventas por período</h4>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <select id="granularidadPeriodo" class="form-control form-control-sm" style="width: 110px;">
+                            <option value="dia">Día</option>
+                            <option value="semana">Semana</option>
+                            <option value="mes" selected>Mes</option>
+                            <option value="anio">Año</option>
+                        </select>
                         <input type="date" id="fechaInicioPeriodo" class="form-control form-control-sm" style="width: 150px;" />
                         <span class="text-muted">a</span>
                         <input type="date" id="fechaFinPeriodo" class="form-control form-control-sm" style="width: 150px;" />
@@ -202,6 +208,10 @@
             const legendList = document.getElementById('legendList');
             const ventasPorPeriodoContainer = document.getElementById('ventasPorPeriodoContainer');
             const gananciaPorCategoriaContainer = document.getElementById('gananciaPorCategoriaContainer');
+            const granularidadPeriodo = document.getElementById('granularidadPeriodo');
+            const fechaInicioPeriodo = document.getElementById('fechaInicioPeriodo');
+            const fechaFinPeriodo = document.getElementById('fechaFinPeriodo');
+            const aplicarRangoPeriodo = document.getElementById('aplicarRangoPeriodo');
             let ultimaVentaConocida = '@(ViewBag.UltimaVentaTimestamp ?? string.Empty)';
 
             const renderDonut = (participacion) => {
@@ -238,7 +248,14 @@
             };
 
             const renderBars = (container, items, type) => {
-                if (!container || !items || items.length === 0) {
+                if (!container) return;
+
+                if (!items || items.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state-box w-100 text-center py-4">
+                            <small class="text-muted">Sin ventas para este período</small>
+                        </div>
+                    `;
                     return;
                 }
 
@@ -258,125 +275,90 @@
                 }).join('');
             };
 
-            const actualizarDashboard = () => {
-                fetch('@Url.Action("DashboardData", "Home")?rango=mes', {
+            const setDefaultFechasPeriodo = () => {
+                const hoy = new Date();
+                const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+                const finMes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+                if (fechaInicioPeriodo && !fechaInicioPeriodo.value) {
+                    fechaInicioPeriodo.value = inicioMes.toISOString().split('T')[0];
+                }
+
+                if (fechaFinPeriodo && !fechaFinPeriodo.value) {
+                    fechaFinPeriodo.value = finMes.toISOString().split('T')[0];
+                }
+            };
+
+            const actualizarKpisGenerales = (data) => {
+                if (!data) return;
+
+                document.getElementById('totalProductos').textContent = data.totalProductos ?? 0;
+                document.getElementById('productosPocoStock').textContent = data.productosPocoStock ?? 0;
+                document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                document.getElementById('mesActual').textContent = data.mesActual ?? '';
+                document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
+                document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+            };
+
+            const cargarDashboardGeneral = () => {
+                fetch('@Url.Action("DashboardData", "Home")?rango=todos', {
                     method: 'GET',
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 })
                 .then(response => response.ok ? response.json() : null)
                 .then(data => {
                     if (!data) return;
-
-                    const nuevaUltimaVenta = data.ultimaVenta || '';
-                    if (nuevaUltimaVenta && nuevaUltimaVenta === ultimaVentaConocida) {
-                        return;
-                    }
-
-                    ultimaVentaConocida = nuevaUltimaVenta;
-
-                    document.getElementById('totalProductos').textContent = data.totalProductos ?? 0;
-                    document.getElementById('productosPocoStock').textContent = data.productosPocoStock ?? 0;
-                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
-                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
-                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-
-                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
+                    actualizarKpisGenerales(data);
                     renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
                     renderDonut(data.participacionVentas || []);
                 })
                 .catch(() => {
-                    // ignorar errores de actualización automática
+                    // ignorar errores del dashboard general
+                });
+            };
+
+            const cargarVentasPorPeriodo = (opciones = {}) => {
+                setDefaultFechasPeriodo();
+
+                const rangoSeleccionado = opciones.rango || (granularidadPeriodo ? granularidadPeriodo.value : 'mes');
+                const inicio = opciones.fechaInicio ?? (fechaInicioPeriodo ? fechaInicioPeriodo.value : '');
+                const fin = opciones.fechaFin ?? (fechaFinPeriodo ? fechaFinPeriodo.value : '');
+
+                const params = new URLSearchParams({
+                    rango: rangoSeleccionado
+                });
+
+                if (inicio) params.set('fechaInicio', inicio);
+                if (fin) params.set('fechaFin', fin);
+
+                fetch(`@Url.Action("VentasPorPeriodoData", "Home")?${params.toString()}`, {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.ok ? response.json() : null)
+                .then(data => {
+                    if (!data) return;
+                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
+                })
+                .catch(() => {
+                    // ignorar errores del filtro local
                 });
             };
 
             renderDonut(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(participacion.Select(p => new { nombre = p.Nombre, valor = p.Valor }))));
-            setInterval(actualizarDashboard, 15000);
+            setDefaultFechasPeriodo();
+            cargarDashboardGeneral();
+            cargarVentasPorPeriodo({ rango: granularidadPeriodo ? granularidadPeriodo.value : 'mes' });
 
-            // Lógica para el cambio de rango en ventas por período
-            const rangoVentasPeriodo = document.getElementById('rangoVentasPeriodo');
-            const cargarDashboardPorRango = (rango) => {
-                fetch(`@Url.Action("DashboardData", "Home")?rango=${encodeURIComponent(rango)}`, {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(response => response.ok ? response.json() : null)
-                .then(data => {
-                    if (!data) return;
-
-                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
-                    renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
-                    renderDonut(data.participacionVentas || []);
-
-                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
-                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
-                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                })
-                .catch(() => {
-                    // ignorar errores del filtro
-                });
-            };
-
-            if (rangoVentasPeriodo) {
-                rangoVentasPeriodo.addEventListener('change', (event) => {
-                    cargarDashboardPorRango(event.target.value || 'todos');
-                });
+            if (granularidadPeriodo) {
+                granularidadPeriodo.addEventListener('change', () => cargarVentasPorPeriodo());
             }
 
-            // Lógica para el rango de fechas personalizado
-            const fechaInicioPeriodo = document.getElementById('fechaInicioPeriodo');
-            const fechaFinPeriodo = document.getElementById('fechaFinPeriodo');
-            const aplicarRangoPeriodo = document.getElementById('aplicarRangoPeriodo');
-
-            const cargarDashboardPorFechas = () => {
-                if (!fechaInicioPeriodo || !fechaFinPeriodo) return;
-
-                const inicio = fechaInicioPeriodo.value;
-                const fin = fechaFinPeriodo.value;
-
-                if (!inicio || !fin) {
-                    return;
-                }
-
-                const params = new URLSearchParams({
-                    rango: 'personalizado',
-                    fechaInicio: inicio,
-                    fechaFin: fin
-                });
-
-                fetch(`@Url.Action("DashboardData", "Home")?${params.toString()}`, {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(response => response.ok ? response.json() : null)
-                .then(data => {
-                    if (!data) return;
-
-                    renderBars(ventasPorPeriodoContainer, data.ventasPorPeriodo || [], 'periodo');
-                    renderBars(gananciaPorCategoriaContainer, data.gananciaPorCategoria || [], 'categoria');
-                    renderDonut(data.participacionVentas || []);
-
-                    document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('mesActual').textContent = data.mesActual ?? '';
-                    document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
-                    document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                })
-                .catch(() => {
-                    // ignorar errores del filtro
-                });
-            };
-
             if (aplicarRangoPeriodo) {
-                aplicarRangoPeriodo.addEventListener('click', cargarDashboardPorFechas);
+                aplicarRangoPeriodo.addEventListener('click', () => cargarVentasPorPeriodo());
             }
         })();
     </script>

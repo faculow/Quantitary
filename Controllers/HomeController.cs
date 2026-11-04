@@ -472,7 +472,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
-    public IActionResult DashboardData(string rango = "todos", DateTime? fechaInicio = null, DateTime? fechaFin = null)
+    public IActionResult VentasPorPeriodoData(string rango = "mes", DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -482,7 +482,39 @@ public class HomeController : Controller
 
         var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
         var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId, null, null, null, fechaInicio, fechaFin);
+
+        return Json(new
+        {
+            ventasPorPeriodo = dashboard.VentasPorPeriodo.Select(x => new { label = x.Label, valor = x.Valor })
+        });
+    }
+
+    [HttpGet]
+    public IActionResult DashboardData(string rango = "todos", DateTime? fechaInicio = null, DateTime? fechaFin = null, string? granularidad = null, bool soloVentasPeriodo = false)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var rangoUsado = string.IsNullOrWhiteSpace(granularidad) ? rango : granularidad;
+        var dashboard = _inventoryRepository.ObtenerDashboard(rangoUsado, empresaId, null, null, null, fechaInicio, fechaFin);
         var ultimaVenta = HttpContext.Session.GetString("UltimaVentaTimestamp");
+
+        if (soloVentasPeriodo)
+        {
+            return Json(new
+            {
+                ventasPorPeriodo = dashboard.VentasPorPeriodo.Select(x => new { label = x.Label, valor = x.Valor }),
+                granularidad = rangoUsado,
+                rango = rangoUsado,
+                actualizadoEn = DateTime.Now,
+                ultimaVenta = ultimaVenta,
+                ultimaVentaValor = !string.IsNullOrWhiteSpace(ultimaVenta) ? DateTime.Parse(ultimaVenta).ToString("O") : null
+            });
+        }
 
         return Json(new
         {
