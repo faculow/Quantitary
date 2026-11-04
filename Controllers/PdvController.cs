@@ -217,6 +217,12 @@ public class PdvController : Controller
             return RedirectToAction("Login", "Cuenta");
         }
 
+        if (empresaId <= 0)
+        {
+            TempData["PdvError"] = "No se pudo identificar la empresa del usuario.";
+            return RedirectToAction(nameof(Index));
+        }
+
         using var connection = BD.CrearConexion(_configuration);
         connection.Open();
 
@@ -240,8 +246,8 @@ public class PdvController : Controller
             var porcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m;
 
             var ventaId = connection.ExecuteScalar<int>(
-                @"INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID)
-                  VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId);
+                @"INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID, empresaID)
+                  VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId, @EmpresaId);
                   SELECT CAST(SCOPE_IDENTITY() as int);",
                 new
                 {
@@ -252,7 +258,8 @@ public class PdvController : Controller
                     Cantidad = item.Cantidad,
                     Precio = precioVentaTotal,
                     Costo = precioCompraTotal,
-                    UsuarioId = usuarioId.Value
+                    UsuarioId = usuarioId.Value,
+                    EmpresaId = empresaId
                 });
 
             connection.Execute(

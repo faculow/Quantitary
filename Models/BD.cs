@@ -256,6 +256,10 @@ public static class BD
             .Take(3)
             .ToList();
 
+        resumen.UltimosProductosVendidos = ventas
+            .OrderByDescending(v => v.Fecha)
+            .ToList();
+
         return resumen;
     }
 
@@ -268,7 +272,7 @@ public static class BD
         var sql = @"SELECT v.*, p.sku, p.categoria
                     FROM Ventas v
                     INNER JOIN Productos p ON p.id = v.productoId
-                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                       AND v.fecha >= @Inicio AND v.fecha <= @Fin
                       AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                       AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -302,7 +306,7 @@ public static class BD
                 @"SELECT SUM(v.precio)
                   FROM Ventas v
                   INNER JOIN Productos p ON p.id = v.productoId
-                  WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                  WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                     AND v.fecha >= @Desde AND v.fecha <= @Hasta
                     AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                     AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -333,7 +337,7 @@ public static class BD
             @"SELECT p.categoria AS Nombre, SUM(v.precio - v.costo) AS Valor
               FROM Ventas v
               INNER JOIN Productos p ON p.id = v.productoId
-              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+              WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -367,7 +371,7 @@ public static class BD
             @"SELECT p.categoria AS Nombre, SUM(v.precio) AS Valor
               FROM Ventas v
               INNER JOIN Productos p ON p.id = v.productoId
-              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+              WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -405,20 +409,22 @@ public static class BD
 
     private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null)
     {
-        var fechaInicio = range.ToLowerInvariant() switch
+        var rangoNormalizado = (range ?? "anio").Trim();
+
+        var fechaInicio = rangoNormalizado.ToLowerInvariant() switch
         {
             "dia" => DateTime.Now.AddDays(-1),
             "semana" => DateTime.Now.AddDays(-7),
             "mes" => DateTime.Now.AddMonths(-1),
-            "anio" => DateTime.Now.AddYears(-1),
-            _ => DateTime.Now.AddMonths(-1)
+            "anio" or "año" => DateTime.Now.AddYears(-1),
+            _ => DateTime.Now.AddYears(-1)
         };
 
         using var connection = CrearConexion(configuration);
         var sql = @"SELECT v.*, p.sku, p.categoria
                     FROM Ventas v
                     INNER JOIN Productos p ON p.id = v.productoId
-                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                       AND v.fecha >= @FechaInicio
                       AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                       AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -517,6 +523,36 @@ public static class BD
         if (usuario == null)
         {
             return false;
+        }
+
+        var empresaIdForzado = mailNormalizado.Equals("admin@quantitary.com", StringComparison.OrdinalIgnoreCase) ? 1 : usuario.EmpresaID;
+        if (empresaIdForzado <= 0)
+        {
+            empresaIdForzado = connection.QuerySingleOrDefault<int?>(
+                "SELECT empresaID FROM Usuarios WHERE id = @UsuarioId",
+                new { UsuarioId = usuario.Id }) ?? 0;
+        }
+
+        if (empresaIdForzado <= 0)
+        {
+            empresaIdForzado = connection.QuerySingleOrDefault<int?>(
+                "SELECT TOP 1 id FROM Empresa ORDER BY id") ?? 0;
+        }
+
+        if (empresaIdForzado > 0)
+        {
+            usuario.EmpresaID = empresaIdForzado;
+            connection.Execute(
+                "UPDATE Usuarios SET empresaID = @EmpresaId WHERE id = @UsuarioId AND empresaID <> @EmpresaId",
+                new { UsuarioId = usuario.Id, EmpresaId = empresaIdForzado });
+
+            connection.Execute(
+                @"UPDATE v
+                  SET empresaID = @EmpresaId
+                  FROM Ventas v
+                  WHERE v.usuarioID = @UsuarioId
+                    AND (v.empresaID IS NULL OR v.empresaID <> @EmpresaId)",
+                new { UsuarioId = usuario.Id, EmpresaId = empresaIdForzado });
         }
 
         var empresa = connection.QuerySingleOrDefault<Empresa>(

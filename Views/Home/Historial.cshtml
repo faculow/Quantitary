@@ -140,7 +140,7 @@
             </form>
         </div>
 
-        <table class="table table-striped align-middle">
+        <table class="table table-striped align-middle" id="ultimosProductosVendidosTable">
             <thead>
                 <tr>
                     <th>Producto</th>
@@ -155,9 +155,11 @@
             <tbody>
                 @if (ventas.Any())
                 {
-                    foreach (var venta in ventas)
+                    var ventasLista = ventas.ToList();
+                    for (var i = 0; i < ventasLista.Count; i++)
                     {
-                        <tr>
+                        var venta = ventasLista[i];
+                        <tr class="venta-row" style="@(i < 5 ? null : "display:none;")" data-row-index="@i">
                             <td>@venta.NombreProducto</td>
                             <td>@venta.Sku</td>
                             <td>@venta.Categoria</td>
@@ -174,5 +176,46 @@
                 }
             </tbody>
         </table>
+
+        @if (ventas.Any())
+        {
+            var totalVentas = ventas.Count;
+            <div class="text-center mt-3">
+                <button id="verMasProductosBtn" type="button" class="btn btn-outline-primary" @(totalVentas <= 5 ? "disabled" : null)>
+                    @(totalVentas <= 5 ? "No hay más productos" : "Ver más productos")
+                </button>
+            </div>
+        }
     </div>
 </div>
+
+<script>
+    (() => {
+        const rows = Array.from(document.querySelectorAll('.venta-row'));
+        const button = document.getElementById('verMasProductosBtn');
+
+        if (!button || rows.length === 0) {
+            return;
+        }
+
+        let visibleCount = 5;
+
+        const updateRows = () => {
+            rows.forEach((row, index) => {
+                row.style.display = index < visibleCount ? '' : 'none';
+            });
+
+            const totalRows = rows.length;
+            button.disabled = visibleCount >= totalRows;
+            button.textContent = visibleCount >= totalRows ? 'No hay más productos' : 'Ver más productos';
+        };
+
+        button.addEventListener('click', () => {
+            const totalRows = rows.length;
+            visibleCount = Math.min(visibleCount + 5, totalRows);
+            updateRows();
+        });
+
+        updateRows();
+    })();
+</script>

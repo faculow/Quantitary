@@ -265,9 +265,21 @@ public class ProductoRepository
         var topRotacion = filas.OrderByDescending(x => x.Rotacion).FirstOrDefault();
         var categoriaTop = ventasPorCategoria.OrderByDescending(x => x.VentasTotales).FirstOrDefault();
         var interesCompra = filas.Any() ? Math.Round(filas.Max(x => x.Rotacion * 100m), 1) : 0m;
-        var mensajePersonalizado = filas.Any()
-            ? $"El próximo paso para vender más es reforzar el stock de {string.Join(", ", filas.Where(x => x.StockActual <= x.StockMinimo || x.AccionSugerida == "Reponer").Take(3).Select(x => x.Nombre)) ?? "los productos más vendidos"} y poner foco desde {ObtenerDiaMasVendido("General")} para evitar quedarte sin stock cuando llega la demanda."
-            : "El próximo paso para vender más es revisar el stock y reforzar las promociones por día de la semana.";
+        var productosUrgentes = filas
+            .Where(x => x.StockActual <= x.StockMinimo)
+            .OrderByDescending(x => x.CantidadVendida)
+            .ThenBy(x => x.Nombre)
+            .Select(x => x.Nombre)
+            .Take(3)
+            .ToList();
+        var diaFoco = ObtenerDiaMasVendido("General");
+        var nombreProductosUrgentes = productosUrgentes.Count > 0
+            ? string.Join(", ", productosUrgentes)
+            : (topRotacion?.Nombre ?? "los productos más vendidos");
+
+        var mensajePersonalizado = productosUrgentes.Count > 0
+            ? $"El próximo paso para vender más es reforzar el stock de {nombreProductosUrgentes} y poner foco desde el {diaFoco} para evitar quedarte sin producto cuando llega la demanda."
+            : $"El próximo paso para vender más es reforzar el stock de {nombreProductosUrgentes} y poner foco desde el {diaFoco} para evitar quedarte sin producto cuando llega la demanda.";
 
         var model = new IndicadoresYOportunidadesViewModel
         {
@@ -304,11 +316,21 @@ public class ProductoRepository
                 .ToList(),
             ExplicacionesIndicadores = new List<string>
             {
-                "Margen neto general: cuánto ganas por cada peso vendido tras cubrir costos.",
-                "Rotación: qué tan rápido se mueve cada producto frente a su stock.",
-                "Día más vendido: el mejor momento para vender y promocionar.",
-                "Día menos vendido: el momento para ajustar precio o stock.",
-                "Mínimo de reposición: indica si hay que subirlo o bajarlo para comprar en el momento correcto."
+                productosUrgentes.Count > 0
+                    ? $"Hay {productosUrgentes.Count} productos por debajo del mínimo. Si no los repone, puede quedar sin stock en los días de más movimiento."
+                    : "No hay productos críticos por el momento, pero conviene revisar el stock antes del fin de semana.",
+                topRotacion != null
+                    ? $"El producto que más se mueve es {topRotacion.Nombre}. Ese es el primero en reforzar cuando la demanda crece."
+                    : "Todavía no hay un producto claro con más movimiento, por eso conviene seguir observando ventas y stock.",
+                categoriaTop != null
+                    ? $"La categoría {categoriaTop.Categoria} concentra la mayor parte de las ventas, así que conviene mantenerla abastecida."
+                    : "Todavía no hay una categoría dominante en ventas, pero conviene revisar qué productos más venden.",
+                diaFoco != ""
+                    ? $"La demanda se concentra más los {diaFoco}. Ese es el mejor momento para tener stock listo y evitar faltantes."
+                    : "La demanda se mantiene estable, pero conviene tener un margen extra de stock para no quedar sin producto.",
+                margenNetoGeneral > 0
+                    ? $"El margen está positivo, por lo que reforzar stock tiene sentido: se vende y se mantiene la rentabilidad."
+                    : "El margen todavía no es fuerte, así que conviene controlar costos y no comprar más de lo necesario."
             },
             Productos = filas
                 .OrderByDescending(x => x.Rotacion)

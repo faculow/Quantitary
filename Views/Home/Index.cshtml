@@ -8,6 +8,15 @@
     var categorias = dashboard?.GananciaPorCategoria ?? new List<Quantitary.Models.ChartPoint>();
     var mesActual = dashboard?.MesActualLabel ?? DateTime.Now.ToString("MMMM yyyy");
     var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
+    var productosPocoStock = dashboard?.ProductosPocoStock ?? 0;
+    var productosSinStock = dashboard?.ProductosSinStock ?? 0;
+    var stockPorRevisarTexto = productosPocoStock + productosSinStock == 0
+        ? "Sin productos por revisar"
+        : productosSinStock > 0 && productosPocoStock > 0
+            ? $"{productosPocoStock} bajos y {productosSinStock} sin stock"
+            : productosSinStock > 0
+                ? $"{productosSinStock} sin stock"
+                : $"{productosPocoStock} por debajo del mínimo";
 
     var colores = new[] { "#2f80ed", "#27ae60", "#f2c94c", "#e67e22", "#9b59b6" };
     var maxBarra = ventasPeriodo.Any() && ventasPeriodo.Max(v => v.Valor) > 0 ? ventasPeriodo.Max(v => v.Valor) : 1m;
@@ -41,7 +50,7 @@
             <div class="kpi-card warning-card">
                 <span class="kpi-label">Stock por revisar</span>
                 <strong class="kpi-value" id="productosPocoStock">@(dashboard?.ProductosPocoStock ?? 0)</strong>
-                <small class="kpi-foot">2 bajos y 1 sin stock</small>
+                <small class="kpi-foot">@stockPorRevisarTexto</small>
             </div>
         </div>
 

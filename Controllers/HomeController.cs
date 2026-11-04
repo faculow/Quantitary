@@ -142,7 +142,7 @@ public class HomeController : Controller
         return RedirectToAction(nameof(IndicadoresYOportunidades));
     }
 
-    public IActionResult Historial(string rango = "mes", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
+    public IActionResult Historial(string rango = "anio", string? nombreProducto = null, string? sku = null, string? categoria = null, string? busqueda = null)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -196,7 +196,7 @@ public class HomeController : Controller
             SELECT COALESCE(SUM(v.precio), 0)
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
@@ -205,7 +205,7 @@ public class HomeController : Controller
             SELECT COALESCE(SUM(v.costo), 0)
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
@@ -214,7 +214,7 @@ public class HomeController : Controller
             SELECT COALESCE(AVG(v.precio), 0)
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
@@ -223,7 +223,7 @@ public class HomeController : Controller
             SELECT COALESCE(SUM(v.precio - v.costo), 0)
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
@@ -232,7 +232,7 @@ public class HomeController : Controller
             SELECT COALESCE(SUM(v.cantidad), 0)
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
@@ -241,7 +241,7 @@ public class HomeController : Controller
             SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY CAST(v.fecha AS date)
             ORDER BY CAST(v.fecha AS date)";
@@ -263,7 +263,7 @@ public class HomeController : Controller
                 SELECT COALESCE(SUM(v.precio), 0)
                 FROM Ventas v
                 INNER JOIN Productos p ON p.id = v.productoId
-                WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+                WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                   AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin";
 
             var totalSemana = await connection.QuerySingleAsync<decimal>(sqlVentaSemana, new
@@ -286,7 +286,7 @@ public class HomeController : Controller
             SELECT p.categoria AS Label, COALESCE(SUM(v.precio - v.costo), 0) AS Valor
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY p.categoria
             ORDER BY Valor DESC";
@@ -358,7 +358,7 @@ public class HomeController : Controller
                    SUM(v.precio - v.costo) AS GananciaTotal
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY v.productoId", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
 
@@ -370,7 +370,7 @@ public class HomeController : Controller
                    SUM(v.cantidad) AS Cantidad
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
             ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
@@ -383,7 +383,7 @@ public class HomeController : Controller
                    SUM(v.cantidad) AS Cantidad
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
             ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
@@ -394,7 +394,7 @@ public class HomeController : Controller
                    SUM(v.cantidad) AS Cantidad
             FROM Ventas v
             INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY DATENAME(weekday, v.fecha)
             ORDER BY CASE DATENAME(weekday, v.fecha)
