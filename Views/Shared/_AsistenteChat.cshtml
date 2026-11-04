@@ -1,0 +1,37 @@
+<div id="quantitary-ia" aria-label="Quantitary IA">
+  <button id="robotButton" class="robot-button" type="button" aria-label="Abrir Quantitary IA" aria-expanded="false">
+    <img id="robotIcon" src="~/ia/assets/quantitary-ia-normal.svg" alt="" />
+  </button>
+  <section id="chatPanel" class="chat-panel" aria-label="Panel de Quantitary IA">
+    <header class="chat-header">
+      <img src="~/ia/assets/quantitary-ia-active.svg" alt="">
+      <div class="chat-heading">
+        <strong>Quantitary IA</strong>
+        <small id="assistantStatus" role="status" aria-live="polite">Tu asistente inteligente</small>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" id="chatsButton" type="button" aria-label="Historial de chats" title="Historial">☷</button>
+        <button class="icon-button" id="newChatButton" type="button" aria-label="Nuevo chat" title="Nuevo chat">✎</button>
+        <button class="icon-button" id="minimizeButton" type="button" aria-label="Minimizar">−</button>
+        <button class="icon-button" id="fullscreenButton" type="button" aria-label="Pantalla completa" aria-pressed="false">⛶</button>
+        <button class="icon-button" id="closeButton" type="button" aria-label="Cerrar">×</button>
+      </div>
+    </header>
+    <div id="chatHistoryPanel" class="ia-history" hidden>
+      <div class="ia-history-title">Tus conversaciones <button id="historyClose" type="button" aria-label="Cerrar historial">×</button></div>
+      <div id="chatHistoryList" class="ia-history-list"></div>
+    </div>
+    <div class="chat-body">
+      <div id="messages" class="messages" role="log" aria-label="Conversación"></div>
+    </div>
+    <footer class="chat-footer">
+      <form id="chatForm" class="input-row" autocomplete="off">
+        @Html.AntiForgeryToken()
+        <textarea id="chatInput" rows="1" maxlength="2000" placeholder="Preguntale algo a Quantitary..." aria-label="Escribí tu pregunta"></textarea>
+        <button class="attach" type="button" disabled aria-label="Adjuntar (próximamente)" title="Próximamente">＋</button>
+        <button class="send" id="sendButton" type="submit" aria-label="Enviar" disabled>↗</button>
+      </form>
+    </footer>
+  </section>
+
+</div>

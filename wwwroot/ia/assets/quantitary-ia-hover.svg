@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Quantitary IA robot">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0757D8"/><stop offset="1" stop-color="#082B68"/>
+    </linearGradient>
+    <linearGradient id="shell" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#C8E5FF"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#39E7FF"/><stop offset="1" stop-color="#1769E8"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="128" cy="128" r="119" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="116" fill="none" stroke="#2D8CFF" stroke-width="2" opacity="0.7" filter="url(#glow)"/>
+  <!-- orbital sweep -->
+  <path d="M35 159 C53 202 139 218 205 154 C220 140 221 125 209 119" fill="none" stroke="url(#blue)" stroke-width="9" stroke-linecap="round"/>
+  <!-- antenna -->
+  <path d="M124 48 C124 32 111 28 108 17" fill="none" stroke="url(#blue)" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="106" cy="17" r="8" fill="#42E7FF" stroke="#FFFFFF" stroke-width="2"/>
+  <!-- side ear pads -->
+  <rect x="39" y="94" width="24" height="61" rx="12" fill="#1769E8" stroke="#9DDCFF" stroke-width="3"/>
+  <rect x="193" y="94" width="24" height="61" rx="12" fill="#1769E8" stroke="#9DDCFF" stroke-width="3"/>
+  <rect x="46" y="107" width="10" height="34" rx="5" fill="#06285B"/>
+  <rect x="200" y="107" width="10" height="34" rx="5" fill="#06285B"/>
+  <!-- head shell -->
+  <path d="M58 92 C58 61 82 43 128 43 C174 43 198 61 198 92 L198 143 C198 177 174 195 128 195 C82 195 58 177 58 143 Z" fill="url(#shell)" stroke="#7BCBFF" stroke-width="3"/>
+  <!-- face display -->
+  <rect x="70" y="82" width="116" height="86" rx="32" fill="#061A3D" stroke="#2D8CFF" stroke-width="3"/>
+  <!-- happy eyes -->
+  <path d="M91 126 Q102 108 113 126" fill="none" stroke="#37E4FF" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M143 126 Q154 108 165 126" fill="none" stroke="#37E4FF" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- small AI sparkle -->
+  <path d="M207 52 L213 68 L229 74 L213 80 L207 96 L201 80 L185 74 L201 68 Z" fill="#32DFFF" stroke="#B8F8FF" stroke-width="1.5"/>
+</svg>

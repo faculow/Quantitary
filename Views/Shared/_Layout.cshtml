@@ -18,6 +18,7 @@
     <link rel="icon" type="image/png" href="~/imagenes/logo.png" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/quantitary-ia.css" asp-append-version="true" />
 </head>
 <body class="app-body">
     <div class="app-shell">
@@ -84,6 +85,12 @@
             </main>
         </div>
     </div>
+
+    @if (Context.Session.GetInt32("UsuarioID") is > 0)
+    {
+        <partial name="_AsistenteChat" />
+        <script defer src="~/js/quantitary-ia.js" asp-append-version="true"></script>
+    }
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
