@@ -91,6 +91,12 @@ public class HomeController : Controller
         return View();
     }
 
+    [HttpGet]
+    public IActionResult Landing()
+    {
+        return View();
+    }
+
     public IActionResult IndicadoresYOportunidades()
     {
         var redirect = RedirigirSiNoHaySesion();

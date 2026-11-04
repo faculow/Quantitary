@@ -1,0 +1,91 @@
+@{
+    Layout = null;
+    ViewData["Title"] = "Quantitary - Landing";
+}
+
+<div class="landing-page">
+    <section class="landing-hero">
+        <div class="landing-copy">
+            <p class="landing-kicker">Quantitary · Landing pública</p>
+            <h1>Tu negocio, <span>más claro.</span></h1>
+            <p class="landing-text">
+                Centralizá ventas, stock y decisiones con una herramienta pensada para equipos que quieren crecer con orden y rapidez.
+            </p>
+            <div class="landing-actions">
+                <a asp-controller="Cuenta" asp-action="Login" class="btn btn-primary btn-quantitary">Iniciar sesión</a>
+                <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-secondary btn-quantitary-secondary">Crear cuenta</a>
+            </div>
+            <ul class="landing-points">
+                <li>Control de stock en tiempo real</li>
+                <li>Indicadores de ventas y rentabilidad</li>
+                <li>Gestión simple y centralizada</li>
+            </ul>
+        </div>
+
+        <div class="landing-visual">
+            <div class="dashboard-preview">
+                <div class="preview-topbar">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-yellow"></span>
+                    <span class="dot dot-green"></span>
+                </div>
+
+                <div class="preview-content">
+                    <div class="preview-card preview-card-main">
+                        <span class="preview-label">Ventas</span>
+                        <strong>$156.800</strong>
+                        <small>+18.4% vs. mes anterior</small>
+                    </div>
+
+                    <div class="preview-grid">
+                        <div class="preview-card small-card">
+                            <span>Stock</span>
+                            <strong>1.284</strong>
+                        </div>
+                        <div class="preview-card small-card accent">
+                            <span>Ganancia</span>
+                            <strong>$46.300</strong>
+                        </div>
+                    </div>
+
+                    <div class="mini-chart">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="landing-features">
+        <div class="feature-card">
+            <span class="feature-icon">📊</span>
+            <h3>Ventas claras</h3>
+            <p>Visualizá el movimiento de tu negocio con métricas listas para analizar.</p>
+        </div>
+
+        <div class="feature-card">
+            <span class="feature-icon">📦</span>
+            <h3>Inventario ordenado</h3>
+            <p>Seguimiento del stock, alertas y decisiones más rápidas para cada producto.</p>
+        </div>
+
+        <div class="feature-card">
+            <span class="feature-icon">⚡</span>
+            <h3>Operación sencilla</h3>
+            <p>Todo en un mismo lugar para reducir tiempos de gestión y mejorar resultados.</p>
+        </div>
+    </section>
+
+    <section class="landing-banner">
+        <div>
+            <p class="landing-banner-kicker">¿Querés mejorar tu control?</p>
+            <h2>Un panel pensado para decisiones más inteligentes.</h2>
+        </div>
+        <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-light btn-banner">Comenzar ahora</a>
+    </section>
+</div>
