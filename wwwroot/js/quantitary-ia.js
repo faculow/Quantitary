@@ -19,9 +19,12 @@
   }
 
   function setFullscreen(on) {
-    document.getElementById('quantitary-ia').classList.toggle('fullscreen', on);
+    var root = document.getElementById('quantitary-ia');
+    root.classList.toggle('fullscreen', on);
     fullscreenButton.setAttribute('aria-pressed', String(on));
-    fullscreenButton.setAttribute('aria-label', on ? 'Restaurar tamaño' : 'Pantalla completa');
+    fullscreenButton.setAttribute('aria-label', on ? 'Achicar' : 'Agrandar');
+    fullscreenButton.setAttribute('title', on ? 'Achicar' : 'Agrandar');
+    panel.dispatchEvent(new CustomEvent('qty-fullscreen', { detail: { fullscreen: on } }));
   }
 
   button.addEventListener('mouseenter', () => {
@@ -36,6 +39,7 @@
   fullscreenButton.addEventListener('click', () => {
     setFullscreen(!document.getElementById('quantitary-ia').classList.contains('fullscreen'));
   });
+  document.getElementById('assistantBackdrop').addEventListener('click', () => setFullscreen(false));
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !panel.classList.contains('visible')) return;
     if (document.getElementById('quantitary-ia').classList.contains('fullscreen')) setFullscreen(false);
@@ -69,6 +73,8 @@
   var statusEl = document.getElementById('assistantStatus');
   var historyPanel = document.getElementById('chatHistoryPanel');
   var historyList = document.getElementById('chatHistoryList');
+  var historySearch = document.getElementById('historySearch');
+  var historyNewChatBtn = document.getElementById('historyNewChatButton');
   var currentChatId = null;
   function csrf() { return document.querySelector('#chatForm input[name="__RequestVerificationToken"]').value; }
   async function api(url, method, data) {
@@ -581,6 +587,7 @@
       var line = createEl('div', 'ia-history-entry');
       var open = createEl('button', 'ia-chat-open', item.titulo || 'Nuevo chat');
       open.type = 'button';
+      if (item.id === currentChatId) open.classList.add('active');
       open.addEventListener('click', function () { openChat(item.id).catch(report); });
       var rename = createEl('button', '', '✎');
       rename.type = 'button'; rename.title = 'Renombrar';
@@ -603,7 +610,15 @@
       line.append(open, rename, remove);
       historyList.appendChild(line);
     });
+    filterHistory();
     return data;
+  }
+
+  function filterHistory() {
+    var term = (historySearch.value || '').trim().toLocaleLowerCase('es');
+    historyList.querySelectorAll('.ia-history-entry').forEach(function (entry) {
+      entry.hidden = term !== '' && !entry.textContent.toLocaleLowerCase('es').includes(term);
+    });
   }
 
   function report(err) { addMessage('assistant', err.message || 'No se pudo cargar el historial.'); }
@@ -622,7 +637,8 @@
     hasSentMessage = rows.length > 0;
     removeSuggestions();
     refreshSuggestions();
-    historyPanel.hidden = true;
+    historyPanel.hidden = !(document.getElementById('quantitary-ia').classList.contains('fullscreen') &&
+      !window.matchMedia('(max-width: 540px)').matches);
     input.focus();
   }
 
@@ -633,12 +649,18 @@
   }
 
   newChatBtn.addEventListener('click', function () { newChat().catch(report); });
+  historyNewChatBtn.addEventListener('click', function () { newChat().catch(report); });
+  historySearch.addEventListener('input', filterHistory);
   document.getElementById('chatsButton').addEventListener('click', function () {
     historyPanel.hidden = !historyPanel.hidden;
     if (!historyPanel.hidden) loadHistory().catch(report);
   });
   document.getElementById('historyClose').addEventListener('click', function () { historyPanel.hidden = true; });
   panel.addEventListener('qty-open', function () { input.focus(); });
+  panel.addEventListener('qty-fullscreen', function (event) {
+    historyPanel.hidden = !event.detail.fullscreen;
+    if (event.detail.fullscreen) loadHistory().catch(report);
+  });
 
   // El formulario se genera dentro del chat: los cambios se ejecutan solo por el servidor.
   function formRow(parent, title, name, type, value) {
@@ -706,15 +728,13 @@
     messagesEl.appendChild(form); scrollToEnd();
   }
 
-  function addTools() {
-    var tool = createEl('button','ia-tools-button','Gestionar producto');tool.type='button';
-    tool.addEventListener('click',function(){manageProduct('');});
-    document.querySelector('#quantitary-ia .chat-footer').prepend(tool);
-  }
-  addTools();
   async function loadAlerts() {
     var container = document.getElementById('iaStockDashboard');
     if (!container) return;
+    if (window.localStorage.getItem('quantitary.notifyStock') === 'false') {
+      container.hidden = true;
+      return;
+    }
     try {
       var data = await api('/api/ia/alertas-stock');
       container.hidden = false;
