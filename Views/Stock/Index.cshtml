@@ -143,6 +143,26 @@
                 .toLowerCase();
         };
 
+        const convertirPrecio = (valor) => {
+            if (valor === null || valor === undefined || valor === '') {
+                return null;
+            }
+
+            let texto = valor.toString().trim();
+            if (!texto) {
+                return null;
+            }
+
+            if (texto.includes(',') && texto.includes('.')) {
+                texto = texto.replace(/\./g, '').replace(',', '.');
+            } else if (texto.includes(',')) {
+                texto = texto.replace(',', '.');
+            }
+
+            const numero = Number(texto);
+            return Number.isFinite(numero) ? numero : null;
+        };
+
         const buildQuery = () => {
             if (!form) {
                 return '';
@@ -160,7 +180,7 @@
             const formData = new FormData(form);
             const skuFiltro = normalizarTexto(formData.get('sku'));
             const categoriaFiltro = normalizarTexto(formData.get('categoria'));
-            const precioMinimo = formData.get('precioMinimo')?.toString().trim() ?? '';
+            const precioMinimo = convertirPrecio(formData.get('precioMinimo'));
             const pocoStock = formData.get('pocoStock') === 'true';
 
             const rows = Array.from(tableBody.querySelectorAll('tr[data-sku]'));
@@ -175,7 +195,7 @@
 
                 const cumpleSku = !skuFiltro || sku.includes(skuFiltro);
                 const cumpleCategoria = !categoriaFiltro || categoria === categoriaFiltro;
-                const cumplePrecio = !precioMinimo || precio >= Number(precioMinimo);
+                const cumplePrecio = precioMinimo === null || precio >= precioMinimo;
                 const cumpleStock = !pocoStock || stock <= stockMinimo || stock === 0;
 
                 const visible = cumpleSku && cumpleCategoria && cumplePrecio && cumpleStock;
@@ -202,96 +222,4 @@
             const requestId = ++latestRequestId;
             const url = `@Url.Action("Filtrar", "Stock")${buildQuery()}`;
 
-            if (activeController) {
-                activeController.abort();
-            }
-
-            activeController = new AbortController();
-
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    signal: activeController.signal
-                });
-
-                if (requestId !== latestRequestId) {
-                    return;
-                }
-
-                if (!response.ok) {
-                    return;
-                }
-
-                const html = await response.text();
-
-                if (requestId !== latestRequestId) {
-                    return;
-                }
-
-                tableBody.innerHTML = html;
-                aplicarFiltroCliente();
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    return;
-                }
-                throw error;
-            }
-        };
-
-        const dispararFiltro = () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                applyFilters();
-            }, 250);
-        };
-
-        if (form) {
-            const filtros = form.querySelectorAll('input, select');
-            filtros.forEach((control) => {
-                control.addEventListener('input', dispararFiltro);
-                control.addEventListener('change', dispararFiltro);
-            });
-        }
-
-        if (skuInput) {
-            skuInput.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    applyFilters();
-                }
-            });
-        }
-
-        form?.addEventListener('submit', function (event) {
-            event.preventDefault();
-            applyFilters();
-        });
-
-        document.addEventListener('click', async function (event) {
-            const editButton = event.target.closest('[data-edit-id]');
-            if (editButton) {
-                const id = editButton.getAttribute('data-edit-id');
-                const response = await fetch(`@Url.Action("Editar", "Stock")/${id}`, {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                });
-
-                if (!response.ok) {
-                    return;
-                }
-
-                const html = await response.text();
-                modalContent.innerHTML = html;
-                modal.classList.add('show');
-                modal.setAttribute('aria-hidden', 'false');
-                document.body.classList.add('modal-open');
-            }
-
-            if (event.target.matches('[data-close-modal]')) {
-                modal.classList.remove('show');
-                modal.setAttribute('aria-hidden', 'true');
-                document.body.classList.remove('modal-open');
-            }
-        });
-    });
-</script>
+            if
