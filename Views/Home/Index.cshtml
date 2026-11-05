@@ -13,42 +13,51 @@
     <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
 </head>
 <body>
-    <div class="landing-shell">
-        <header class="landing-topbar">
+    <div class="landing-page">
+        <header class="landing-header">
             <div class="brand-mark">
                 <span class="brand-dot"></span>
                 <span>Quantitary</span>
             </div>
 
-            <div class="topbar-actions">
-                <a asp-controller="Cuenta" asp-action="Login" class="topbar-link">Iniciar sesión</a>
-                <a asp-controller="Cuenta" asp-action="Registro" class="btn-quantary btn-secondary-quantary">Crear cuenta</a>
+            <nav class="header-nav" aria-label="Navegación principal">
+                <a href="#features">Características</a>
+                <a href="#beneficios">Beneficios</a>
+                <a href="#preguntas">Preguntas</a>
+            </nav>
+
+            <div class="header-actions">
+                <a asp-controller="Cuenta" asp-action="Login" class="header-link">Iniciar sesión</a>
+                <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-primary btn-quantary btn-header">Crear cuenta</a>
             </div>
         </header>
 
-        <main>
-            <section class="landing-hero">
-                <div class="landing-copy">
+        <main class="landing-main">
+            <section class="hero-section">
+                <div class="hero-copy">
                     <p class="eyebrow">Quantitary · Landing pública</p>
-                    <h1>Tu negocio, <span>más claro.</span></h1>
-                    <p class="landing-text">
+                    <h1>
+                        Tu negocio, <span>más claro.</span><br />
+                        Tus decisiones, <span>más simples.</span>
+                    </h1>
+                    <p class="hero-text">
                         Centralizá ventas, stock y decisiones con una herramienta pensada para equipos que quieren crecer con orden y rapidez.
                     </p>
 
-                    <div class="landing-actions">
-                        <a asp-controller="Cuenta" asp-action="Login" class="btn-quantary btn-primary-quantary">Iniciar sesión</a>
-                        <a asp-controller="Cuenta" asp-action="Registro" class="btn-quantary btn-secondary-quantary">Crear cuenta</a>
+                    <div class="hero-actions">
+                        <a asp-controller="Cuenta" asp-action="Login" class="btn btn-primary btn-quantary btn-primary-cta">Iniciar sesión</a>
+                        <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-outline-primary btn-quantary btn-secondary-cta">Crear cuenta</a>
                     </div>
 
-                    <ul class="landing-points">
+                    <ul class="hero-points">
                         <li>Control de stock en tiempo real</li>
                         <li>Indicadores de ventas y rentabilidad</li>
                         <li>Gestión simple y centralizada</li>
                     </ul>
                 </div>
 
-                <div class="landing-visual">
-                    <div class="dashboard-preview" aria-label="Vista previa del panel">
+                <div class="hero-visual" aria-label="Vista previa del panel">
+                    <div class="dashboard-preview">
                         <div class="preview-topbar">
                             <span class="dot dot-red"></span>
                             <span class="dot dot-yellow"></span>
@@ -86,34 +95,149 @@
                 </div>
             </section>
 
-            <section class="landing-features">
-                <article class="feature-card">
-                    <span class="feature-icon">📊</span>
-                    <h3>Ventas claras</h3>
-                    <p>Visualizá el movimiento de tu negocio con métricas listas para analizar.</p>
-                </article>
+            <section class="story-section" id="beneficios">
+                <div class="story-visual">
+                    <div class="store-scene">
+                        <div class="scene-window"></div>
+                        <div class="scene-shelf"></div>
+                    </div>
+                </div>
 
-                <article class="feature-card">
-                    <span class="feature-icon">📦</span>
-                    <h3>Inventario ordenado</h3>
-                    <p>Seguimiento del stock, alertas y decisiones más rápidas para cada producto.</p>
-                </article>
-
-                <article class="feature-card">
-                    <span class="feature-icon">⚡</span>
-                    <h3>Operación sencilla</h3>
-                    <p>Todo en un mismo lugar para reducir tiempos de gestión y mejorar resultados.</p>
-                </article>
+                <div class="story-copy">
+                    <p class="section-label">¿Por qué elegirnos?</p>
+                    <h2>Tu día a día se vuelve <span>más simple.</span></h2>
+                    <p>
+                        Tus números pueden ser una fuente de claridad, no de estrés. Con Quantitary transformás la gestión de tu negocio en una operación más ordenada, rápida y confiable.
+                    </p>
+                    <div class="story-points">
+                        <div>
+                            <strong>+38%</strong>
+                            <span>Más rapidez en decisiones</span>
+                        </div>
+                        <div>
+                            <strong>24/7</strong>
+                            <span>Visibilidad del negocio</span>
+                        </div>
+                        <div>
+                            <strong>1 lugar</strong>
+                            <span>Todo centralizado</span>
+                        </div>
+                    </div>
+                </div>
             </section>
 
-            <section class="landing-banner">
-                <div>
-                    <p class="landing-banner-kicker">¿Querés mejorar tu control?</p>
-                    <h2>Un panel pensado para decisiones más inteligentes.</h2>
+            <section class="feature-section" id="features">
+                <div class="feature-head">
+                    <p class="section-label">Qué no te falle</p>
+                    <h2>Todo lo que necesitás para controlar mejor tu operación.</h2>
                 </div>
-                <a asp-controller="Cuenta" asp-action="Registro" class="btn-quantary btn-light-quantary">Comenzar ahora</a>
+
+                <div class="feature-grid">
+                    <article class="feature-card">
+                        <span class="feature-icon">📊</span>
+                        <h3>Ventas claras</h3>
+                        <p>Visualizá movimientos, tendencias y resultados con métricas listas para analizar.</p>
+                    </article>
+
+                    <article class="feature-card">
+                        <span class="feature-icon">📦</span>
+                        <h3>Inventario ordenado</h3>
+                        <p>Seguimiento del stock, alertas y decisiones más rápidas para cada producto.</p>
+                    </article>
+
+                    <article class="feature-card">
+                        <span class="feature-icon">⚡</span>
+                        <h3>Operación sencilla</h3>
+                        <p>Todo en un mismo lugar para reducir tiempos de gestión y mejorar resultados.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="promo-section">
+                <div class="promo-copy">
+                    <p class="section-label section-label-light">Entendé tus datos</p>
+                    <h2>Elegí tu próximo paso con confianza.</h2>
+                    <p>
+                        Analizá ventas, costos, rentabilidad y stock sin perder tiempo. Quantitary te ayuda a ver qué ocurre y a decidir con mejor criterio.
+                    </p>
+                </div>
+
+                <div class="promo-grid">
+                    <div class="promo-card">
+                        <h4>Ventas</h4>
+                        <p>Controlá ingresos, tickets y cortes por período.</p>
+                    </div>
+                    <div class="promo-card">
+                        <h4>Ganancias</h4>
+                        <p>Seguimiento real de margen y rentabilidad por categoría.</p>
+                    </div>
+                    <div class="promo-card">
+                        <h4>Stock</h4>
+                        <p>Detectá agotados, bajos y productos que requieren atención.</p>
+                    </div>
+                    <div class="promo-card">
+                        <h4>Reportes</h4>
+                        <p>Tomá decisiones con datos entendibles y útiles para el día a día.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="cta-panel">
+                <div class="cta-copy">
+                    <p class="section-label section-label-light">Un comienzo simple</p>
+                    <h2>Para ver más claro cada día.</h2>
+                </div>
+
+                <div class="cta-steps">
+                    <div class="step-card">
+                        <span>1</span>
+                        <h4>Creá tu cuenta</h4>
+                    </div>
+                    <div class="step-card">
+                        <span>2</span>
+                        <h4>Cargá tu producto</h4>
+                    </div>
+                    <div class="step-card">
+                        <span>3</span>
+                        <h4>Tomá decisiones</h4>
+                    </div>
+                </div>
+            </section>
+
+            <section class="faq-section" id="preguntas">
+                <div class="faq-copy">
+                    <p class="section-label">Algunas respuestas</p>
+                    <h2>Preguntas frecuentes para empezar.</h2>
+                </div>
+
+                <div class="faq-list">
+                    <div class="faq-item">
+                        <h4>¿Qué es Quantitary?</h4>
+                        <p>Es un panel para administrar ventas, stock y métricas de tu negocio desde un solo lugar.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h4>¿Es fácil de usar?</h4>
+                        <p>Sí. Está pensado para equipos que necesitan claridad y rapidez sin complicaciones.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h4>¿Puedo probarlo?</h4>
+                        <p>Podés crear tu cuenta y comenzar en minutos con una experiencia de uso simple.</p>
+                    </div>
+                </div>
             </section>
         </main>
+
+        <footer class="landing-footer">
+            <div class="brand-mark footer-brand">
+                <span class="brand-dot"></span>
+                <span>Quantitary</span>
+            </div>
+
+            <div class="footer-actions">
+                <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-primary btn-quantary btn-footer-primary">Empezar</a>
+                <a asp-controller="Cuenta" asp-action="Login" class="btn btn-outline-primary btn-quantary btn-footer-secondary">Ingresar</a>
+            </div>
+        </footer>
     </div>
 </body>
 </html>
