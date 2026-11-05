@@ -88,13 +88,13 @@ public class HomeController : Controller
         ViewBag.NombreEmpresa = nombreEmpresa;
         ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("todos", empresaId);
         ViewBag.UltimaVentaTimestamp = HttpContext.Session.GetString("UltimaVentaTimestamp");
-        return View();
+        return View("Home");
     }
 
     [HttpGet]
     public IActionResult Landing()
     {
-        return View();
+        return View("Index");
     }
 
     public IActionResult IndicadoresYOportunidades()
