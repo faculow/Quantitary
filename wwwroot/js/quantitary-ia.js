@@ -50,11 +50,28 @@
   'use strict';
 
   var GREETING = '¡Hola! Soy tu asistente personal de Quantitary. Podés preguntarme lo que necesites sobre tu negocio y te voy a ayudar a encontrar respuestas.';
-  var SUGGESTIONS = [
-    '¿Qué información podrías analizar de mi negocio?',
-    '¿Cómo puedo detectar productos que debo reponer?',
-    'Ayudame a interpretar las ventas de una semana.'
-  ];
+  var SUGGESTIONS_BY_SECTION = {
+    stock: [
+      '¿Qué productos tengo que reponer primero?',
+      'Mostrame los productos con stock bajo.',
+      '¿Qué productos llevan más tiempo sin movimiento?'
+    ],
+    pdv: [
+      '¿Qué productos conviene ofrecer en esta venta?',
+      '¿Cuál es el precio y stock de un producto?',
+      'Ayudame a revisar el rendimiento de las ventas.'
+    ],
+    home: [
+      'Resumime el estado actual de mi negocio.',
+      '¿Cómo vienen las ventas y ganancias?',
+      '¿Qué debería revisar hoy?'
+    ],
+    ajustes: [
+      '¿Qué información puede analizar Quantitary IA?',
+      '¿Cómo se protegen los datos de mi negocio?',
+      '¿Cómo puedo aprovechar mejor el asistente?'
+    ]
+  };
   var MAX_LENGTH = 2000;
   var MAX_HISTORY = 20;
   var AVATAR_SRC = '/ia/assets/quantitary-ia-normal.svg';
@@ -76,11 +93,29 @@
   var historySearch = document.getElementById('historySearch');
   var historyNewChatBtn = document.getElementById('historyNewChatButton');
   var currentChatId = null;
+  var assistantRoot = document.getElementById('quantitary-ia');
+  var currentSection = assistantRoot.dataset.section || 'home';
+  var currentAction = assistantRoot.dataset.action || 'index';
+  function suggestionsForPage() {
+    if (currentSection === 'home' && (currentAction.indexOf('analisis') >= 0 || currentAction.indexOf('indicadores') >= 0)) {
+      return [
+        '¿Qué tendencia muestran mis ventas?',
+        'Compará mis ventas con mis gastos.',
+        '¿Qué productos o categorías rinden mejor?'
+      ];
+    }
+    if (currentSection === 'home' && currentAction === 'historial') {
+      return ['Resumime las últimas ventas.', '¿Qué días vendo más?', 'Detectá cambios importantes en mis ventas.'];
+    }
+    return SUGGESTIONS_BY_SECTION[currentSection] || SUGGESTIONS_BY_SECTION.home;
+  }
   function csrf() { return document.querySelector('#chatForm input[name="__RequestVerificationToken"]').value; }
   async function api(url, method, data) {
+    var headers = { 'RequestVerificationToken': csrf() };
+    if (data !== undefined) headers['Content-Type'] = 'application/json';
     var response = await fetch(url, {
       method: method || 'GET',
-      headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': csrf() },
+      headers: headers,
       body: data === undefined ? undefined : JSON.stringify(data)
     });
     var result = await response.json().catch(function () { return {}; });
@@ -164,7 +199,7 @@
     if (suggestionsEl) return;
 
     suggestionsEl = createEl('div', 'suggestions');
-    SUGGESTIONS.forEach(function (text) {
+    suggestionsForPage().forEach(function (text) {
       var btn = createEl('button', 'suggestion', text);
       btn.type = 'button';
       btn.addEventListener('click', function () {
@@ -594,7 +629,7 @@
       rename.addEventListener('click', async function () {
         var name = window.prompt('Nuevo nombre del chat', item.titulo || '');
         if (!name || !name.trim()) return;
-        try { await api('/api/ia/chats/' + item.id, 'PATCH', { titulo: name.trim().slice(0,120) }); await loadHistory(); }
+        try { await api('/api/ia/chats/' + item.id + '/renombrar', 'POST', { titulo: name.trim().slice(0,120) }); await loadHistory(); }
         catch (err) { report(err); }
       });
       var remove = createEl('button', '', '×');
@@ -602,7 +637,7 @@
       remove.addEventListener('click', async function () {
         if (!window.confirm('¿Eliminar definitivamente este chat y sus mensajes?')) return;
         try {
-          await api('/api/ia/chats/' + item.id, 'DELETE');
+          await api('/api/ia/chats/' + item.id + '/eliminar', 'POST');
           if (item.id === currentChatId) await newChat();
           else await loadHistory();
         } catch (err) { report(err); }

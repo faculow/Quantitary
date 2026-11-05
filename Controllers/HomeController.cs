@@ -188,11 +188,9 @@ public class HomeController : Controller
         var connection = _context.Database.GetDbConnection();
         await connection.OpenAsync();
 
-        var fechaInicioMin = await connection.QuerySingleOrDefaultAsync<DateTime?>(
-            "SELECT MIN(fecha) FROM Ventas WHERE (@EmpresaId = 0 OR empresaID = @EmpresaId)",
-            new { EmpresaId = empresaId });
-
-        var inicio = fechaInicio ?? fechaInicioMin ?? new DateTime(DateTime.Today.Year - 10, 1, 1);
+        // Un período acotado mantiene los gráficos legibles al entrar. El usuario puede
+        // ampliar el rango manualmente con los filtros de la pantalla.
+        var inicio = fechaInicio ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var fin = fechaFin ?? DateTime.Today;
 
         if (fin < inicio)

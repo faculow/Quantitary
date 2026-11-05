@@ -41,6 +41,7 @@ public sealed class AsistenteController : Controller
         {
             if (request.ChatId is not Guid chatId || !await _historial.Existe(chatId, usuarioId.Value, empresaId.Value))
                 return BadRequest(ChatResult.Failure("invalid_chat", "Elegí un chat válido antes de enviar."));
+            await _historial.NombrarSiNuevo(chatId, usuarioId.Value, empresaId.Value, request.Message!);
             var historico = await _historial.Leer(chatId, usuarioId.Value, empresaId.Value);
             var contexto = await _datos.ConstruirContextoAsync(usuarioId.Value, empresaId.Value, cancellationToken);
             var seguro = request with { History = historico.TakeLast(GeminiChatService.MaxHistoryTurns).ToList() };
@@ -115,6 +116,10 @@ public sealed class AsistenteController : Controller
         return await _historial.Renombrar(chatId, s.Value.Usuario, s.Value.Empresa, request.Titulo) ? Ok() : NotFound();
     }
 
+    [HttpPost("/api/ia/chats/{chatId:guid}/renombrar")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> RenombrarPost(Guid chatId, [FromBody] RenombrarRequest request) => Renombrar(chatId, request);
+
     [HttpDelete("/api/ia/chats/{chatId:guid}")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Eliminar(Guid chatId)
@@ -122,6 +127,10 @@ public sealed class AsistenteController : Controller
         var s = Sesion(); if (s is null) return Unauthorized();
         return await _historial.Eliminar(chatId, s.Value.Usuario, s.Value.Empresa) ? Ok() : NotFound();
     }
+
+    [HttpPost("/api/ia/chats/{chatId:guid}/eliminar")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> EliminarPost(Guid chatId) => Eliminar(chatId);
 
     [HttpGet("/api/ia/alertas-stock")]
     public async Task<IActionResult> AlertasStock()

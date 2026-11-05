@@ -87,15 +87,6 @@
         </div>
     </form>
 
-    <form asp-action="Importar" method="post" enctype="multipart/form-data" class="row g-2 mb-4">
-        <div class="col-md-8">
-            <input type="file" name="archivo" class="form-control" accept=".csv,.txt" />
-        </div>
-        <div class="col-md-4">
-            <button class="btn btn-success w-100" type="submit">Cargar catálogo</button>
-        </div>
-    </form>
-
     <div class="table-responsive">
         <table class="table table-striped align-middle">
             <thead>
@@ -222,4 +213,80 @@
             const requestId = ++latestRequestId;
             const url = `@Url.Action("Filtrar", "Stock")${buildQuery()}`;
 
-            if
+            if (activeController) {
+                activeController.abort();
+            }
+
+            activeController = new AbortController();
+
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: activeController.signal
+                });
+
+                if (requestId !== latestRequestId || !response.ok) {
+                    return;
+                }
+
+                const html = await response.text();
+                if (requestId !== latestRequestId) {
+                    return;
+                }
+
+                tableBody.innerHTML = html;
+                aplicarFiltroCliente();
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('No se pudo actualizar la lista de stock.', error);
+                }
+            }
+        };
+
+        const dispararFiltro = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(applyFilters, 250);
+        };
+
+        form?.querySelectorAll('input, select').forEach((control) => {
+            control.addEventListener('input', dispararFiltro);
+            control.addEventListener('change', dispararFiltro);
+        });
+
+        skuInput?.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyFilters();
+            }
+        });
+
+        form?.addEventListener('submit', function (event) {
+            event.preventDefault();
+            applyFilters();
+        });
+
+        document.addEventListener('click', async function (event) {
+            const editButton = event.target.closest('[data-edit-id]');
+            if (editButton) {
+                const id = editButton.getAttribute('data-edit-id');
+                const response = await fetch(`@Url.Action("Editar", "Stock")/${id}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                if (response.ok) {
+                    modalContent.innerHTML = await response.text();
+                    modal.classList.add('show');
+                    modal.setAttribute('aria-hidden', 'false');
+                    document.body.classList.add('modal-open');
+                }
+            }
+
+            if (event.target.matches('[data-close-modal]')) {
+                modal.classList.remove('show');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('modal-open');
+            }
+        });
+    });
+</script>

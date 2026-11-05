@@ -149,3 +149,35 @@
   #quantitary-ia .chat-footer,#quantitary-ia.fullscreen .chat-footer{padding:10px}
 }
 @media(prefers-reduced-motion:reduce){#quantitary-ia *,#quantitary-ia *::before,#quantitary-ia *::after{transition-duration:.01ms!important}#quantitary-ia .typing span{animation:none}}
+
+html[data-quantitary-theme="dark"] #quantitary-ia {
+  --ia-text:#dce9f8;--ia-muted:#9db0c9;--ia-border:#2b405e;--ia-soft:#111f34;
+}
+html[data-quantitary-theme="dark"] #quantitary-ia .chat-panel,
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-chat-main,
+html[data-quantitary-theme="dark"] #quantitary-ia .chat-footer,
+html[data-quantitary-theme="dark"] #quantitary-ia .input-row,
+html[data-quantitary-theme="dark"] #quantitary-ia .history-search,
+html[data-quantitary-theme="dark"] #quantitary-ia .block-card {
+  background:#101b2d;border-color:#2b405e;color:#dce9f8;
+}
+html[data-quantitary-theme="dark"] #quantitary-ia .chat-body {background:linear-gradient(#111d30,#0c1626)}
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-history {background:#101b2d;border-color:#2b405e}
+html[data-quantitary-theme="dark"] #quantitary-ia .history-search input,
+html[data-quantitary-theme="dark"] #quantitary-ia .input-row textarea,
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-history-entry .ia-chat-open {color:#dce9f8}
+html[data-quantitary-theme="dark"] #quantitary-ia .msg.assistant {background:#172842;border-color:#2b405e;color:#dce9f8}
+html[data-quantitary-theme="dark"] #quantitary-ia .suggestion {background:#14243b;border-color:#35527a;color:#bcd8ff}
+html[data-quantitary-theme="dark"] #quantitary-ia .suggestion:hover {background:#1c3150}
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-history-entry:has(.ia-chat-open.active) {background:#17345e}
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-history-entry button:hover {background:#1a2d48;color:#dce9f8}
+html[data-quantitary-theme="dark"] #quantitary-ia .data-table th {background:#14243b;color:#b7cae2}
+html[data-quantitary-theme="dark"] #quantitary-ia .data-table th,
+html[data-quantitary-theme="dark"] #quantitary-ia .data-table td {border-color:#263a55}
+html[data-quantitary-theme="dark"] #quantitary-ia .block-title,
+html[data-quantitary-theme="dark"] #quantitary-ia .legend {color:#c9d8eb}
+html[data-quantitary-theme="dark"] #quantitary-ia .chart-svg text {fill:#a9bad0}
+html[data-quantitary-theme="dark"] #quantitary-ia .chart-svg .axis {stroke:#344964}
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form {background:#13233a;color:#dce9f8}
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form input,
+html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form select {background:#0c1727;color:#dce9f8;border-color:#35506f}

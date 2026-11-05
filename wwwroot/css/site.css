@@ -966,6 +966,30 @@ html[data-quantitary-theme="dark"] .settings-alert.success {
     max-width: 72px;
 }
 
+.weekly-bars {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px 2px 8px;
+    scrollbar-width: thin;
+}
+
+.weekly-bars .bar-col {
+    flex: 0 0 72px;
+}
+
+.weekly-bars .bar-value {
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.weekly-bars .bar-label {
+    white-space: nowrap;
+    min-height: 20px;
+}
+
 .donut-card {
     display: flex;
     flex-direction: column;
@@ -2137,4 +2161,126 @@ body {
     .landing-banner {
         text-align: center;
     }
+}
+
+/* Tema oscuro: superficies y datos mantienen una jerarquía pareja, sin tarjetas blancas. */
+html[data-quantitary-theme="dark"] .content-area,
+html[data-quantitary-theme="dark"] .panel,
+html[data-quantitary-theme="dark"] .panel-section,
+html[data-quantitary-theme="dark"] .auth-card,
+html[data-quantitary-theme="dark"] .list-card,
+html[data-quantitary-theme="dark"] .producto-modal-content,
+html[data-quantitary-theme="dark"] .ganancia-visual-card {
+    background: var(--panel);
+    color: #dbe7f5;
+    border-color: var(--border);
+}
+
+html[data-quantitary-theme="dark"] .chart-card {
+    background: #101b2d;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+html[data-quantitary-theme="dark"] .bar-track {
+    background: linear-gradient(180deg, #16243a, #0c1626);
+    border-color: #2a3b52;
+}
+
+html[data-quantitary-theme="dark"] .bar-value,
+html[data-quantitary-theme="dark"] .bar-label,
+html[data-quantitary-theme="dark"] .chart-header small,
+html[data-quantitary-theme="dark"] .kpi-label,
+html[data-quantitary-theme="dark"] .kpi-sub,
+html[data-quantitary-theme="dark"] .text-muted,
+html[data-quantitary-theme="dark"] .form-text,
+html[data-quantitary-theme="dark"] .summary-tile span,
+html[data-quantitary-theme="dark"] .summary-tile small {
+    color: #9fb0c6 !important;
+}
+
+html[data-quantitary-theme="dark"] h1,
+html[data-quantitary-theme="dark"] h2,
+html[data-quantitary-theme="dark"] h3,
+html[data-quantitary-theme="dark"] h4,
+html[data-quantitary-theme="dark"] h5,
+html[data-quantitary-theme="dark"] label,
+html[data-quantitary-theme="dark"] .section-head h3,
+html[data-quantitary-theme="dark"] .podium-name,
+html[data-quantitary-theme="dark"] .legend-name,
+html[data-quantitary-theme="dark"] .legend-item {
+    color: #eaf2ff;
+}
+
+html[data-quantitary-theme="dark"] .form-control,
+html[data-quantitary-theme="dark"] .form-select,
+html[data-quantitary-theme="dark"] .input-group-text {
+    background-color: #0d1828;
+    color: #eaf2ff;
+    border-color: #304159;
+}
+
+html[data-quantitary-theme="dark"] .form-control::placeholder {
+    color: #71839b;
+}
+
+html[data-quantitary-theme="dark"] .table {
+    --bs-table-bg: #111c2e;
+    --bs-table-color: #dbe7f5;
+    --bs-table-border-color: #2a3a50;
+    --bs-table-striped-bg: #152238;
+    --bs-table-striped-color: #dbe7f5;
+    --bs-table-hover-bg: #1b2b43;
+    --bs-table-hover-color: #eef4ff;
+    color: #dbe7f5;
+}
+
+html[data-quantitary-theme="dark"] .table thead th {
+    background: #0d1828;
+    color: #c9d8eb;
+    border-color: #2a3a50;
+}
+
+html[data-quantitary-theme="dark"] .podium-item,
+html[data-quantitary-theme="dark"] .podium-item.first,
+html[data-quantitary-theme="dark"] .podium-item.second,
+html[data-quantitary-theme="dark"] .podium-item.third {
+    background: linear-gradient(135deg, #17253a, #101b2d);
+    border-color: #304159;
+}
+
+html[data-quantitary-theme="dark"] .donut-chart::before,
+html[data-quantitary-theme="dark"] .podium-rank {
+    background: #111c2e;
+    border-color: #2a3a50;
+}
+
+html[data-quantitary-theme="dark"] .donut-center,
+html[data-quantitary-theme="dark"] .list-card ul,
+html[data-quantitary-theme="dark"] .list-card p,
+html[data-quantitary-theme="dark"] .podium-meta {
+    color: #b8c7da;
+}
+
+html[data-quantitary-theme="dark"] .modal-content,
+html[data-quantitary-theme="dark"] .dropdown-menu {
+    background: #111c2e;
+    color: #dbe7f5;
+    border-color: #304159;
+}
+
+html[data-quantitary-theme="dark"] .alert-info,
+html[data-quantitary-theme="dark"] .alert-light {
+    background: #132744;
+    color: #bcd8ff;
+    border-color: #285184;
+}
+
+html[data-quantitary-theme="dark"] .btn-outline-secondary {
+    color: #c3d1e3;
+    border-color: #60728b;
+}
+
+html[data-quantitary-theme="dark"] .btn-outline-secondary:hover {
+    background: #26364d;
+    color: #fff;
 }

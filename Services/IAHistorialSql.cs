@@ -15,16 +15,27 @@ public sealed class IAHistorialSql
         await using var db = Conexion();
         return await db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM dbo.Usuarios WHERE id=@usuario AND empresaID=@empresa", new { usuario, empresa }) == 1;
     }
-    public async Task<object> Listar(int usuario, int empresa)
+    public async Task<IReadOnlyList<ChatResumen>> Listar(int usuario, int empresa)
     {
         await using var db = Conexion();
-        return await db.QueryAsync("SELECT Id, Titulo, ActualizadoEn FROM dbo.IAChats WHERE UsuarioId=@usuario AND EmpresaId=@empresa ORDER BY ActualizadoEn DESC", new { usuario, empresa });
+        await db.ExecuteAsync(@"UPDATE c SET Titulo=LEFT(LTRIM(RTRIM(m.Texto)),54)
+            FROM dbo.IAChats c
+            CROSS APPLY (SELECT TOP (1) Texto FROM dbo.IAMensajes
+                         WHERE ChatId=c.Id AND Rol='user' ORDER BY Id) m
+            WHERE c.UsuarioId=@usuario AND c.EmpresaId=@empresa
+              AND (LTRIM(RTRIM(c.Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(c.Titulo))=N'')",
+            new { usuario, empresa });
+        var chats = await db.QueryAsync<ChatResumen>(
+            "SELECT Id, Titulo, ActualizadoEn FROM dbo.IAChats WHERE UsuarioId=@usuario AND EmpresaId=@empresa ORDER BY ActualizadoEn DESC",
+            new { usuario, empresa });
+        return chats.ToList();
     }
     public async Task<Guid> Crear(int usuario, int empresa)
     {
         var id = Guid.NewGuid();
         await using var db = Conexion();
-        await db.ExecuteAsync("INSERT INTO dbo.IAChats(Id, UsuarioId, EmpresaId, Titulo) VALUES (@id,@usuario,@empresa,N'Nuevo chat')", new { id, usuario, empresa });
+        await db.ExecuteAsync(@"INSERT INTO dbo.IAChats(Id, UsuarioId, EmpresaId, Titulo, CreadoEn, ActualizadoEn)
+            VALUES (@id,@usuario,@empresa,N'Nuevo chat',SYSUTCDATETIME(),SYSUTCDATETIME())", new { id, usuario, empresa });
         return id;
     }
     public async Task<bool> Existe(Guid chat, int usuario, int empresa)
@@ -43,10 +54,21 @@ public sealed class IAHistorialSql
         await using var db = Conexion();
         await db.OpenAsync();
         await using var tx = (SqlTransaction)await db.BeginTransactionAsync();
-        var affected = await db.ExecuteAsync(@"UPDATE dbo.IAChats SET ActualizadoEn=SYSUTCDATETIME(), Titulo=CASE WHEN Titulo=N'Nuevo chat' THEN LEFT(@pregunta, 120) ELSE Titulo END WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa", new { chat, usuario, empresa, pregunta }, tx);
+        var titulo = CrearTitulo(pregunta);
+        var affected = await db.ExecuteAsync(@"UPDATE dbo.IAChats SET ActualizadoEn=SYSUTCDATETIME(),
+            Titulo=CASE WHEN LTRIM(RTRIM(Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(Titulo))=N'' THEN @titulo ELSE Titulo END
+            WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa", new { chat, usuario, empresa, titulo }, tx);
         if (affected != 1) throw new UnauthorizedAccessException();
         await db.ExecuteAsync("INSERT INTO dbo.IAMensajes(ChatId,Rol,Texto) VALUES (@chat,'user',@pregunta),(@chat,'assistant',@respuesta)", new { chat, pregunta, respuesta }, tx);
         await tx.CommitAsync();
+    }
+    public async Task NombrarSiNuevo(Guid chat, int usuario, int empresa, string pregunta)
+    {
+        await using var db = Conexion();
+        await db.ExecuteAsync(@"UPDATE dbo.IAChats SET Titulo=@titulo, ActualizadoEn=SYSUTCDATETIME()
+            WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa
+              AND (LTRIM(RTRIM(Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(Titulo))=N'')",
+            new { chat, usuario, empresa, titulo = CrearTitulo(pregunta) });
     }
     public async Task<bool> Renombrar(Guid chat, int usuario, int empresa, string titulo)
     {
@@ -56,7 +78,30 @@ public sealed class IAHistorialSql
     public async Task<bool> Eliminar(Guid chat, int usuario, int empresa)
     {
         await using var db = Conexion();
-        return await db.ExecuteAsync("DELETE FROM dbo.IAChats WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa", new { chat, usuario, empresa }) == 1;
+        await db.OpenAsync();
+        await using var tx = (SqlTransaction)await db.BeginTransactionAsync();
+        await db.ExecuteAsync(@"DELETE m FROM dbo.IAMensajes m
+            INNER JOIN dbo.IAChats c ON c.Id=m.ChatId
+            WHERE c.Id=@chat AND c.UsuarioId=@usuario AND c.EmpresaId=@empresa", new { chat, usuario, empresa }, tx);
+        var eliminado = await db.ExecuteAsync(
+            "DELETE FROM dbo.IAChats WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa",
+            new { chat, usuario, empresa }, tx) == 1;
+        await tx.CommitAsync();
+        return eliminado;
+    }
+    private static string CrearTitulo(string pregunta)
+    {
+        var limpio = string.Join(" ", pregunta.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
+        limpio = limpio.Trim('¿', '?', '¡', '!', '.', ',', ':', ';', '-', ' ');
+        if (limpio.Length == 0) return "Nuevo chat";
+        const int maximo = 54;
+        return limpio.Length <= maximo ? limpio : limpio[..(maximo - 1)].TrimEnd() + "…";
+    }
+    public sealed class ChatResumen
+    {
+        public Guid Id { get; set; }
+        public string Titulo { get; set; } = "Nuevo chat";
+        public DateTime ActualizadoEn { get; set; }
     }
     private sealed class ChatRow { public string? Rol { get; set; } public string? Text { get; set; } }
 }

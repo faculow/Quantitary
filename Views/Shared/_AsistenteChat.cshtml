@@ -1,4 +1,8 @@
-<div id="quantitary-ia" aria-label="Quantitary IA">
+@{
+  var iaSeccion = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "home").ToLowerInvariant();
+  var iaAccion = (ViewContext.RouteData.Values["action"]?.ToString() ?? "index").ToLowerInvariant();
+}
+<div id="quantitary-ia" aria-label="Quantitary IA" data-section="@iaSeccion" data-action="@iaAccion">
   <button id="robotButton" class="robot-button" type="button" aria-label="Abrir Quantitary IA" aria-expanded="false">
     <img id="robotIcon" src="~/ia/assets/quantitary-ia-normal.svg" alt="" />
   </button>
