@@ -201,44 +201,50 @@ public class HomeController : Controller
         }
 
         var ventasTotales = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(v.precio), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.precioVenta), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var gastosTotales = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(v.costo), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.costoCompra), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var ventaPromedio = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(AVG(v.precio), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(AVG(d.precioVenta), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var ganancias = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(v.precio - v.costo), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.ganancia), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(@"
-            SELECT COALESCE(SUM(v.cantidad), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.cantidad), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var ventasDiarias = (await connection.QueryAsync<ChartPoint>(@"
-            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(d.precioVenta), 0) AS Valor
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY CAST(v.fecha AS date)
@@ -255,9 +261,10 @@ public class HomeController : Controller
             var semanaFin = semanaActual.AddDays(6) > fin.Date ? fin.Date : semanaActual.AddDays(6);
 
             var totalSemana = await connection.QuerySingleAsync<decimal>(@"
-                SELECT COALESCE(SUM(v.precio), 0)
-                FROM Ventas v
-                INNER JOIN Productos p ON p.id = v.productoId
+                SELECT COALESCE(SUM(d.precioVenta), 0)
+                FROM DetalleVenta d
+                INNER JOIN Ventas v ON v.id = d.ventaID
+                INNER JOIN Productos p ON p.id = d.productoID
                 WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                   AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin", new
             {
@@ -276,12 +283,14 @@ public class HomeController : Controller
         }
 
         var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(@"
-            SELECT p.categoria AS Label, COALESCE(SUM(v.precio - v.costo), 0) AS Valor
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT c.nombre AS Label, COALESCE(SUM(d.ganancia), 0) AS Valor
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY p.categoria
+            GROUP BY c.nombre
             ORDER BY Valor DESC", new
         {
             EmpresaId = empresaId,

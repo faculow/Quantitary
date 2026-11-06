@@ -63,6 +63,8 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+BD.GarantizarEsquemaActual(builder.Configuration);
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");

@@ -25,16 +25,50 @@ public static class BD
         return new SqlConnection(ObtenerCadenaConexion(configuration));
     }
 
+    private static bool TieneColumna(IConfiguration configuration, string nombreTabla, string nombreColumna)
+    {
+        using var connection = CrearConexion(configuration);
+        connection.Open();
+
+        var sql = @"SELECT CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = 'dbo'
+                          AND TABLE_NAME = @NombreTabla
+                          AND COLUMN_NAME = @NombreColumna) THEN 1 ELSE 0 END;";
+
+        return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla, NombreColumna = nombreColumna }) == 1;
+    }
+
+    private static bool UsaEsquemaNormalizado(IConfiguration configuration)
+    {
+        return TieneColumna(configuration, "Productos", "precioVenta")
+            && TieneColumna(configuration, "Productos", "categoriaID")
+            && TieneColumna(configuration, "Stock", "cantidadMinimoAlerta");
+    }
+
     public static List<string> ObtenerCategorias(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
+
+        if (!UsaEsquemaNormalizado(configuration))
+        {
+            var sqlLegacy = @"SELECT DISTINCT CAST(categoria AS varchar(100)) AS categoria
+                             FROM Productos
+                             WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
+                               AND LTRIM(RTRIM(COALESCE(categoria, ''))) <> ''
+                             ORDER BY categoria";
+
+            return connection.Query<string>(sqlLegacy, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
+        }
+
         var sql = @"SELECT DISTINCT c.nombre AS categoria
                     FROM Productos p
                     INNER JOIN Categoria c ON c.id = p.categoriaID
                     WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
                       AND LTRIM(RTRIM(c.nombre)) <> ''
                     ORDER BY c.nombre";
-        return connection.Query<string>(sql, new { EmpresaId = empresaId }).ToList();
+        return connection.Query<string>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
     public static List<Producto> ObtenerProductos(IConfiguration configuration, string? sku = null, string? categoria = null, bool? pocoStock = null, decimal? precioMinimo = null, string? orden = null, int? empresaId = null)
@@ -48,6 +82,37 @@ public static class BD
         parametros.Add("@Orden", string.IsNullOrWhiteSpace(orden) ? "nombre_asc" : orden.Trim());
 
         using var connection = CrearConexion(configuration);
+
+        if (!UsaEsquemaNormalizado(configuration))
+        {
+            var sqlLegacy = @"
+                SELECT p.id AS Id,
+                       p.empresaID AS EmpresaID,
+                       ISNULL(p.categoriaID, 0) AS CategoriaID,
+                       p.proveedorID AS ProveedorID,
+                       p.nombre AS Nombre,
+                       p.sku AS Sku,
+                       COALESCE(p.categoria, c.nombre, 'Sin categoría') AS Categoria,
+                       p.descripcion AS Descripcion,
+                       p.fechaCarga AS FechaCarga,
+                       CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) AS PrecioVenta,
+                       CAST(COALESCE(p.costoCompra, p.costo, 0) AS decimal(12,2)) AS CostoCompra,
+                       CAST(COALESCE(s.cantidad, p.stockActual, 0) AS int) AS StockActual,
+                       CAST(COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) AS int) AS StockMinimo,
+                       CAST(COALESCE(p.activo, 1) AS bit) AS Activo,
+                       COALESCE(pe.nombre, p.proveedor, '') AS Proveedor
+                FROM Productos p
+                LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+                LEFT JOIN Categoria c ON c.id = p.categoriaID
+                LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+                WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                  AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                  AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(COALESCE(p.categoria, c.nombre)))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                  AND (@PocoStock = 0 OR COALESCE(s.cantidad, p.stockActual, 0) <= COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) OR COALESCE(s.cantidad, p.stockActual, 0) = 0)
+                  AND (@PrecioMinimo IS NULL OR CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) >= @PrecioMinimo)
+                ORDER BY p.nombre;";
+            return connection.Query<Producto>(sqlLegacy, parametros).ToList();
+        }
 
         var sql = @"
             SELECT p.id AS Id,
@@ -91,6 +156,32 @@ public static class BD
     public static Producto? BuscarPorId(IConfiguration configuration, int id)
     {
         using var connection = CrearConexion(configuration);
+
+        if (!UsaEsquemaNormalizado(configuration))
+        {
+            return connection.QuerySingleOrDefault<Producto>(@"
+                SELECT p.id AS Id,
+                       p.empresaID AS EmpresaID,
+                       ISNULL(p.categoriaID, 0) AS CategoriaID,
+                       p.proveedorID AS ProveedorID,
+                       p.nombre AS Nombre,
+                       p.sku AS Sku,
+                       COALESCE(p.categoria, c.nombre, 'Sin categoría') AS Categoria,
+                       p.descripcion AS Descripcion,
+                       p.fechaCarga AS FechaCarga,
+                       CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) AS PrecioVenta,
+                       CAST(COALESCE(p.costoCompra, p.costo, 0) AS decimal(12,2)) AS CostoCompra,
+                       CAST(COALESCE(s.cantidad, p.stockActual, 0) AS int) AS StockActual,
+                       CAST(COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) AS int) AS StockMinimo,
+                       CAST(COALESCE(p.activo, 1) AS bit) AS Activo,
+                       COALESCE(pe.nombre, p.proveedor, '') AS Proveedor
+                FROM Productos p
+                LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+                LEFT JOIN Categoria c ON c.id = p.categoriaID
+                LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+                WHERE p.id = @Id", new { Id = id });
+        }
+
         return connection.QuerySingleOrDefault<Producto>(@"
             SELECT p.id AS Id,
                    p.empresaID AS EmpresaID,
@@ -356,15 +447,29 @@ public static class BD
         var fechaFinUsada = fechaFin ?? DateTime.Now;
 
         using var connection = CrearConexion(configuration);
-        var sql = @"SELECT v.*, p.sku, p.categoria
+        var sql = @"SELECT v.id AS Id,
+                          v.empresaID AS EmpresaID,
+                          v.usuarioID AS UsuarioID,
+                          v.fecha AS Fecha,
+                          v.metodoPago AS MetodoPago,
+                          d.productoID AS ProductoId,
+                          p.nombre AS NombreProducto,
+                          p.sku AS Sku,
+                          c.nombre AS Categoria,
+                          SUM(d.cantidad) AS Cantidad,
+                          SUM(d.precioVenta) AS Precio,
+                          SUM(d.costoCompra) AS Costo
                     FROM Ventas v
-                    INNER JOIN Productos p ON p.id = v.productoId
+                    INNER JOIN DetalleVenta d ON d.ventaID = v.id
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
                     WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                       AND v.fecha >= @FechaInicio
                       AND v.fecha <= @FechaFin
-                      AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                      AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                       AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                      AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                      AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                    GROUP BY v.id, v.empresaID, v.usuarioID, v.fecha, v.metodoPago, d.productoID, p.nombre, p.sku, c.nombre
                     ORDER BY v.fecha DESC";
 
         return connection.Query<VentaRegistro>(sql, new
@@ -575,14 +680,16 @@ public static class BD
         {
             using var connection = CrearConexion(configuration);
             return connection.QuerySingleOrDefault<decimal?>(
-                @"SELECT SUM(v.precio)
-                  FROM Ventas v
-                  INNER JOIN Productos p ON p.id = v.productoId
+                @"SELECT SUM(d.precioVenta)
+                  FROM DetalleVenta d
+                  INNER JOIN Ventas v ON v.id = d.ventaID
+                  INNER JOIN Productos p ON p.id = d.productoID
+                  LEFT JOIN Categoria c ON c.id = p.categoriaID
                   WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                     AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                     AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))",
+                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))",
                 new
                 {
                     EmpresaId = empresaId,
@@ -709,15 +816,17 @@ public static class BD
 
         using var connection = CrearConexion(configuration);
         var rows = connection.Query<(string Nombre, decimal Valor)>(
-            @"SELECT p.categoria AS Nombre, SUM(v.precio - v.costo) AS Valor
-              FROM Ventas v
-              INNER JOIN Productos p ON p.id = v.productoId
+            @"SELECT c.nombre AS Nombre, SUM(d.ganancia) AS Valor
+              FROM DetalleVenta d
+              INNER JOIN Ventas v ON v.id = d.ventaID
+              INNER JOIN Productos p ON p.id = d.productoID
+              LEFT JOIN Categoria c ON c.id = p.categoriaID
               WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
-                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
-              GROUP BY p.categoria
+                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+              GROUP BY c.nombre
               ORDER BY Valor DESC",
             new
             {
@@ -743,15 +852,17 @@ public static class BD
 
         using var connection = CrearConexion(configuration);
         var rows = connection.Query<(string Nombre, decimal Valor)>(
-            @"SELECT p.categoria AS Nombre, SUM(v.precio) AS Valor
-              FROM Ventas v
-              INNER JOIN Productos p ON p.id = v.productoId
+            @"SELECT c.nombre AS Nombre, SUM(d.precioVenta) AS Valor
+              FROM DetalleVenta d
+              INNER JOIN Ventas v ON v.id = d.ventaID
+              INNER JOIN Productos p ON p.id = d.productoID
+              LEFT JOIN Categoria c ON c.id = p.categoriaID
               WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
-                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(v.nombreProducto))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
-              GROUP BY p.categoria
+                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+              GROUP BY c.nombre
               ORDER BY Valor DESC",
             new
             {
@@ -890,10 +1001,11 @@ public static class BD
         return await connection.QuerySingleOrDefaultAsync<ResumenStock>(@"
             SELECT
                 COUNT(*) AS TotalProductos,
-                SUM(CASE WHEN stockActual <= 0 THEN 1 ELSE 0 END) AS Agotados,
-                SUM(CASE WHEN stockActual > 0 AND stockActual <= stockMinimo THEN 1 ELSE 0 END) AS BajoMinimo
-            FROM Productos
-            WHERE empresaID = @EmpresaId",
+                SUM(CASE WHEN ISNULL(s.cantidad, 0) <= 0 THEN 1 ELSE 0 END) AS Agotados,
+                SUM(CASE WHEN ISNULL(s.cantidad, 0) > 0 AND ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) THEN 1 ELSE 0 END) AS BajoMinimo
+            FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            WHERE p.empresaID = @EmpresaId",
             new { EmpresaId = empresaId }) ?? new ResumenStock();
     }
 
@@ -902,19 +1014,21 @@ public static class BD
         using var connection = CrearConexion(configuration);
         var sql = @"
             SELECT TOP (80)
-                nombre AS Nombre,
-                sku AS Sku,
-                categoria AS Categoria,
-                stockActual AS StockActual,
-                stockMinimo AS StockMinimo,
-                precio AS Precio,
-                costoCompra AS CostoCompra
-            FROM Productos
-            WHERE empresaID = @EmpresaId
+                p.nombre AS Nombre,
+                p.sku AS Sku,
+                c.nombre AS Categoria,
+                ISNULL(s.cantidad, 0) AS StockActual,
+                ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
+                p.precioVenta AS Precio,
+                p.costoCompra AS CostoCompra
+            FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
+            WHERE p.empresaID = @EmpresaId
             ORDER BY
-                CASE WHEN @IncluirStockBajo = 1 AND (stockActual <= stockMinimo OR stockActual = 0) THEN 0 ELSE 1 END,
-                stockActual ASC,
-                nombre ASC";
+                CASE WHEN @IncluirStockBajo = 1 AND (ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) OR ISNULL(s.cantidad, 0) = 0) THEN 0 ELSE 1 END,
+                ISNULL(s.cantidad, 0) ASC,
+                p.nombre ASC";
 
         return (await connection.QueryAsync<ProductoLectura>(sql, new { EmpresaId = empresaId, IncluirStockBajo = incluirStockBajo })).ToList();
     }
@@ -933,10 +1047,11 @@ public static class BD
             SELECT
                 CAST(v.fecha AS date) AS Fecha,
                 COUNT(*) AS Operaciones,
-                SUM(CAST(v.cantidad AS int)) AS Unidades,
-                SUM(v.precio) AS Total,
-                SUM(v.costo) AS Costo
+                SUM(d.cantidad) AS Unidades,
+                SUM(d.precioVenta) AS Total,
+                SUM(d.costoCompra) AS Costo
             FROM Ventas v
+            INNER JOIN DetalleVenta d ON d.ventaID = v.id
             WHERE v.empresaID = @EmpresaId
               AND v.fecha >= DATEADD(day, -30, CAST(GETDATE() AS date))
             GROUP BY CAST(v.fecha AS date)
@@ -1100,11 +1215,12 @@ public static class BD
                 p.id AS Id,
                 p.nombre AS Nombre,
                 p.sku AS Sku,
-                p.stockActual AS Stock,
-                p.stockMinimo AS Minimo
+                ISNULL(s.cantidad, 0) AS Stock,
+                ISNULL(s.cantidadMinimoAlerta, 0) AS Minimo
             FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
             WHERE p.empresaID = @EmpresaId
-            ORDER BY p.stockActual ASC, p.nombre ASC",
+            ORDER BY ISNULL(s.cantidad, 0) ASC, p.nombre ASC",
             new { EmpresaId = empresaId })).ToList();
     }
 
@@ -1140,9 +1256,10 @@ public static class BD
                 p.id AS Id,
                 p.nombre AS Nombre,
                 p.sku AS Sku,
-                p.precio AS Precio,
-                p.stockActual AS Stock
+                p.precioVenta AS Precio,
+                ISNULL(s.cantidad, 0) AS Stock
             FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
             WHERE p.empresaID = @EmpresaId
               AND LOWER(LTRIM(RTRIM(p.sku))) = LOWER(LTRIM(RTRIM(@Sku)))
             ORDER BY p.id";
@@ -1165,24 +1282,45 @@ public static class BD
     public static async Task<int> IACrearProductoAsync(IConfiguration configuration, int empresaId, string nombre, string sku, string? categoria, string? descripcion, decimal precio, int stock, int stockMinimo, string? proveedor, decimal costoCompra, IDbTransaction? transaction = null)
     {
         using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
-        var sql = @"
-            INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
-            VALUES (@EmpresaId, @Nombre, @Sku, @Categoria, @Descripcion, GETDATE(), @Precio, @Stock, @StockMinimo, @Proveedor, @CostoCompra, @Precio, 0);
-            SELECT CAST(SCOPE_IDENTITY() AS int);";
 
-        return await connection.QuerySingleAsync<int>(sql, new
+        var categoriaNombre = string.IsNullOrWhiteSpace(categoria) ? "Sin categoría" : categoria.Trim();
+        var categoriaId = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Categoria
+            WHERE empresaID = @EmpresaId AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))",
+            new { EmpresaId = empresaId, Nombre = categoriaNombre }, transaction) ?? 0;
+
+        if (categoriaId == 0)
         {
-            EmpresaId = empresaId,
-            Nombre = nombre.Trim(),
-            Sku = sku.Trim(),
-            Categoria = string.IsNullOrWhiteSpace(categoria) ? "Sin categoría" : categoria.Trim(),
-            Descripcion = descripcion,
-            Precio = precio,
-            Stock = stock,
-            StockMinimo = stockMinimo,
-            Proveedor = proveedor,
-            CostoCompra = costoCompra
-        }, transaction);
+            categoriaId = connection.QuerySingle<int>(@"
+                INSERT INTO Categoria (empresaID, nombre)
+                VALUES (@EmpresaId, @Nombre);
+                SELECT CAST(SCOPE_IDENTITY() AS int);",
+                new { EmpresaId = empresaId, Nombre = categoriaNombre }, transaction);
+        }
+
+        var productoId = connection.QuerySingle<int>(@"
+            INSERT INTO Productos (empresaID, categoriaID, proveedorID, nombre, sku, descripcion, fechaCarga, precioVenta, costoCompra, activo)
+            VALUES (@EmpresaId, @CategoriaId, @ProveedorId, @Nombre, @Sku, @Descripcion, SYSUTCDATETIME(), @Precio, @CostoCompra, 1);
+            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            new
+            {
+                EmpresaId = empresaId,
+                CategoriaId = categoriaId,
+                ProveedorId = (int?)null,
+                Nombre = nombre.Trim(),
+                Sku = sku.Trim(),
+                Descripcion = descripcion,
+                Precio = precio,
+                CostoCompra = costoCompra
+            }, transaction);
+
+        connection.Execute(@"
+            INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+            VALUES (@ProductoId, @Cantidad, @CantidadMinimoAlerta, 1, SYSUTCDATETIME());",
+            new { ProductoId = productoId, Cantidad = stock, CantidadMinimoAlerta = stockMinimo }, transaction);
+
+        return productoId;
     }
 
     public static async Task<bool> IAActualizarProductoPrecioAsync(IConfiguration configuration, int empresaId, int productoId, decimal precio, IDbTransaction? transaction = null)
@@ -1190,8 +1328,8 @@ public static class BD
         using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
         return await connection.ExecuteAsync(@"
             UPDATE Productos
-            SET precio = @Precio,
-                precioVenta = @Precio
+            SET precioVenta = @Precio,
+                costoCompra = CASE WHEN costoCompra = 0 THEN @Precio ELSE costoCompra END
             WHERE id = @ProductoId
               AND empresaID = @EmpresaId",
             new { EmpresaId = empresaId, ProductoId = productoId, Precio = precio }, transaction) > 0;
@@ -1200,11 +1338,24 @@ public static class BD
     public static async Task<bool> IAActualizarProductoStockAsync(IConfiguration configuration, int empresaId, int productoId, int stock, IDbTransaction? transaction = null)
     {
         using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        var existe = await connection.QuerySingleOrDefaultAsync<int?>(@"
+            SELECT TOP 1 id FROM Stock WHERE productoID = @ProductoId",
+            new { ProductoId = productoId }, transaction);
+
+        if (existe is null)
+        {
+            return await connection.ExecuteAsync(@"
+                INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+                VALUES (@ProductoId, @Stock, 0, 1, SYSUTCDATETIME())",
+                new { ProductoId = productoId, Stock = stock }, transaction) > 0;
+        }
+
         return await connection.ExecuteAsync(@"
-            UPDATE Productos
-            SET stockActual = @Stock
-            WHERE id = @ProductoId
-              AND empresaID = @EmpresaId",
+            UPDATE Stock
+            SET cantidad = @Stock,
+                actualizadoEn = SYSUTCDATETIME()
+            WHERE productoID = @ProductoId
+              AND EXISTS (SELECT 1 FROM Productos p WHERE p.id = @ProductoId AND p.empresaID = @EmpresaId)",
             new { EmpresaId = empresaId, ProductoId = productoId, Stock = stock }, transaction) > 0;
     }
 
@@ -1232,54 +1383,60 @@ public static class BD
     public static async Task<AnalisisVentasGananciasData> ObtenerAnalisisVentasGananciasAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
     {
         var sqlBase = @"
-            SELECT COALESCE(SUM(v.precio), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.precioVenta), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var sqlGastos = @"
-            SELECT COALESCE(SUM(v.costo), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.costoCompra), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var sqlPromedio = @"
-            SELECT COALESCE(AVG(v.precio), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(AVG(d.precioVenta), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var sqlGanancias = @"
-            SELECT COALESCE(SUM(v.precio - v.costo), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.ganancia), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var sqlCantidadVentas = @"
-            SELECT COALESCE(SUM(v.cantidad), 0)
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT COALESCE(SUM(d.cantidad), 0)
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin";
 
         var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
 
         var sqlVentasDiarias = @"
-            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(d.precioVenta), 0) AS Valor
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY CAST(v.fecha AS date)
@@ -1294,9 +1451,10 @@ public static class BD
         {
             var semanaFin = semanaActual.AddDays(6) > fin.Date ? fin.Date : semanaActual.AddDays(6);
             var sqlVentaSemana = @"
-                SELECT COALESCE(SUM(v.precio), 0)
-                FROM Ventas v
-                INNER JOIN Productos p ON p.id = v.productoId
+                SELECT COALESCE(SUM(d.precioVenta), 0)
+                FROM DetalleVenta d
+                INNER JOIN Ventas v ON v.id = d.ventaID
+                INNER JOIN Productos p ON p.id = d.productoID
                 WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                   AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin";
 
@@ -1317,12 +1475,14 @@ public static class BD
         }
 
         var sqlGananciaPorCategoria = @"
-            SELECT p.categoria AS Label, COALESCE(SUM(v.precio - v.costo), 0) AS Valor
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT c.nombre AS Label, COALESCE(SUM(d.ganancia), 0) AS Valor
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY p.categoria
+            GROUP BY c.nombre
             ORDER BY Valor DESC";
 
         var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(sqlGananciaPorCategoria, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
@@ -1348,37 +1508,41 @@ public static class BD
             SELECT p.id AS Id,
                    p.nombre AS Nombre,
                    p.sku AS Sku,
-                   p.categoria AS Categoria,
-                   p.precio AS Precio,
+                   c.nombre AS Categoria,
+                   p.precioVenta AS Precio,
                    p.costoCompra AS CostoCompra,
-                   p.stockActual AS StockActual,
-                   p.stockMinimo AS StockMinimo,
-                   p.cantidadVentas AS CantidadVendida
+                   ISNULL(s.cantidad, 0) AS StockActual,
+                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
+                   0 AS CantidadVendida
             FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
             ORDER BY p.nombre", new { EmpresaId = empresaId })).ToList();
 
         var ventasPorProducto = (await connection.QueryAsync<AnalisisVentaProductoRow>(@"
-            SELECT v.productoId AS ProductoId,
-                   SUM(v.cantidad) AS CantidadVendida,
-                   SUM(v.precio) AS VentasTotales,
-                   SUM(v.costo) AS GastoTotal,
-                   SUM(v.precio - v.costo) AS GananciaTotal
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+            SELECT d.productoID AS ProductoId,
+                   SUM(d.cantidad) AS CantidadVendida,
+                   SUM(d.precioVenta) AS VentasTotales,
+                   SUM(d.costoCompra) AS GastoTotal,
+                   SUM(d.ganancia) AS GananciaTotal
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY v.productoId", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+            GROUP BY d.productoID", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
 
         var ventasPorMes = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(month, v.fecha) AS Mes,
                    MONTH(v.fecha) AS MesNumero,
                    YEAR(v.fecha) AS Anio,
-                   SUM(v.precio) AS Total,
-                   SUM(v.cantidad) AS Cantidad
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                   SUM(d.precioVenta) AS Total,
+                   SUM(d.cantidad) AS Cantidad
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
             ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
@@ -1387,22 +1551,24 @@ public static class BD
             SELECT DATENAME(month, v.fecha) AS Mes,
                    MONTH(v.fecha) AS MesNumero,
                    YEAR(v.fecha) AS Anio,
-                   COUNT(v.id) AS InteresCompra,
-                   SUM(v.cantidad) AS Cantidad
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                   COUNT(DISTINCT v.id) AS InteresCompra,
+                   SUM(d.cantidad) AS Cantidad
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
             ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
 
         var ventasSemana = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(weekday, v.fecha) AS Dia,
-                   SUM(v.precio) AS Total,
-                   SUM(v.cantidad) AS Cantidad
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                   SUM(d.precioVenta) AS Total,
+                   SUM(d.cantidad) AS Cantidad
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
               AND v.fecha >= @Inicio AND v.fecha <= @Fin
             GROUP BY DATENAME(weekday, v.fecha)
             ORDER BY CASE DATENAME(weekday, v.fecha)
@@ -1430,35 +1596,40 @@ public static class BD
         var productos = connection.Query<ProductoIndicadorBase>(@"
             SELECT p.id AS Id,
                    p.nombre AS Nombre,
-                   p.categoria AS Categoria,
-                   p.precio AS Precio,
-                   p.stockActual AS StockActual,
-                   p.stockMinimo AS StockMinimo,
+                   c.nombre AS Categoria,
+                   p.precioVenta AS Precio,
+                   ISNULL(s.cantidad, 0) AS StockActual,
+                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
                    p.costoCompra AS CostoCompra,
                    p.empresaID AS EmpresaId
             FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
             ORDER BY p.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         var ventasPorProducto = connection.Query<ProductoVentaAggregate>(@"
-            SELECT v.productoId AS ProductoId,
-                   SUM(v.cantidad) AS CantidadVendida,
-                   SUM(v.precio) AS VentasTotales,
-                   SUM(v.costo) AS CostoTotal
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY v.productoId",
+            SELECT d.productoID AS ProductoId,
+                   SUM(d.cantidad) AS CantidadVendida,
+                   SUM(d.precioVenta) AS VentasTotales,
+                   SUM(d.costoCompra) AS CostoTotal
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            GROUP BY d.productoID",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         var ventasPorCategoria = connection.Query<ProductoCategoriaAggregate>(@"
-            SELECT p.categoria AS Categoria,
-                   SUM(v.precio) AS VentasTotales
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY p.categoria",
+            SELECT c.nombre AS Categoria,
+                   SUM(d.precioVenta) AS VentasTotales
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            GROUP BY c.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         return new IndicadoresYOportunidadesConsultaData
@@ -1542,6 +1713,8 @@ public static class BD
     {
         return await connection.QuerySingleOrDefaultAsync<string>(
             "SELECT contrasena FROM Usuarios WHERE id = @Usuario AND empresaID = @Empresa",
+           
+
             new { Usuario = usuario, Empresa = empresa });
     }
 
@@ -1640,5 +1813,118 @@ public static class BD
     {
         public int Mail { get; set; }
         public int Nombre { get; set; }
+    }
+
+    private static bool ExisteTabla(IDbConnection connection, string nombreTabla)
+    {
+        var sql = "SELECT CASE WHEN OBJECT_ID(@NombreTabla, 'U') IS NOT NULL THEN 1 ELSE 0 END;";
+        return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla }) == 1;
+    }
+
+    private static bool ExisteColumna(IDbConnection connection, string nombreTabla, string nombreColumna)
+    {
+        var sql = @"SELECT CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = @NombreTabla
+                          AND COLUMN_NAME = @NombreColumna
+                          AND TABLE_SCHEMA = 'dbo') THEN 1 ELSE 0 END;";
+
+        return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla, NombreColumna = nombreColumna }) == 1;
+    }
+
+    public static void GarantizarEsquemaActual(IConfiguration configuration)
+    {
+        using var connection = CrearConexion(configuration);
+        connection.Open();
+
+        if (!ExisteTabla(connection, "dbo.Categoria"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.Categoria (
+                    id int IDENTITY(1,1) NOT NULL,
+                    empresaID int NOT NULL,
+                    nombre varchar(100) NOT NULL,
+                    CONSTRAINT PK_Categoria PRIMARY KEY (id));");
+        }
+
+        if (!ExisteTabla(connection, "dbo.Productos"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.Productos (
+                    id int IDENTITY(1,1) NOT NULL,
+                    empresaID int NOT NULL,
+                    categoriaID int NULL,
+                    proveedorID int NULL,
+                    nombre varchar(150) NOT NULL,
+                    sku varchar(100) NOT NULL,
+                    descripcion varchar(500) NULL,
+                    fechaCarga datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    precioVenta decimal(12,2) NOT NULL DEFAULT 0,
+                    costoCompra decimal(12,2) NOT NULL DEFAULT 0,
+                    activo bit NOT NULL DEFAULT 1,
+                    CONSTRAINT PK_Productos PRIMARY KEY (id));");
+        }
+
+        if (!ExisteTabla(connection, "dbo.Stock"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.Stock (
+                    id int IDENTITY(1,1) NOT NULL,
+                    productoID int NOT NULL,
+                    cantidad int NOT NULL DEFAULT 0,
+                    cantidadMinimoAlerta int NOT NULL DEFAULT 0,
+                    activo bit NOT NULL DEFAULT 1,
+                    actualizadoEn datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT PK_Stock PRIMARY KEY (id));");
+        }
+
+        if (!ExisteTabla(connection, "dbo.DetalleVenta"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.DetalleVenta (
+                    id int IDENTITY(1,1) NOT NULL,
+                    ventaID int NOT NULL,
+                    productoID int NOT NULL,
+                    cantidad int NOT NULL,
+                    precioVenta decimal(12,2) NOT NULL,
+                    costoCompra decimal(12,2) NOT NULL DEFAULT 0,
+                    porcentajeGanancia decimal(10,2) NULL,
+                    ganancia decimal(12,2) NOT NULL DEFAULT 0,
+                    CONSTRAINT PK_DetalleVenta PRIMARY KEY (id));");
+        }
+
+        var columnasProductos = new[]
+        {
+            ("nombre", "ALTER TABLE dbo.Productos ADD nombre varchar(150) NULL;"),
+            ("sku", "ALTER TABLE dbo.Productos ADD sku varchar(100) NULL;"),
+            ("categoriaID", "ALTER TABLE dbo.Productos ADD categoriaID int NULL;"),
+            ("proveedorID", "ALTER TABLE dbo.Productos ADD proveedorID int NULL;"),
+            ("precioVenta", "ALTER TABLE dbo.Productos ADD precioVenta decimal(12,2) NOT NULL DEFAULT 0;"),
+            ("costoCompra", "ALTER TABLE dbo.Productos ADD costoCompra decimal(12,2) NOT NULL DEFAULT 0;"),
+            ("fechaCarga", "ALTER TABLE dbo.Productos ADD fechaCarga datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME();"),
+            ("activo", "ALTER TABLE dbo.Productos ADD activo bit NOT NULL DEFAULT 1;"),
+            ("descripcion", "ALTER TABLE dbo.Productos ADD descripcion varchar(500) NULL;")
+        };
+
+        foreach (var (columna, sql) in columnasProductos)
+        {
+            if (!ExisteColumna(connection, "Productos", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
+
+        var columnasStock = new[]
+        {
+            ("cantidad", "ALTER TABLE dbo.Stock ADD cantidad int NOT NULL DEFAULT 0;"),
+            ("cantidadMinimoAlerta", "ALTER TABLE dbo.Stock ADD cantidadMinimoAlerta int NOT NULL DEFAULT 0;"),
+            ("activo", "ALTER TABLE dbo.Stock ADD activo bit NOT NULL DEFAULT 1;"),
+            ("actualizadoEn", "ALTER TABLE dbo.Stock ADD actualizadoEn datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME();")
+        };
+
+        foreach (var (columna, sql) in columnasStock)
+        {
+            if (!ExisteColumna(connection, "Stock", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
     }
 }

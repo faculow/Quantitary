@@ -162,35 +162,40 @@ public class ProductoRepository
         var productos = connection.Query<ProductoIndicadorBase>(@"
             SELECT p.id AS Id,
                    p.nombre AS Nombre,
-                   p.categoria AS Categoria,
-                   p.precio AS Precio,
-                   p.stockActual AS StockActual,
-                   p.stockMinimo AS StockMinimo,
+                   c.nombre AS Categoria,
+                   p.precioVenta AS Precio,
+                   ISNULL(s.cantidad, 0) AS StockActual,
+                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
                    p.costoCompra AS CostoCompra,
                    p.empresaID AS EmpresaId
             FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
             ORDER BY p.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         var ventasPorProducto = connection.Query<ProductoVentaAggregate>(@"
-            SELECT v.productoId AS ProductoId,
-                   SUM(v.cantidad) AS CantidadVendida,
-                   SUM(v.precio) AS VentasTotales,
-                   SUM(v.costo) AS CostoTotal
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT d.productoID AS ProductoId,
+                   SUM(d.cantidad) AS CantidadVendida,
+                   SUM(d.precioVenta) AS VentasTotales,
+                   SUM(d.costoCompra) AS CostoTotal
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY v.productoId",
+            GROUP BY d.productoID",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         var ventasPorCategoria = connection.Query<ProductoCategoriaAggregate>(@"
-            SELECT p.categoria AS Categoria,
-                   SUM(v.precio) AS VentasTotales
-            FROM Ventas v
-            INNER JOIN Productos p ON p.id = v.productoId
+            SELECT c.nombre AS Categoria,
+                   SUM(d.precioVenta) AS VentasTotales
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY p.categoria",
+            GROUP BY c.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
         var ventasDict = ventasPorProducto
@@ -264,88 +269,26 @@ public class ProductoRepository
             };
         }).ToList();
 
-        var margenNetoGeneral = filas.Any() && filas.Sum(x => x.VentasTotales) > 0
-            ? (filas.Sum(x => x.GananciaTotal) / filas.Sum(x => x.VentasTotales)) * 100m
-            : 0m;
+        var topCategoria = ventasPorCategoria
+            .OrderByDescending(x => x.VentasTotales)
+            .FirstOrDefault();
 
-        var topRotacion = filas.OrderByDescending(x => x.Rotacion).FirstOrDefault();
-        var categoriaTop = ventasPorCategoria.OrderByDescending(x => x.VentasTotales).FirstOrDefault();
-        var interesCompra = filas.Any() ? Math.Round(filas.Max(x => x.Rotacion * 100m), 1) : 0m;
-        var productosUrgentes = filas
-            .Where(x => x.StockActual <= x.StockMinimo)
-            .OrderByDescending(x => x.CantidadVendida)
-            .ThenBy(x => x.Nombre)
-            .Select(x => x.Nombre)
-            .Take(3)
-            .ToList();
-        var diaFoco = ObtenerDiaMasVendido("General");
-        var nombreProductosUrgentes = productosUrgentes.Count > 0
-            ? string.Join(", ", productosUrgentes)
-            : (topRotacion?.Nombre ?? "los productos más vendidos");
-
-        var mensajePersonalizado = productosUrgentes.Count > 0
-            ? $"El próximo paso para vender más es reforzar el stock de {nombreProductosUrgentes} y poner foco desde el {diaFoco} para evitar quedarte sin producto cuando llega la demanda."
-            : $"El próximo paso para vender más es reforzar el stock de {nombreProductosUrgentes} y poner foco desde el {diaFoco} para evitar quedarte sin producto cuando llega la demanda.";
-
-        var model = new IndicadoresYOportunidadesViewModel
+        return new IndicadoresYOportunidadesViewModel
         {
-            MargenNetoGeneral = margenNetoGeneral,
-            ProductoMayorRotacion = topRotacion?.Nombre ?? "Sin datos",
-            RelacionInteresCompra = filas.Any() ? $"{interesCompra}%" : "Sin datos",
-            CategoriaMasVentas = categoriaTop?.Categoria ?? "Sin datos",
+            MargenNetoGeneral = filas.Any() ? (filas.Sum(x => x.GananciaTotal) / Math.Max(1m, filas.Sum(x => x.VentasTotales))) * 100m : 0m,
+            ProductoMayorRotacion = filas.OrderByDescending(x => x.Rotacion).FirstOrDefault()?.Nombre ?? "Sin datos",
+            RelacionInteresCompra = topCategoria == null ? "Sin datos" : $"{topCategoria.Categoria} lidera las ventas",
+            CategoriaMasVentas = topCategoria == null ? "Sin datos" : topCategoria.Categoria,
             TotalProductos = filas.Count,
-            ResumenEstado = filas.Any(x => x.AccionSugerida == "Reponer") ? "Hay productos con reposición urgente" : "Todo en línea",
-            MensajePersonalizadoProximoPaso = mensajePersonalizado,
-            ProductosReponer = filas
-                .Where(x => x.StockActual <= x.StockMinimo)
-                .Select(x => x.Nombre)
-                .Take(5)
-                .ToList(),
-            ProductosComprarMenos = filas
-                .Where(x => x.StockActual > x.StockMinimo * 2 && x.CantidadVendida == 0)
-                .Select(x => x.Nombre)
-                .Take(5)
-                .ToList(),
-            ProductosComprarMas = filas
-                .Where(x => x.StockActual <= x.StockMinimo || (x.CantidadVendida > 0 && x.StockActual < x.StockMinimo * 2))
-                .Select(x => x.Nombre)
-                .Take(5)
-                .ToList(),
-            ProductosCambiarMinimo = filas
-                .Where(x => x.StockActual > x.StockMinimo * 2 && x.CantidadVendida > 0)
-                .Select(x => x.Nombre)
-                .Take(5)
-                .ToList(),
-            RecomendacionesTexto = filas
-                .Select(x => x.RecomendacionTexto)
-                .Take(6)
-                .ToList(),
-            ExplicacionesIndicadores = new List<string>
-            {
-                productosUrgentes.Count > 0
-                    ? $"Hay {productosUrgentes.Count} productos por debajo del mínimo. Si no los repone, puede quedar sin stock en los días de más movimiento."
-                    : "No hay productos críticos por el momento, pero conviene revisar el stock antes del fin de semana.",
-                topRotacion != null
-                    ? $"El producto que más se mueve es {topRotacion.Nombre}. Ese es el primero en reforzar cuando la demanda crece."
-                    : "Todavía no hay un producto claro con más movimiento, por eso conviene seguir observando ventas y stock.",
-                categoriaTop != null
-                    ? $"La categoría {categoriaTop.Categoria} concentra la mayor parte de las ventas, así que conviene mantenerla abastecida."
-                    : "Todavía no hay una categoría dominante en ventas, pero conviene revisar qué productos más venden.",
-                diaFoco != ""
-                    ? $"La demanda se concentra más los {diaFoco}. Ese es el mejor momento para tener stock listo y evitar faltantes."
-                    : "La demanda se mantiene estable, pero conviene tener un margen extra de stock para no quedar sin producto.",
-                margenNetoGeneral > 0
-                    ? $"El margen está positivo, por lo que reforzar stock tiene sentido: se vende y se mantiene la rentabilidad."
-                    : "El margen todavía no es fuerte, así que conviene controlar costos y no comprar más de lo necesario."
-            },
+            ResumenEstado = filas.Count == 0 ? "Sin alertas" : "Revisión activa",
+            ProductosReponer = filas.Where(x => x.AccionSugerida == "Reponer").Select(x => x.Nombre).ToList(),
+            ProductosComprarMenos = filas.Where(x => x.AccionSugerida == "Comprar menos").Select(x => x.Nombre).ToList(),
+            ProductosComprarMas = filas.Where(x => x.AccionSugerida == "Mantener" && x.StockActual <= x.StockMinimo * 1.2m).Select(x => x.Nombre).ToList(),
+            ProductosCambiarMinimo = filas.Where(x => x.MinimoReposicionTexto.Contains("Subir") || x.MinimoReposicionTexto.Contains("Bajar")).Select(x => x.Nombre).ToList(),
+            RecomendacionesTexto = filas.Select(x => x.RecomendacionTexto).Where(x => !string.IsNullOrWhiteSpace(x)).Take(6).ToList(),
+            ExplicacionesIndicadores = filas.Select(x => x.SiguientePaso).Where(x => !string.IsNullOrWhiteSpace(x)).Take(6).ToList(),
             Productos = filas
-                .OrderByDescending(x => x.Rotacion)
-                .ThenBy(x => x.Nombre)
-                .Take(12)
-                .ToList()
         };
-
-        return model;
     }
 
     public bool TieneProductos(int empresaId)
