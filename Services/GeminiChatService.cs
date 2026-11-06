@@ -11,7 +11,7 @@ namespace Quantitary.Services;
 public sealed class GeminiOptions
 {
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "gemini-3.6-flash";
+    public string Model { get; set; } = "gemini-3.5-flash";
 }
 
 /// <summary>Valida la conversación, llama a la API oficial de Gemini y convierte la respuesta en texto, tablas y gráficos.</summary>
@@ -99,12 +99,13 @@ public sealed class GeminiChatService : IAiChatService
     {
         var contents = new JsonArray();
 
-        // Los datos pueden contener texto escrito por usuarios (por ejemplo, nombres de productos).
-        // Se envían como contenido no confiable, nunca como instrucción del sistema.
-        contents.Add(MakeContent("user", QuantitaryAiPolicy.WrapBusinessData(contexto)));
-        contents.Add(MakeContent("model", "Contexto recibido como datos de solo lectura. Mantendré las reglas de Quantitary."));
+        var shortContext = string.IsNullOrWhiteSpace(contexto) ? "No hay datos del comercio." : contexto.Trim();
+        if (shortContext.Length > 1200)
+            shortContext = shortContext[..1200];
 
-        foreach (var (role, text) in history)
+        contents.Add(MakeContent("user", shortContext));
+
+        foreach (var (role, text) in history.TakeLast(4))
             contents.Add(MakeContent(role == "assistant" ? "model" : "user", text));
 
         contents.Add(MakeContent("user", message));
@@ -115,23 +116,14 @@ public sealed class GeminiChatService : IAiChatService
             {
                 ["parts"] = new JsonArray(new JsonObject { ["text"] = QuantitaryAiPolicy.SystemInstruction })
             },
-            ["safetySettings"] = new JsonArray(
-                SafetySetting("HARM_CATEGORY_JAILBREAK", "BLOCK_LOW_AND_ABOVE"),
-                SafetySetting("HARM_CATEGORY_HATE_SPEECH", "BLOCK_MEDIUM_AND_ABOVE"),
-                SafetySetting("HARM_CATEGORY_HARASSMENT", "BLOCK_MEDIUM_AND_ABOVE"),
-                SafetySetting("HARM_CATEGORY_SEXUALLY_EXPLICIT", "BLOCK_MEDIUM_AND_ABOVE"),
-                SafetySetting("HARM_CATEGORY_DANGEROUS_CONTENT", "BLOCK_MEDIUM_AND_ABOVE")),
             ["contents"] = contents,
             ["generationConfig"] = new JsonObject
             {
-                ["temperature"] = 0.15,
-                ["topP"] = 0.8,
+                ["temperature"] = 0.2,
+                ["topP"] = 0.9,
                 ["candidateCount"] = 1,
-                ["maxOutputTokens"] = 4096,
-                // Contrato estable de generateContent. responseFormat pertenece al contrato
-                // nuevo y algunas versiones lo rechazan con HTTP 400.
-                ["responseMimeType"] = "application/json",
-                ["responseJsonSchema"] = BuildResponseSchema()
+                ["maxOutputTokens"] = 1024,
+                ["responseMimeType"] = "text/plain"
             }
         };
     }
@@ -140,97 +132,6 @@ public sealed class GeminiChatService : IAiChatService
     {
         ["category"] = category,
         ["threshold"] = threshold
-    };
-
-    private static JsonObject BuildResponseSchema() => new()
-    {
-        ["type"] = "object",
-        ["additionalProperties"] = false,
-        ["required"] = new JsonArray("respuesta", "titulo_chat", "tablas", "graficos"),
-        ["properties"] = new JsonObject
-        {
-            ["respuesta"] = new JsonObject { ["type"] = "string" },
-            ["titulo_chat"] = new JsonObject { ["type"] = "string" },
-            ["tablas"] = new JsonObject
-            {
-                ["type"] = "array",
-                ["maxItems"] = MaxTables,
-                ["items"] = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["additionalProperties"] = false,
-                    ["required"] = new JsonArray("titulo", "columnas", "filas"),
-                    ["properties"] = new JsonObject
-                    {
-                        ["titulo"] = new JsonObject { ["type"] = "string" },
-                        ["columnas"] = new JsonObject
-                        {
-                            ["type"] = "array",
-                            ["maxItems"] = MaxColumns,
-                            ["items"] = new JsonObject { ["type"] = "string" }
-                        },
-                        ["filas"] = new JsonObject
-                        {
-                            ["type"] = "array",
-                            ["maxItems"] = MaxRows,
-                            ["items"] = new JsonObject
-                            {
-                                ["type"] = "array",
-                                ["maxItems"] = MaxColumns,
-                                ["items"] = new JsonObject { ["type"] = "string" }
-                            }
-                        }
-                    }
-                }
-            },
-            ["graficos"] = new JsonObject
-            {
-                ["type"] = "array",
-                ["maxItems"] = MaxCharts,
-                ["items"] = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["additionalProperties"] = false,
-                    ["required"] = new JsonArray("tipo", "titulo", "etiquetas", "series"),
-                    ["properties"] = new JsonObject
-                    {
-                        ["tipo"] = new JsonObject
-                        {
-                            ["type"] = "string",
-                            ["enum"] = new JsonArray("barras", "lineas", "torta")
-                        },
-                        ["titulo"] = new JsonObject { ["type"] = "string" },
-                        ["etiquetas"] = new JsonObject
-                        {
-                            ["type"] = "array",
-                            ["maxItems"] = MaxLabels,
-                            ["items"] = new JsonObject { ["type"] = "string" }
-                        },
-                        ["series"] = new JsonObject
-                        {
-                            ["type"] = "array",
-                            ["maxItems"] = MaxSeries,
-                            ["items"] = new JsonObject
-                            {
-                                ["type"] = "object",
-                                ["additionalProperties"] = false,
-                                ["required"] = new JsonArray("nombre", "valores"),
-                                ["properties"] = new JsonObject
-                                {
-                                    ["nombre"] = new JsonObject { ["type"] = "string" },
-                                    ["valores"] = new JsonObject
-                                    {
-                                        ["type"] = "array",
-                                        ["maxItems"] = MaxLabels,
-                                        ["items"] = new JsonObject { ["type"] = "number" }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     };
 
     private static JsonObject MakeContent(string role, string text) => new()
@@ -306,7 +207,7 @@ public sealed class GeminiChatService : IAiChatService
                 return ChatResult.Failure("empty_response",
                     "Gemini respondió, pero la respuesta no se pudo usar. Probá reformular la pregunta.");
 
-            return ParseModelOutput(rawText);
+            return TryParsePlainText(rawText) ?? ParseModelOutput(rawText);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -314,6 +215,24 @@ public sealed class GeminiChatService : IAiChatService
             return ChatResult.Failure("upstream_error",
                 "Gemini devolvió una respuesta que no se pudo leer. Intentá de nuevo.");
         }
+    }
+
+    private static ChatResult? TryParsePlainText(string rawText)
+    {
+        var text = StripCodeFence(rawText).Trim();
+        if (string.IsNullOrEmpty(text)) return null;
+
+        if (text.StartsWith("{", StringComparison.Ordinal) || text.StartsWith("[", StringComparison.Ordinal))
+            return null;
+
+        if (text.Contains('{') || text.Contains('['))
+        {
+            var candidate = text.Trim();
+            if (candidate.Contains("\"respuesta\"", StringComparison.OrdinalIgnoreCase))
+                return null;
+        }
+
+        return ChatResult.Success(text, new List<ChatTable>(), new List<ChatChart>(), "Consulta");
     }
 
     private static string ExtractText(JsonNode? root)
@@ -384,7 +303,7 @@ public sealed class GeminiChatService : IAiChatService
     private static string? NormalizeChatTitle(string title)
     {
         var clean = string.Join(" ", title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-            .Trim(' ', '\"', '\'', '¿', '?', '¡', '!', '.', ',', ':', ';', '-', '–', '—');
+            .Trim(' ', '"', '\'', '¿', '?', '¡', '!', '.', ',', ':', ';', '-', '–', '—');
         if (clean.Length == 0 || clean.Equals("Nuevo chat", StringComparison.OrdinalIgnoreCase)) return null;
         const int maxLength = 54;
         return clean.Length <= maxLength ? clean : clean[..maxLength].TrimEnd();
