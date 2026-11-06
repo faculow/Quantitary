@@ -4,7 +4,7 @@ La clave de Gemini no se guarda en el repositorio.
 
 ## Configuración requerida
 
-1. Ejecutar `Database/IAChats.sql` una sola vez sobre la base de datos de Quantitary. El script es idempotente y no elimina tablas existentes.
+1. Ejecutar `script.sql` sobre la base de datos de Quantitary. La creación de `IAChats`, `IAMensajes` e `IAAuditoria` ya está integrada en ese único archivo y no vuelve a crear esas tablas si ya existen.
 2. Configurar la variable de entorno `GEMINI_API_KEY` con la clave de Google AI Studio.
 3. En un servidor que no use la base local, configurar `ConnectionStrings__DefaultConnection` con la cadena de conexión de SQL Server.
 

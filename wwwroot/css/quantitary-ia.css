@@ -115,8 +115,10 @@
 #quantitary-ia .data-table th,#quantitary-ia .data-table td{padding:7px 8px;border-bottom:1px solid #edf2fa;text-align:left;white-space:nowrap}
 #quantitary-ia .data-table th{color:#5a6f92;font-weight:600;background:#f6f9fe}
 #quantitary-ia .data-table td.num{text-align:right;font-variant-numeric:tabular-nums}
-#quantitary-ia .chart-svg{width:100%;height:auto;display:block}
+#quantitary-ia .chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;padding:1px 0 5px;scrollbar-width:thin}
+#quantitary-ia .chart-svg{height:auto;display:block;max-width:none}
 #quantitary-ia .chart-svg text{font-size:10px;fill:#6a7a94;font-family:inherit}
+#quantitary-ia .chart-svg .category-label{font-size:9.5px}
 #quantitary-ia .chart-svg .axis{stroke:#e3ebf7;stroke-width:1}
 #quantitary-ia .legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;font-size:11px;color:#5a6f92}
 #quantitary-ia .legend-item{display:inline-flex;align-items:center;gap:5px}

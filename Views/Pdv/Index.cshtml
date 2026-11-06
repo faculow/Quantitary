@@ -1,6 +1,6 @@
 @model Quantitary.Models.PdvIndexViewModel
 @{
-    ViewData["Title"] = "Punto de venta";
+    ViewData["Title"] = "POS";
     var categorias = Model.Categorias ?? new List<string>();
 }
 
@@ -8,7 +8,7 @@
     <div class="pdv-left panel">
         <div class="pdv-header">
             <div>
-                <p class="eyebrow">Punto de venta</p>
+                <p class="eyebrow">POS · Punto de venta</p>
                 <h2>Venta rápida</h2>
             </div>
             <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm">Dashboard</a>

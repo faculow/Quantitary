@@ -18,13 +18,6 @@ public sealed class IAHistorialSql
     public async Task<IReadOnlyList<ChatResumen>> Listar(int usuario, int empresa)
     {
         await using var db = Conexion();
-        await db.ExecuteAsync(@"UPDATE c SET Titulo=LEFT(LTRIM(RTRIM(m.Texto)),54)
-            FROM dbo.IAChats c
-            CROSS APPLY (SELECT TOP (1) Texto FROM dbo.IAMensajes
-                         WHERE ChatId=c.Id AND Rol='user' ORDER BY Id) m
-            WHERE c.UsuarioId=@usuario AND c.EmpresaId=@empresa
-              AND (LTRIM(RTRIM(c.Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(c.Titulo))=N'')",
-            new { usuario, empresa });
         var chats = await db.QueryAsync<ChatResumen>(
             "SELECT Id, Titulo, ActualizadoEn FROM dbo.IAChats WHERE UsuarioId=@usuario AND EmpresaId=@empresa ORDER BY ActualizadoEn DESC",
             new { usuario, empresa });
@@ -49,26 +42,18 @@ public sealed class IAHistorialSql
         var data = await db.QueryAsync<ChatRow>(@"SELECT m.Rol, m.Texto AS Text FROM dbo.IAMensajes m INNER JOIN dbo.IAChats c ON c.Id=m.ChatId WHERE c.Id=@chat AND c.UsuarioId=@usuario AND c.EmpresaId=@empresa ORDER BY m.Id", new { chat, usuario, empresa });
         return data.Select(x => new ChatTurn(x.Rol, x.Text)).ToList();
     }
-    public async Task GuardarIntercambio(Guid chat, int usuario, int empresa, string pregunta, string respuesta)
+    public async Task GuardarIntercambio(Guid chat, int usuario, int empresa, string pregunta, string respuesta, string? tituloSugerido)
     {
         await using var db = Conexion();
         await db.OpenAsync();
         await using var tx = (SqlTransaction)await db.BeginTransactionAsync();
-        var titulo = CrearTitulo(pregunta);
+        var titulo = NormalizarTitulo(tituloSugerido) ?? CrearTitulo(pregunta);
         var affected = await db.ExecuteAsync(@"UPDATE dbo.IAChats SET ActualizadoEn=SYSUTCDATETIME(),
             Titulo=CASE WHEN LTRIM(RTRIM(Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(Titulo))=N'' THEN @titulo ELSE Titulo END
             WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa", new { chat, usuario, empresa, titulo }, tx);
         if (affected != 1) throw new UnauthorizedAccessException();
         await db.ExecuteAsync("INSERT INTO dbo.IAMensajes(ChatId,Rol,Texto) VALUES (@chat,'user',@pregunta),(@chat,'assistant',@respuesta)", new { chat, pregunta, respuesta }, tx);
         await tx.CommitAsync();
-    }
-    public async Task NombrarSiNuevo(Guid chat, int usuario, int empresa, string pregunta)
-    {
-        await using var db = Conexion();
-        await db.ExecuteAsync(@"UPDATE dbo.IAChats SET Titulo=@titulo, ActualizadoEn=SYSUTCDATETIME()
-            WHERE Id=@chat AND UsuarioId=@usuario AND EmpresaId=@empresa
-              AND (LTRIM(RTRIM(Titulo))=N'Nuevo chat' OR LTRIM(RTRIM(Titulo))=N'')",
-            new { chat, usuario, empresa, titulo = CrearTitulo(pregunta) });
     }
     public async Task<bool> Renombrar(Guid chat, int usuario, int empresa, string titulo)
     {
@@ -96,6 +81,15 @@ public sealed class IAHistorialSql
         if (limpio.Length == 0) return "Nuevo chat";
         const int maximo = 54;
         return limpio.Length <= maximo ? limpio : limpio[..(maximo - 1)].TrimEnd() + "…";
+    }
+    private static string? NormalizarTitulo(string? titulo)
+    {
+        if (string.IsNullOrWhiteSpace(titulo)) return null;
+        var limpio = string.Join(" ", titulo.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .Trim(' ', '\"', '\'', '¿', '?', '¡', '!', '.', ',', ':', ';', '-', '–', '—');
+        if (limpio.Length == 0 || limpio.Equals("Nuevo chat", StringComparison.OrdinalIgnoreCase)) return null;
+        const int maximo = 54;
+        return limpio.Length <= maximo ? limpio : limpio[..maximo].TrimEnd();
     }
     public sealed class ChatResumen
     {

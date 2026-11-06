@@ -12,6 +12,18 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+});
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -29,7 +41,7 @@ builder.Services.AddScoped<ComercioDatosSql>();
 builder.Services.AddScoped<IAHistorialSql>();
 builder.Services.AddScoped<IAStockSql>();
 builder.Services.AddScoped<IAProductoSql>();
-builder.Services.AddHttpClient<GeminiChatService>(client =>
+builder.Services.AddHttpClient<IAiChatService, GeminiChatService>(client =>
     client.Timeout = TimeSpan.FromSeconds(60));
 
 builder.Services.AddRateLimiter(options =>

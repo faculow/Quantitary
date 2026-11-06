@@ -41,32 +41,58 @@
     <div class="app-shell">
         <aside class="sidebar">
             <div class="sidebar-brand">
-                <img src="~/imagenes/logo.png" alt="Quantitary" class="brand-logo" />
+                <img src="~/images/LogoFondoBlanco.png" alt="Quantitary" class="brand-logo brand-logo-light" />
+                <img src="~/images/LogoFondoAzul.png" alt="Quantitary" class="brand-logo brand-logo-dark" />
             </div>
 
             <nav class="sidebar-nav">
                 <a asp-controller="Home" asp-action="Index" class="nav-link-side @(esInicio ? "active" : "")" aria-current="@(esInicio ? "page" : null)">
-                    <img src="~/imagenes/inicio.png" alt="Inicio" class="nav-icon" />
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3.5 10.5 12 3.8l8.5 6.7"></path>
+                        <path d="M5.5 9.5V20h13V9.5"></path>
+                        <path d="M9.5 20v-6h5v6"></path>
+                    </svg>
                     <span>Inicio</span>
                 </a>
                 <a asp-controller="Pdv" asp-action="Index" class="nav-link-side @(esPdv ? "active" : "")" aria-current="@(esPdv ? "page" : null)">
-                    <img src="~/imagenes/stock.png" alt="Punto de venta" class="nav-icon" />
-                    <span>PDV</span>
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 4h10l1 6H6z"></path>
+                        <path d="M5 10h14l1.5 4v6h-17v-6z"></path>
+                        <path d="M7 14h6M7 17h10"></path>
+                        <circle cx="17" cy="14" r="1"></circle>
+                    </svg>
+                    <span>POS</span>
                 </a>
                 <a asp-controller="Stock" asp-action="Index" class="nav-link-side @(esStock ? "active" : "")" aria-current="@(esStock ? "page" : null)">
-                    <img src="~/imagenes/stock.png" alt="Stock" class="nav-icon" />
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m4 7 8-4 8 4-8 4z"></path>
+                        <path d="M4 7v10l8 4 8-4V7"></path>
+                        <path d="M12 11v10"></path>
+                    </svg>
                     <span>Stock</span>
                 </a>
                 <a asp-controller="Home" asp-action="Historial" class="nav-link-side @(esHistorial ? "active" : "")" aria-current="@(esHistorial ? "page" : null)">
-                    <img src="~/imagenes/historial.png" alt="Historial" class="nav-icon" />
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4.4 8A8.5 8.5 0 1 1 3.5 14"></path>
+                        <path d="M4 3.8V8h4.2"></path>
+                        <path d="M12 7.5V12l3 2"></path>
+                    </svg>
                     <span>Historial</span>
                 </a>
                 <a asp-controller="Home" asp-action="IndicadoresYOportunidades" class="nav-link-side @(esIndicadores ? "active" : "")" aria-current="@(esIndicadores ? "page" : null)">
-                    <img src="~/imagenes/historial.png" alt="Indicadores" class="nav-icon" />
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 18a8 8 0 1 1 16 0"></path>
+                        <path d="M7 18h10"></path>
+                        <path d="m12 15 4-5"></path>
+                        <circle cx="12" cy="15" r="1.2"></circle>
+                    </svg>
                     <span>Indicadores</span>
                 </a>
                 <a asp-controller="Home" asp-action="AnalisisVentasGanancias" class="nav-link-side @(esAnalisis && accionActual == "AnalisisVentasGanancias" ? "active" : "")" aria-current="@(esAnalisis && accionActual == "AnalisisVentasGanancias" ? "page" : null)">
-                    <img src="~/imagenes/historial.png" alt="Análisis" class="nav-icon" />
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 19.5V14h3v5.5zM10.5 19.5V9h3v10.5zM17 19.5V5h3v14.5z"></path>
+                        <path d="M3 19.5h18"></path>
+                    </svg>
                     <span>Análisis</span>
                 </a>
             </nav>
@@ -89,7 +115,8 @@
             <header class="topbar">
                 <div class="topbar-left">
                     <a class="brand-mini" asp-controller="Home" asp-action="Index">
-                        <img src="~/imagenes/logo.png" alt="Quantitary" class="brand-mini-logo" />
+                        <img src="~/images/LogoFondoBlanco.png" alt="Quantitary" class="brand-mini-logo brand-logo-light" />
+                        <img src="~/images/LogoFondoAzul.png" alt="Quantitary" class="brand-mini-logo brand-logo-dark" />
                     </a>
                 </div>
 

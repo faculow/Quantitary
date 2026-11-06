@@ -87,6 +87,18 @@ body {
     filter: drop-shadow(0 8px 18px rgba(96, 165, 250, 0.25));
 }
 
+.brand-logo-dark {
+    display: none;
+}
+
+html[data-quantitary-theme="dark"] .brand-logo-light {
+    display: none;
+}
+
+html[data-quantitary-theme="dark"] .brand-logo-dark {
+    display: block;
+}
+
 .sidebar-nav {
     display: flex;
     flex-direction: column;
@@ -1280,7 +1292,7 @@ body {
     background: var(--bg);
 }
 
-/* PDV */
+/* POS */
 .pdv-shell {
     display: grid;
     grid-template-columns: minmax(0, 1.8fr) minmax(300px, 0.9fr);

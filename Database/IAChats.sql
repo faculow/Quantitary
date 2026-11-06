@@ -1,0 +1,3 @@
+-- ARCHIVO OBSOLETO: no ejecutar.
+-- La creación de IAChats, IAMensajes e IAAuditoria está integrada en ../script.sql.
+-- Se conserva este archivo únicamente para no dejar instrucciones duplicadas en versiones anteriores del repositorio.

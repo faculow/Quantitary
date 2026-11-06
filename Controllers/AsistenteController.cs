@@ -8,16 +8,16 @@ namespace Quantitary.Controllers;
 public sealed class AsistenteController : Controller
 {
     private readonly ComercioDatosSql _datos;
-    private readonly GeminiChatService _gemini;
+    private readonly IAiChatService _ai;
     private readonly ILogger<AsistenteController> _logger;
     private readonly IAHistorialSql _historial;
     private readonly IAStockSql _stock;
     private readonly IAProductoSql _producto;
 
-    public AsistenteController(ComercioDatosSql datos, GeminiChatService gemini, IAHistorialSql historial, IAStockSql stock, IAProductoSql producto, ILogger<AsistenteController> logger)
+    public AsistenteController(ComercioDatosSql datos, IAiChatService ai, IAHistorialSql historial, IAStockSql stock, IAProductoSql producto, ILogger<AsistenteController> logger)
     {
         _datos = datos;
-        _gemini = gemini;
+        _ai = ai;
         _historial = historial;
         _stock = stock;
         _producto = producto;
@@ -34,20 +34,19 @@ public sealed class AsistenteController : Controller
         if (usuarioId is not > 0 || empresaId is not > 0)
             return Unauthorized(ChatResult.Failure("unauthorized", "Iniciá sesión para usar Quantitary IA."));
 
-        if (string.IsNullOrWhiteSpace(request?.Message) || request.Message.Length > GeminiChatService.MaxMessageLength)
+        if (string.IsNullOrWhiteSpace(request?.Message) || request.Message.Length > AiChatLimits.MaxMessageLength)
             return BadRequest(ChatResult.Failure("invalid_request", "Escribí una pregunta de hasta 2000 caracteres."));
 
         try
         {
             if (request.ChatId is not Guid chatId || !await _historial.Existe(chatId, usuarioId.Value, empresaId.Value))
                 return BadRequest(ChatResult.Failure("invalid_chat", "Elegí un chat válido antes de enviar."));
-            await _historial.NombrarSiNuevo(chatId, usuarioId.Value, empresaId.Value, request.Message!);
             var historico = await _historial.Leer(chatId, usuarioId.Value, empresaId.Value);
             var contexto = await _datos.ConstruirContextoAsync(usuarioId.Value, empresaId.Value, cancellationToken);
-            var seguro = request with { History = historico.TakeLast(GeminiChatService.MaxHistoryTurns).ToList() };
-            var resultado = await _gemini.SendAsync(seguro, contexto, cancellationToken);
+            var seguro = request with { History = historico.TakeLast(AiChatLimits.MaxHistoryTurns).ToList() };
+            var resultado = await _ai.SendAsync(seguro, contexto, cancellationToken);
             if (resultado.Ok && resultado.Reply is not null)
-                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, request.Message!, resultado.Reply);
+                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, request.Message!, resultado.Reply, resultado.ChatTitle);
             return StatusCode(resultado.Error?.Code switch
             {
                 null => 200,

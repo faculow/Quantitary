@@ -283,19 +283,24 @@
     var card = createEl('div', 'block-card');
     if (chart.title) card.appendChild(createEl('div', 'block-title', chart.title));
 
-    var W = 320;
-    var H = chart.type === 'pie' ? 200 : 180;
+    var layout = chart.type === 'pie' ? null : buildCategoryLayout(chart.labels);
+    var W = chart.type === 'pie' ? 320 : Math.max(320, 54 + layout.totalWidth);
+    var H = chart.type === 'pie' ? 200 : 184 + Math.max(0, layout.maxLines - 1) * 12;
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + W + ' ' + H,
       role: 'img',
       'class': 'chart-svg',
       'aria-label': chart.title || 'Gráfico'
     });
+    svg.style.width = W + 'px';
+    svg.style.minWidth = '100%';
 
     if (chart.type === 'pie') drawPie(svg, chart, W, H);
-    else drawCartesian(svg, chart, W, H);
+    else drawCartesian(svg, chart, W, H, layout);
 
-    card.appendChild(svg);
+    var scroll = createEl('div', 'chart-scroll');
+    scroll.appendChild(svg);
+    card.appendChild(scroll);
     card.appendChild(renderLegend(chart));
     return card;
   }
@@ -304,13 +309,53 @@
     return Number(value).toLocaleString('es-AR', { maximumFractionDigits: 1 });
   }
 
-  function shortLabel(label) {
-    return label.length > 10 ? label.slice(0, 9) + '…' : label;
+  var labelMeasureContext = null;
+
+  function measureLabel(text) {
+    if (!labelMeasureContext) {
+      var canvas = document.createElement('canvas');
+      labelMeasureContext = canvas.getContext('2d');
+      if (labelMeasureContext) labelMeasureContext.font = '10px Arial, sans-serif';
+    }
+    return labelMeasureContext ? labelMeasureContext.measureText(String(text)).width : String(text).length * 6;
   }
 
-  function drawCartesian(svg, chart, W, H) {
-    var pad = { l: 36, r: 8, t: 10, b: 30 };
-    var innerW = W - pad.l - pad.r;
+  function wrapLabel(label, maxWidth) {
+    var words = String(label).trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+    var lines = [];
+    var line = '';
+
+    words.forEach(function (word) {
+      var candidate = line ? line + ' ' + word : word;
+      if (!line || measureLabel(candidate) <= maxWidth) {
+        line = candidate;
+        return;
+      }
+      lines.push(line);
+      line = word;
+    });
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function buildCategoryLayout(labels) {
+    var total = 0;
+    var maxLines = 1;
+    var entries = labels.map(function (label) {
+      var fullWidth = measureLabel(label) + 24;
+      var width = Math.max(76, Math.min(fullWidth, 190));
+      var lines = wrapLabel(label, width - 16);
+      maxLines = Math.max(maxLines, lines.length);
+      var entry = { label: label, width: width, center: total + width / 2, lines: lines };
+      total += width;
+      return entry;
+    });
+    return { entries: entries, totalWidth: total, maxLines: maxLines };
+  }
+
+  function drawCartesian(svg, chart, W, H, layout) {
+    var pad = { l: 42, r: 12, t: 10, b: 22 + layout.maxLines * 12 };
     var innerH = H - pad.t - pad.b;
 
     var min = 0;
@@ -340,28 +385,31 @@
       svg.appendChild(yLabel);
     }
 
-    var count = chart.labels.length;
-    var step = innerW / count;
-
-    chart.labels.forEach(function (label, i) {
-      var x = pad.l + step * i + step / 2;
-      var text = svgEl('text', { x: x, y: H - 10, 'text-anchor': 'middle' });
-      text.textContent = shortLabel(label);
+    layout.entries.forEach(function (entry) {
+      var x = pad.l + entry.center;
+      var firstY = H - 9 - (entry.lines.length - 1) * 11;
+      var text = svgEl('text', { x: x, y: firstY, 'text-anchor': 'middle', 'class': 'category-label' });
+      entry.lines.forEach(function (line, lineIndex) {
+        var tspan = svgEl('tspan', { x: x, dy: lineIndex === 0 ? 0 : 11 });
+        tspan.textContent = line;
+        text.appendChild(tspan);
+      });
       var tip = svgEl('title');
-      tip.textContent = label;
+      tip.textContent = entry.label;
       text.appendChild(tip);
       svg.appendChild(text);
     });
 
     if (chart.type === 'bar') {
-      var groupWidth = step * 0.7;
-      var barWidth = groupWidth / chart.series.length;
       var zeroY = yOf(0);
 
       chart.series.forEach(function (serie, si) {
         serie.values.forEach(function (v, i) {
           if (v === null) return;
-          var x = pad.l + step * i + step * 0.15 + barWidth * si;
+          var entry = layout.entries[i];
+          var groupWidth = entry.width * 0.7;
+          var barWidth = groupWidth / chart.series.length;
+          var x = pad.l + entry.center - groupWidth / 2 + barWidth * si;
           var top = Math.min(yOf(v), zeroY);
           var height = Math.abs(zeroY - yOf(v));
           var rect = svgEl('rect', {
@@ -380,7 +428,7 @@
         var points = [];
         serie.values.forEach(function (v, i) {
           if (v === null) return;
-          points.push((pad.l + step * i + step / 2).toFixed(1) + ',' + yOf(v).toFixed(1));
+          points.push((pad.l + layout.entries[i].center).toFixed(1) + ',' + yOf(v).toFixed(1));
         });
         if (points.length > 1) {
           svg.appendChild(svgEl('polyline', {
@@ -391,7 +439,7 @@
         serie.values.forEach(function (v, i) {
           if (v === null) return;
           var dot = svgEl('circle', {
-            cx: pad.l + step * i + step / 2, cy: yOf(v), r: 3.2, fill: color
+            cx: pad.l + layout.entries[i].center, cy: yOf(v), r: 3.2, fill: color
           });
           var tip = svgEl('title');
           tip.textContent = chart.labels[i] + ' · ' + serie.name + ': ' + formatNumber(v);

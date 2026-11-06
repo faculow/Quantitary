@@ -1,6 +1,6 @@
-﻿@{
+@{
     Layout = null;
-    ViewData["Title"] = "Quantitary - Landing";
+    ViewData["Title"] = "Quantitary | Ventas, stock y decisiones en un solo lugar";
 }
 
 <!DOCTYPE html>
@@ -8,235 +8,292 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Controlá ventas, stock y ganancias desde un panel simple, con análisis claros y asistencia de IA." />
     <title>@ViewData["Title"]</title>
+    <link rel="icon" href="~/favicon.ico" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
 </head>
 <body>
-    <div class="landing-page">
-        <header class="landing-header">
-            <div class="brand-mark">
-                <span class="brand-dot"></span>
+    <div class="landing-shell">
+        <header class="site-header">
+            <a href="#inicio" class="brand" aria-label="Quantitary, ir al inicio">
+                <img class="brand-symbol" src="~/images/quantitary-logo-oficial.png" alt="Logo de Quantitary" />
                 <span>Quantitary</span>
-            </div>
+            </a>
 
-            <nav class="header-nav" aria-label="Navegación principal">
-                <a href="#features">Características</a>
-                <a href="#beneficios">Beneficios</a>
+            <nav class="main-nav" aria-label="Navegación principal">
+                <a href="#producto">Producto</a>
+                <a href="#como-funciona">Cómo funciona</a>
+                <a href="#asistente">Asistente IA</a>
                 <a href="#preguntas">Preguntas</a>
             </nav>
 
             <div class="header-actions">
-                <a asp-controller="Cuenta" asp-action="Login" class="header-link">Iniciar sesión</a>
-                <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-primary btn-quantary btn-header">Crear cuenta</a>
+                <a asp-controller="Cuenta" asp-action="Login" class="text-link">Ingresar</a>
+                <a asp-controller="Cuenta" asp-action="Registro" class="button button-small button-primary">Crear cuenta</a>
             </div>
         </header>
 
-        <main class="landing-main">
-            <section class="hero-section">
+        <main>
+            <section class="hero" id="inicio">
                 <div class="hero-copy">
-                    <p class="eyebrow">Quantitary · Landing pública</p>
-                    <h1>
-                        Tu negocio, <span>más claro.</span><br />
-                        Tus decisiones, <span>más simples.</span>
-                    </h1>
-                    <p class="hero-text">
-                        Centralizá ventas, stock y decisiones con una herramienta pensada para equipos que quieren crecer con orden y rapidez.
+                    <div class="hero-brand">
+                        <img src="~/images/quantitary-logo-oficial.png" alt="Logo de Quantitary" />
+                        <div><strong>Quantitary</strong><span>Gestión comercial</span></div>
+                    </div>
+                    <p class="eyebrow">Sistema de gestión comercial</p>
+                    <h1>Controlá ventas, stock y resultados desde un solo lugar.</h1>
+                    <p class="hero-lead">
+                        Quantitary reúne la información diaria de tu negocio en una interfaz simple. Registrá movimientos, consultá existencias y revisá el rendimiento por período.
                     </p>
 
                     <div class="hero-actions">
-                        <a asp-controller="Cuenta" asp-action="Login" class="btn btn-primary btn-quantary btn-primary-cta">Iniciar sesión</a>
-                        <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-outline-primary btn-quantary btn-secondary-cta">Crear cuenta</a>
+                        <a asp-controller="Cuenta" asp-action="Registro" class="button button-primary">
+                            Empezar ahora
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                        </a>
+                        <a asp-controller="Cuenta" asp-action="Login" class="button button-ghost">Ya tengo una cuenta</a>
                     </div>
 
-                    <ul class="hero-points">
-                        <li>Control de stock en tiempo real</li>
-                        <li>Indicadores de ventas y rentabilidad</li>
-                        <li>Gestión simple y centralizada</li>
+                    <div class="hero-proof" aria-label="Funciones principales">
+                        <span><i>✓</i> Registro de ventas</span>
+                        <span><i>✓</i> Control de stock</span>
+                        <span><i>✓</i> Reportes por período</span>
+                    </div>
+                </div>
+
+                <div class="product-stage" aria-label="Vista de demostración del panel de Quantitary">
+                    <div class="stage-glow stage-glow-one"></div>
+                    <div class="stage-glow stage-glow-two"></div>
+                    <div class="app-window">
+                        <div class="app-window-bar">
+                            <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                            <span class="demo-label">Vista de demostración</span>
+                            <span class="window-user">DE</span>
+                        </div>
+
+                        <div class="app-body">
+                            <aside class="app-sidebar" aria-hidden="true">
+                                <div class="mini-brand"><img src="~/images/quantitary-logo-oficial.png" alt="Logo de Quantitary" /></div>
+                                <span class="side-item active"><i></i>Inicio</span>
+                                <span class="side-item"><i></i>Stock</span>
+                                <span class="side-item"><i></i>Ventas</span>
+                                <span class="side-item"><i></i>Análisis</span>
+                                <span class="side-item"><i></i>Ajustes</span>
+                            </aside>
+
+                            <div class="app-dashboard">
+                                <div class="dashboard-heading">
+                                    <div><small>Resumen general</small><strong>Buen día, equipo</strong></div>
+                                    <span>Este mes⌄</span>
+                                </div>
+
+                                <div class="metric-row">
+                                    <article class="metric-card metric-blue"><span>Ventas</span><strong>$1.284.500</strong><small>↗ 12,4% este mes</small></article>
+                                    <article class="metric-card"><span>Ganancia</span><strong>$384.200</strong><small>Margen 29,9%</small></article>
+                                    <article class="metric-card"><span>Unidades</span><strong>428</strong><small>18 productos activos</small></article>
+                                </div>
+
+                                <div class="dashboard-lower">
+                                    <article class="chart-card">
+                                        <div class="card-heading"><strong>Ventas por semana</strong><span>•••</span></div>
+                                        <div class="chart-area" aria-hidden="true">
+                                            <div class="chart-grid"></div>
+                                            <svg viewBox="0 0 430 150" preserveAspectRatio="none">
+                                                <defs>
+                                                    <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stop-color="#2864ff" stop-opacity=".25" />
+                                                        <stop offset="100%" stop-color="#2864ff" stop-opacity="0" />
+                                                    </linearGradient>
+                                                </defs>
+                                                <path class="chart-fill" d="M0,128 C38,122 52,91 88,98 C125,105 139,72 176,77 C211,82 226,48 263,56 C302,64 316,34 350,42 C383,49 397,21 430,18 L430,150 L0,150 Z" />
+                                                <path class="chart-line" d="M0,128 C38,122 52,91 88,98 C125,105 139,72 176,77 C211,82 226,48 263,56 C302,64 316,34 350,42 C383,49 397,21 430,18" />
+                                            </svg>
+                                        </div>
+                                        <div class="chart-days"><span>S1</span><span>S2</span><span>S3</span><span>S4</span><span>S5</span><span>S6</span></div>
+                                    </article>
+
+                                    <article class="stock-card">
+                                        <div class="card-heading"><strong>Atención</strong><span class="attention-count">3</span></div>
+                                        <div class="stock-line"><i class="stock-icon danger"></i><div><strong>Auriculares Pro</strong><small>2 unidades</small></div><b>Crítico</b></div>
+                                        <div class="stock-line"><i class="stock-icon warning"></i><div><strong>Mouse inalámbrico</strong><small>5 unidades</small></div><b>Reponer</b></div>
+                                        <div class="stock-line"><i class="stock-icon warning"></i><div><strong>Teclado mecánico</strong><small>7 unidades</small></div><b>Revisar</b></div>
+                                    </article>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ai-float">
+                            <span class="ai-mark" aria-label="Asistente de inteligencia artificial">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.7 4.6 3.2 7.1 7.8 7.8-4.6.7-7.1 3.2-7.8 7.8-.7-4.6-3.2-7.1-7.8-7.8 4.6-.7 7.1-3.2 7.8-7.8Z" /><path d="M19 3v4M17 5h4" /></svg>
+                            </span>
+                            <div><strong>Quantitary IA</strong><small>¿Qué producto necesita atención?</small></div>
+                            <i></i>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="product-story" id="producto">
+                <div class="section-heading centered">
+                    <p class="section-kicker">Funciones principales</p>
+                    <h2>Las herramientas necesarias para seguir la operación diaria.</h2>
+                    <p>Stock, ventas y análisis funcionan sobre la misma información, sin procesos separados.</p>
+                </div>
+
+                <div class="bento-grid">
+                    <article class="bento-card bento-wide stock-feature">
+                        <div class="card-copy">
+                            <span class="feature-number">01</span>
+                            <h3>Stock y productos</h3>
+                            <p>Consultá existencias, filtrá el catálogo e identificá los productos que necesitan reposición.</p>
+                        </div>
+                        <div class="stock-demo" aria-hidden="true">
+                            <div class="stock-demo-head"><span>Producto</span><span>Stock</span><span>Estado</span></div>
+                            <div><strong>Auriculares Pro</strong><span>2</span><b class="status red">Crítico</b></div>
+                            <div><strong>Mouse inalámbrico</strong><span>5</span><b class="status amber">Bajo</b></div>
+                            <div><strong>Monitor 24”</strong><span>18</span><b class="status green">Disponible</b></div>
+                        </div>
+                    </article>
+
+                    <article class="bento-card profit-feature">
+                        <span class="feature-number">02</span>
+                        <h3>Costos y rentabilidad</h3>
+                        <p>Revisá costos, margen y resultados por producto y período.</p>
+                        <div class="profit-ring" aria-label="Ejemplo de margen de ganancia"><div><strong>29,9%</strong><span>Margen</span></div></div>
+                    </article>
+
+                    <article class="bento-card import-feature">
+                        <span class="feature-number">03</span>
+                        <h3>Carga inicial con plantilla</h3>
+                        <p>Importá una copia con la plantilla de Quantitary. Tu archivo original no se conecta ni se modifica.</p>
+                        <div class="file-chip"><i>X</i><div><strong>copia_productos.xlsx</strong><span>Preparada para importar</span></div><b>✓</b></div>
+                    </article>
+
+                    <article class="bento-card bento-wide analysis-feature">
+                        <div class="card-copy">
+                            <span class="feature-number">04</span>
+                            <h3>Análisis del negocio</h3>
+                            <p>Compará períodos, revisá tendencias y consultá qué productos explican los resultados.</p>
+                        </div>
+                        <div class="analysis-bars" aria-hidden="true">
+                            <div><span style="--bar: 46%"></span><small>Lun</small></div>
+                            <div><span style="--bar: 68%"></span><small>Mar</small></div>
+                            <div><span style="--bar: 54%"></span><small>Mié</small></div>
+                            <div><span style="--bar: 84%"></span><small>Jue</small></div>
+                            <div><span style="--bar: 72%"></span><small>Vie</small></div>
+                            <div><span style="--bar: 96%"></span><small>Sáb</small></div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="workflow" id="como-funciona">
+                <div class="section-heading workflow-heading">
+                    <p class="section-kicker light">Uso general</p>
+                    <h2>Un circuito simple para trabajar todos los días.</h2>
+                </div>
+
+                <div class="workflow-steps">
+                    <article>
+                        <span>1</span>
+                        <div class="step-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM4 9h16M9 4v16" /></svg></div>
+                        <h3>Cargá</h3>
+                        <p>Registrá productos manualmente o importá una copia con la plantilla.</p>
+                    </article>
+                    <i class="step-arrow" aria-hidden="true">→</i>
+                    <article>
+                        <span>2</span>
+                        <div class="step-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M7 3h10l2 4-2 4H7L5 7zm1 4v9h12v-9M9 15h6" /></svg></div>
+                        <h3>Registrá</h3>
+                        <p>Cada venta actualiza tus métricas y mantiene el stock conectado.</p>
+                    </article>
+                    <i class="step-arrow" aria-hidden="true">→</i>
+                    <article>
+                        <span>3</span>
+                        <div class="step-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2" /></svg></div>
+                        <h3>Decidí</h3>
+                        <p>Leé alertas, compará resultados y actuá con datos a la vista.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="ai-section" id="asistente">
+                <div class="ai-copy">
+                    <p class="section-kicker">Asistente de Quantitary</p>
+                    <h2>Consultas rápidas sobre la información del sistema.</h2>
+                    <p>El asistente usa el contexto de la sección abierta para responder preguntas sobre stock, ventas, precios e historial.</p>
+
+                    <ul class="ai-benefits">
+                        <li><i>✓</i><span><strong>Contexto útil</strong> según la pantalla que estés viendo.</span></li>
+                        <li><i>✓</i><span><strong>Historial por usuario</strong> para retomar conversaciones.</span></li>
+                        <li><i>✓</i><span><strong>Confirmaciones claras</strong> antes de acciones sensibles.</span></li>
                     </ul>
                 </div>
 
-                <div class="hero-visual" aria-label="Vista previa del panel">
-                    <div class="dashboard-preview">
-                        <div class="preview-topbar">
-                            <span class="dot dot-red"></span>
-                            <span class="dot dot-yellow"></span>
-                            <span class="dot dot-green"></span>
-                        </div>
-
-                        <div class="preview-content">
-                            <div class="preview-card preview-card-main">
-                                <span class="preview-label">Ventas</span>
-                                <strong>$156.800</strong>
-                                <small>+18.4% vs. mes anterior</small>
-                            </div>
-
-                            <div class="preview-grid">
-                                <div class="preview-card small-card">
-                                    <span>Stock</span>
-                                    <strong>1.284</strong>
-                                </div>
-                                <div class="preview-card small-card accent">
-                                    <span>Ganancia</span>
-                                    <strong>$46.300</strong>
-                                </div>
-                            </div>
-
-                            <div class="mini-chart" aria-hidden="true">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                                <span></span>
+                <div class="chat-demo" aria-label="Ejemplo del asistente de Quantitary">
+                    <div class="chat-top">
+                        <span class="ai-mark" aria-label="Asistente de inteligencia artificial">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.7 4.6 3.2 7.1 7.8 7.8-4.6.7-7.1 3.2-7.8 7.8-.7-4.6-3.2-7.1-7.8-7.8 4.6-.7 7.1-3.2 7.8-7.8Z" /><path d="M19 3v4M17 5h4" /></svg>
+                        </span>
+                        <div><strong>Quantitary IA</strong><small><i></i> Lista para ayudarte</small></div>
+                        <b>•••</b>
+                    </div>
+                    <div class="chat-body">
+                        <div class="message user-message">¿Qué productos debería reponer primero?</div>
+                        <div class="message assistant-message">
+                            <span class="ai-mark small" aria-label="Respuesta del asistente de inteligencia artificial">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.7 4.6 3.2 7.1 7.8 7.8-4.6.7-7.1 3.2-7.8 7.8-.7-4.6-3.2-7.1-7.8-7.8 4.6-.7 7.1-3.2 7.8-7.8Z" /><path d="M19 3v4M17 5h4" /></svg>
+                            </span>
+                            <div>
+                                <p>Hay <strong>3 productos</strong> que requieren atención. Priorizaría estos dos:</p>
+                                <ol>
+                                    <li><b>Auriculares Pro</b><span>2 unidades · nivel crítico</span></li>
+                                    <li><b>Mouse inalámbrico</b><span>5 unidades · bajo el mínimo</span></li>
+                                </ol>
                             </div>
                         </div>
                     </div>
+                    <div class="chat-suggestions"><span>Ver stock crítico</span><span>Analizar ventas</span></div>
+                    <div class="chat-input"><span>Escribí tu consulta...</span><button aria-label="Enviar consulta de ejemplo">↑</button></div>
                 </div>
             </section>
 
-            <section class="story-section" id="beneficios">
-                <div class="story-visual">
-                    <div class="store-scene">
-                        <div class="scene-window"></div>
-                        <div class="scene-shelf"></div>
-                    </div>
+            <section class="faq" id="preguntas">
+                <div class="section-heading faq-heading">
+                    <p class="section-kicker">Antes de empezar</p>
+                    <h2>Preguntas frecuentes</h2>
                 </div>
-
-                <div class="story-copy">
-                    <p class="section-label">¿Por qué elegirnos?</p>
-                    <h2>Tu día a día se vuelve <span>más simple.</span></h2>
-                    <p>
-                        Tus números pueden ser una fuente de claridad, no de estrés. Con Quantitary transformás la gestión de tu negocio en una operación más ordenada, rápida y confiable.
-                    </p>
-                    <div class="story-points">
-                        <div>
-                            <strong>+38%</strong>
-                            <span>Más rapidez en decisiones</span>
-                        </div>
-                        <div>
-                            <strong>24/7</strong>
-                            <span>Visibilidad del negocio</span>
-                        </div>
-                        <div>
-                            <strong>1 lugar</strong>
-                            <span>Todo centralizado</span>
-                        </div>
-                    </div>
+                <div class="faq-grid">
+                    <details open><summary>¿Qué puedo administrar con Quantitary?<span>+</span></summary><p>Productos, stock, ventas, costos, ganancias e indicadores del negocio desde un mismo panel.</p></details>
+                    <details><summary>¿Quantitary modifica mi archivo de Excel?<span>+</span></summary><p>No. Se importa una copia preparada con la plantilla de Quantitary; el archivo original no queda conectado y no se modifica.</p></details>
+                    <details><summary>¿Cada usuario ve sus propios chats?<span>+</span></summary><p>Sí. Las conversaciones del asistente se guardan por usuario y empresa para mantener el contexto separado.</p></details>
+                    <details><summary>¿Funciona en celular?<span>+</span></summary><p>La interfaz se adapta a computadora, tablet y celular para consultar la operación desde distintas pantallas.</p></details>
                 </div>
             </section>
 
-            <section class="feature-section" id="features">
-                <div class="feature-head">
-                    <p class="section-label">Qué no te falle</p>
-                    <h2>Todo lo que necesitás para controlar mejor tu operación.</h2>
+            <section class="final-cta">
+                <div class="cta-orb one"></div><div class="cta-orb two"></div>
+                <div>
+                    <p class="section-kicker light">Acceso al sistema</p>
+                    <h2>Empezá a usar Quantitary.</h2>
+                    <p>Creá una cuenta o ingresá para continuar con tu gestión.</p>
                 </div>
-
-                <div class="feature-grid">
-                    <article class="feature-card">
-                        <span class="feature-icon">📊</span>
-                        <h3>Ventas claras</h3>
-                        <p>Visualizá movimientos, tendencias y resultados con métricas listas para analizar.</p>
-                    </article>
-
-                    <article class="feature-card">
-                        <span class="feature-icon">📦</span>
-                        <h3>Inventario ordenado</h3>
-                        <p>Seguimiento del stock, alertas y decisiones más rápidas para cada producto.</p>
-                    </article>
-
-                    <article class="feature-card">
-                        <span class="feature-icon">⚡</span>
-                        <h3>Operación sencilla</h3>
-                        <p>Todo en un mismo lugar para reducir tiempos de gestión y mejorar resultados.</p>
-                    </article>
-                </div>
-            </section>
-
-            <section class="promo-section">
-                <div class="promo-copy">
-                    <p class="section-label section-label-light">Entendé tus datos</p>
-                    <h2>Elegí tu próximo paso con confianza.</h2>
-                    <p>
-                        Analizá ventas, costos, rentabilidad y stock sin perder tiempo. Quantitary te ayuda a ver qué ocurre y a decidir con mejor criterio.
-                    </p>
-                </div>
-
-                <div class="promo-grid">
-                    <div class="promo-card">
-                        <h4>Ventas</h4>
-                        <p>Controlá ingresos, tickets y cortes por período.</p>
-                    </div>
-                    <div class="promo-card">
-                        <h4>Ganancias</h4>
-                        <p>Seguimiento real de margen y rentabilidad por categoría.</p>
-                    </div>
-                    <div class="promo-card">
-                        <h4>Stock</h4>
-                        <p>Detectá agotados, bajos y productos que requieren atención.</p>
-                    </div>
-                    <div class="promo-card">
-                        <h4>Reportes</h4>
-                        <p>Tomá decisiones con datos entendibles y útiles para el día a día.</p>
-                    </div>
-                </div>
-            </section>
-
-            <section class="cta-panel">
-                <div class="cta-copy">
-                    <p class="section-label section-label-light">Un comienzo simple</p>
-                    <h2>Para ver más claro cada día.</h2>
-                </div>
-
-                <div class="cta-steps">
-                    <div class="step-card">
-                        <span>1</span>
-                        <h4>Creá tu cuenta</h4>
-                    </div>
-                    <div class="step-card">
-                        <span>2</span>
-                        <h4>Cargá tu producto</h4>
-                    </div>
-                    <div class="step-card">
-                        <span>3</span>
-                        <h4>Tomá decisiones</h4>
-                    </div>
-                </div>
-            </section>
-
-            <section class="faq-section" id="preguntas">
-                <div class="faq-copy">
-                    <p class="section-label">Algunas respuestas</p>
-                    <h2>Preguntas frecuentes para empezar.</h2>
-                </div>
-
-                <div class="faq-list">
-                    <div class="faq-item">
-                        <h4>¿Qué es Quantitary?</h4>
-                        <p>Es un panel para administrar ventas, stock y métricas de tu negocio desde un solo lugar.</p>
-                    </div>
-                    <div class="faq-item">
-                        <h4>¿Es fácil de usar?</h4>
-                        <p>Sí. Está pensado para equipos que necesitan claridad y rapidez sin complicaciones.</p>
-                    </div>
-                    <div class="faq-item">
-                        <h4>¿Puedo probarlo?</h4>
-                        <p>Podés crear tu cuenta y comenzar en minutos con una experiencia de uso simple.</p>
-                    </div>
+                <div class="final-actions">
+                    <a asp-controller="Cuenta" asp-action="Registro" class="button button-white">Crear mi cuenta</a>
+                    <a asp-controller="Cuenta" asp-action="Login" class="button button-dark-ghost">Ingresar</a>
                 </div>
             </section>
         </main>
 
-        <footer class="landing-footer">
-            <div class="brand-mark footer-brand">
-                <span class="brand-dot"></span>
+        <footer class="site-footer">
+            <a href="#inicio" class="brand footer-brand">
+                <img class="brand-symbol" src="~/images/quantitary-logo-oficial.png" alt="Logo de Quantitary" />
                 <span>Quantitary</span>
-            </div>
-
-            <div class="footer-actions">
-                <a asp-controller="Cuenta" asp-action="Registro" class="btn btn-primary btn-quantary btn-footer-primary">Empezar</a>
-                <a asp-controller="Cuenta" asp-action="Login" class="btn btn-outline-primary btn-quantary btn-footer-secondary">Ingresar</a>
-            </div>
+            </a>
+            <p>Ventas, stock y decisiones en un solo lugar.</p>
+            <div><a asp-controller="Cuenta" asp-action="Login">Ingresar</a><a asp-controller="Cuenta" asp-action="Registro">Crear cuenta</a></div>
         </footer>
     </div>
 </body>
