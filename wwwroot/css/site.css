@@ -82,21 +82,11 @@ body {
 
 .brand-logo {
     display: block;
-    max-width: 120px;
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
     margin: 0 auto;
-    filter: drop-shadow(0 8px 18px rgba(96, 165, 250, 0.25));
-}
-
-.brand-logo-dark {
-    display: none;
-}
-
-html[data-quantitary-theme="dark"] .brand-logo-light {
-    display: none;
-}
-
-html[data-quantitary-theme="dark"] .brand-logo-dark {
-    display: block;
+    filter: drop-shadow(0 8px 18px rgba(20, 184, 166, 0.22));
 }
 
 .sidebar-nav {
@@ -694,8 +684,9 @@ html[data-quantitary-theme="dark"] .settings-alert.success {
 }
 
 .brand-mini-logo {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
 }
 
 .btn-icon {
@@ -710,9 +701,14 @@ html[data-quantitary-theme="dark"] .settings-alert.success {
     padding: 0;
 }
 
-.icon-img {
-    width: 18px;
-    height: 18px;
+.topbar-icon-svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .user-pill {
@@ -727,12 +723,26 @@ html[data-quantitary-theme="dark"] .settings-alert.success {
     font-weight: 600;
 }
 
-.user-avatar-img {
+.user-avatar-icon {
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    object-fit: cover;
     border: 2px solid rgba(59, 130, 246, 0.18);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(59, 130, 246, 0.08);
+    flex: 0 0 auto;
+}
+
+.user-avatar-icon svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .content-area {

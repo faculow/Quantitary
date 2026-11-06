@@ -128,15 +128,10 @@ public sealed class GeminiChatService : IAiChatService
                 ["topP"] = 0.8,
                 ["candidateCount"] = 1,
                 ["maxOutputTokens"] = 4096,
-                // Formato estructurado actual de generateContent: obliga a respetar el esquema JSON.
-                ["responseFormat"] = new JsonObject
-                {
-                    ["text"] = new JsonObject
-                    {
-                        ["mimeType"] = "application/json",
-                        ["schema"] = BuildResponseSchema()
-                    }
-                }
+                // Contrato estable de generateContent. responseFormat pertenece al contrato
+                // nuevo y algunas versiones lo rechazan con HTTP 400.
+                ["responseMimeType"] = "application/json",
+                ["responseJsonSchema"] = BuildResponseSchema()
             }
         };
     }
@@ -516,8 +511,12 @@ public sealed class GeminiChatService : IAiChatService
 
     private ChatResult MapHttpError(int statusCode, string responseText)
     {
-        // Solo se registra el código HTTP: ni la clave ni el cuerpo de la respuesta.
-        _logger.LogWarning("Gemini respondió con HTTP {StatusCode}.", statusCode);
+        // Solo registra el mensaje público de Google; nunca la clave, el prompt ni el cuerpo completo.
+        var apiMessage = ExtractApiErrorMessage(responseText);
+        if (string.IsNullOrEmpty(apiMessage))
+            _logger.LogWarning("Gemini respondió con HTTP {StatusCode}.", statusCode);
+        else
+            _logger.LogWarning("Gemini respondió con HTTP {StatusCode}: {ApiMessage}", statusCode, apiMessage);
 
         return statusCode switch
         {
@@ -535,5 +534,21 @@ public sealed class GeminiChatService : IAiChatService
             _ => ChatResult.Failure("upstream_error",
                 "Gemini no pudo responder en este momento. Intentá de nuevo en unos segundos.")
         };
+    }
+
+    private static string ExtractApiErrorMessage(string responseText)
+    {
+        try
+        {
+            var message = JsonNode.Parse(responseText)?["error"]?["message"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrEmpty(message)) return string.Empty;
+
+            message = message.Replace('\r', ' ').Replace('\n', ' ');
+            return Limit(message, 300);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return string.Empty;
+        }
     }
 }

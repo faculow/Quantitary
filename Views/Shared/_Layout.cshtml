@@ -16,7 +16,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Quantitary</title>
-    <link rel="icon" type="image/png" href="~/imagenes/logo.png" />
+    <link rel="icon" type="image/png" href="~/images/quantitary-logo-app.png" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/quantitary-ia.css" asp-append-version="true" />
@@ -41,8 +41,7 @@
     <div class="app-shell">
         <aside class="sidebar">
             <div class="sidebar-brand">
-                <img src="~/images/LogoFondoBlanco.png" alt="Quantitary" class="brand-logo brand-logo-light" />
-                <img src="~/images/LogoFondoAzul.png" alt="Quantitary" class="brand-logo brand-logo-dark" />
+                <img src="~/images/quantitary-logo-app.png" alt="Quantitary" class="brand-logo" />
             </div>
 
             <nav class="sidebar-nav">
@@ -115,17 +114,24 @@
             <header class="topbar">
                 <div class="topbar-left">
                     <a class="brand-mini" asp-controller="Home" asp-action="Index">
-                        <img src="~/images/LogoFondoBlanco.png" alt="Quantitary" class="brand-mini-logo brand-logo-light" />
-                        <img src="~/images/LogoFondoAzul.png" alt="Quantitary" class="brand-mini-logo brand-logo-dark" />
+                        <img src="~/images/quantitary-logo-app.png" alt="Quantitary" class="brand-mini-logo" />
                     </a>
                 </div>
 
                 <div class="topbar-right">
                     <button type="button" class="btn btn-icon" aria-label="Notificaciones">
-                        <img src="~/imagenes/notificacion.png" alt="Notificaciones" class="icon-img" />
+                        <svg class="topbar-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                            <path d="M10 21h4"></path>
+                        </svg>
                     </button>
                     <div class="user-pill">
-                        <img src="~/imagenes/avatar.png" alt="Usuario" class="user-avatar-img" />
+                        <span class="user-avatar-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="12" cy="8" r="4"></circle>
+                                <path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path>
+                            </svg>
+                        </span>
                         <span>@(Context.Session.GetString("NombreUsuario") ?? "Usuario")</span>
                     </div>
                 </div>

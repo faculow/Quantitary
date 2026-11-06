@@ -14,6 +14,16 @@ Para desarrollo local también puede configurarse la clave con:
 dotnet user-secrets set "GEMINI_API_KEY" "TU_CLAVE"
 ```
 
+Si SQL Server está instalado como **SQLEXPRESS**, la conexión local se configura una sola vez
+desde la carpeta del proyecto (en `cmd`, usar una sola barra invertida):
+
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost\SQLEXPRESS;Database=Quantitary;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"
+```
+
+Después de cambiar cualquiera de estos valores hay que detener y volver a iniciar la aplicación.
+No hace falta volver a ejecutar `script.sql` si la base `Quantitary` ya fue creada.
+
 ## Verificación antes de publicar
 
 ```bash
