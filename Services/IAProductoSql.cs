@@ -58,8 +58,9 @@ public sealed class IAProductoSql
         else
         {
             if(string.IsNullOrWhiteSpace(s.Sku)) throw new ArgumentException("Falta el SKU.");
-            var item=await BD.IABuscarProductoPorSkuAsync(_config,e,s.Sku.Trim(),tx);
-            if(item is null) throw new InvalidOperationException("El producto ya no existe. No se aplicó el cambio.");
+            var items=await BD.IABuscarProductoPorSkuAsync(_config,e,s.Sku.Trim(),tx);
+            if(items.Count != 1) throw new InvalidOperationException("El producto no existe o hay múltiples coincidencias. No se aplicó el cambio.");
+            var item=items[0];
             id=item.Id;
             if(s.Tipo=="precio")
             {

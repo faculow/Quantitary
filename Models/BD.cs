@@ -1160,4 +1160,420 @@ public static class BD
         public string? Rol { get; set; }
         public string? Text { get; set; }
     }
+
+    public static async Task<AnalisisVentasGananciasData> ObtenerAnalisisVentasGananciasAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
+    {
+        var sqlBase = @"
+            SELECT COALESCE(SUM(v.precio), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlGastos = @"
+            SELECT COALESCE(SUM(v.costo), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlPromedio = @"
+            SELECT COALESCE(AVG(v.precio), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlGanancias = @"
+            SELECT COALESCE(SUM(v.precio - v.costo), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlCantidadVentas = @"
+            SELECT COALESCE(SUM(v.cantidad), 0)
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+
+        var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+
+        var sqlVentasDiarias = @"
+            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(v.precio), 0) AS Valor
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY CAST(v.fecha AS date)
+            ORDER BY CAST(v.fecha AS date)";
+
+        var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var ventaPorSemana = new List<ChartPoint>();
+        var semanaActual = inicio.Date;
+
+        while (semanaActual <= fin.Date)
+        {
+            var semanaFin = semanaActual.AddDays(6) > fin.Date ? fin.Date : semanaActual.AddDays(6);
+            var sqlVentaSemana = @"
+                SELECT COALESCE(SUM(v.precio), 0)
+                FROM Ventas v
+                INNER JOIN Productos p ON p.id = v.productoId
+                WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                  AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin";
+
+            var totalSemana = await connection.QuerySingleAsync<decimal>(sqlVentaSemana, new
+            {
+                EmpresaId = empresaId,
+                SemanaInicio = semanaActual.Date,
+                SemanaFin = semanaFin.Date.AddDays(1).AddTicks(-1)
+            });
+
+            ventaPorSemana.Add(new ChartPoint
+            {
+                Label = $"{semanaActual:dd/MM} - {semanaFin:dd/MM}",
+                Valor = totalSemana
+            });
+
+            semanaActual = semanaActual.AddDays(7);
+        }
+
+        var sqlGananciaPorCategoria = @"
+            SELECT p.categoria AS Label, COALESCE(SUM(v.precio - v.costo), 0) AS Valor
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY p.categoria
+            ORDER BY Valor DESC";
+
+        var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(sqlGananciaPorCategoria, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        return new AnalisisVentasGananciasData
+        {
+            VentasTotales = ventasTotales,
+            GastosTotales = gastosTotales,
+            VentaPromedio = ventaPromedio,
+            Ganancias = ganancias,
+            VentasTotalesCantidad = ventasTotalesCantidad,
+            VentasDiarias = ventasDiarias,
+            VentaPorSemana = ventaPorSemana,
+            GananciaPorCategoria = gananciaPorCategoria,
+            MargenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m,
+            FormulaGanancia = ventasTotales - gastosTotales
+        };
+    }
+
+    public static async Task<AnalisisProductoData> ObtenerAnalisisProductoAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
+    {
+        var productos = (await connection.QueryAsync<AnalisisProductoRow>(@"
+            SELECT p.id AS Id,
+                   p.nombre AS Nombre,
+                   p.sku AS Sku,
+                   p.categoria AS Categoria,
+                   p.precio AS Precio,
+                   p.costoCompra AS CostoCompra,
+                   p.stockActual AS StockActual,
+                   p.stockMinimo AS StockMinimo,
+                   p.cantidadVentas AS CantidadVendida
+            FROM Productos p
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+            ORDER BY p.nombre", new { EmpresaId = empresaId })).ToList();
+
+        var ventasPorProducto = (await connection.QueryAsync<AnalisisVentaProductoRow>(@"
+            SELECT v.productoId AS ProductoId,
+                   SUM(v.cantidad) AS CantidadVendida,
+                   SUM(v.precio) AS VentasTotales,
+                   SUM(v.costo) AS GastoTotal,
+                   SUM(v.precio - v.costo) AS GananciaTotal
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY v.productoId", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var ventasPorMes = (await connection.QueryAsync<dynamic>(@"
+            SELECT DATENAME(month, v.fecha) AS Mes,
+                   MONTH(v.fecha) AS MesNumero,
+                   YEAR(v.fecha) AS Anio,
+                   SUM(v.precio) AS Total,
+                   SUM(v.cantidad) AS Cantidad
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
+            ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var interesCompraPorMes = (await connection.QueryAsync<dynamic>(@"
+            SELECT DATENAME(month, v.fecha) AS Mes,
+                   MONTH(v.fecha) AS MesNumero,
+                   YEAR(v.fecha) AS Anio,
+                   COUNT(v.id) AS InteresCompra,
+                   SUM(v.cantidad) AS Cantidad
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
+            ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        var ventasSemana = (await connection.QueryAsync<dynamic>(@"
+            SELECT DATENAME(weekday, v.fecha) AS Dia,
+                   SUM(v.precio) AS Total,
+                   SUM(v.cantidad) AS Cantidad
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+            GROUP BY DATENAME(weekday, v.fecha)
+            ORDER BY CASE DATENAME(weekday, v.fecha)
+                WHEN 'Monday' THEN 1
+                WHEN 'Tuesday' THEN 2
+                WHEN 'Wednesday' THEN 3
+                WHEN 'Thursday' THEN 4
+                WHEN 'Friday' THEN 5
+                WHEN 'Saturday' THEN 6
+                WHEN 'Sunday' THEN 7
+                ELSE 8 END", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+
+        return new AnalisisProductoData
+        {
+            Productos = productos,
+            VentasPorProducto = ventasPorProducto,
+            VentasPorMes = ventasPorMes,
+            InteresCompraPorMes = interesCompraPorMes,
+            VentasSemana = ventasSemana
+        };
+    }
+
+    public static async Task<IndicadoresYOportunidadesConsultaData> ObtenerIndicadoresYOportunidadesConsultaAsync(IDbConnection connection, int? empresaId = null)
+    {
+        var productos = connection.Query<ProductoIndicadorBase>(@"
+            SELECT p.id AS Id,
+                   p.nombre AS Nombre,
+                   p.categoria AS Categoria,
+                   p.precio AS Precio,
+                   p.stockActual AS StockActual,
+                   p.stockMinimo AS StockMinimo,
+                   p.costoCompra AS CostoCompra,
+                   p.empresaID AS EmpresaId
+            FROM Productos p
+            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+            ORDER BY p.nombre",
+            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
+
+        var ventasPorProducto = connection.Query<ProductoVentaAggregate>(@"
+            SELECT v.productoId AS ProductoId,
+                   SUM(v.cantidad) AS CantidadVendida,
+                   SUM(v.precio) AS VentasTotales,
+                   SUM(v.costo) AS CostoTotal
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+            GROUP BY v.productoId",
+            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
+
+        var ventasPorCategoria = connection.Query<ProductoCategoriaAggregate>(@"
+            SELECT p.categoria AS Categoria,
+                   SUM(v.precio) AS VentasTotales
+            FROM Ventas v
+            INNER JOIN Productos p ON p.id = v.productoId
+            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+            GROUP BY p.categoria",
+            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
+
+        return new IndicadoresYOportunidadesConsultaData
+        {
+            Productos = productos,
+            VentasPorProducto = ventasPorProducto,
+            VentasPorCategoria = ventasPorCategoria
+        };
+    }
+
+    public static async Task<PerfilAjustesDatos?> ObtenerDatosAjustesAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.QuerySingleOrDefaultAsync<PerfilAjustesDatos>(@"
+            SELECT u.nombreUsuario, u.mail, u.numeroTelefono, e.nombre AS NombreEmpresa,
+                   CAST(CASE WHEN ISNULL(p.gestionarUsuarios, 0) = 1 THEN 1 ELSE 0 END AS bit) AS PuedeEditarEmpresa
+            FROM Usuarios u
+            INNER JOIN Empresa e ON e.id = u.empresaID
+            LEFT JOIN Rol r ON r.id = u.rolID
+            LEFT JOIN Permisos p ON p.id = r.permisoID
+            WHERE u.id = @Usuario AND u.empresaID = @Empresa",
+            new { Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<DatosRepetidos> ObtenerDatosRepetidosAsync(IDbConnection connection, string mail, string nombre, int usuarioActual)
+    {
+        return await connection.QuerySingleAsync<DatosRepetidos>(@"
+            SELECT
+                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(mail))) = @Mail THEN 1 END) AS Mail,
+                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(nombreUsuario))) = LOWER(@Nombre) THEN 1 END) AS Nombre
+              FROM Usuarios
+              WHERE id <> @Usuario",
+            new { Mail = mail, Nombre = nombre, Usuario = usuarioActual });
+    }
+
+    public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId)
+    {
+        return connection.ExecuteScalar<int>(@"
+            INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID, empresaID)
+            VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId, @EmpresaId);
+            SELECT CAST(SCOPE_IDENTITY() as int);",
+            new
+            {
+                ProductoId = productoId,
+                NombreProducto = nombreProducto,
+                Fecha = DateTime.Now,
+                MetodoPago = metodoPago,
+                Cantidad = cantidad,
+                Precio = precioVentaTotal,
+                Costo = precioCompraTotal,
+                UsuarioId = usuarioId,
+                EmpresaId = empresaId
+            });
+    }
+
+    public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia)
+    {
+        return connection.Execute(@"
+            INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, precioCompra, porcentajeGanancia, ganancia)
+            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @PrecioCompra, @PorcentajeGanancia, @Ganancia)",
+            new
+            {
+                VentaId = ventaId,
+                ProductoId = productoId,
+                Cantidad = cantidad,
+                PrecioVenta = precioVentaTotal,
+                PrecioCompra = precioCompraTotal,
+                PorcentajeGanancia = porcentajeGanancia,
+                Ganancia = ganancia
+            });
+    }
+
+    public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM Usuarios u
+            INNER JOIN Rol r ON r.id = u.rolID
+            INNER JOIN Permisos p ON p.id = r.permisoID
+            WHERE u.id = @usuario AND u.empresaID = @empresa AND p.gestionarUsuarios = 1",
+            new { usuario, empresa });
+    }
+
+    public static async Task<string?> ObtenerContrasenaActualAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT contrasena FROM Usuarios WHERE id = @Usuario AND empresaID = @Empresa",
+            new { Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<int> GuardarPerfilAsync(IDbConnection connection, string nombre, string mail, string? telefono, int usuario, int empresa)
+    {
+        return await connection.ExecuteAsync(
+            @"UPDATE Usuarios
+              SET nombreUsuario = @Nombre, mail = @Mail, numeroTelefono = @Telefono
+              WHERE id = @Usuario AND empresaID = @Empresa",
+            new
+            {
+                Nombre = nombre,
+                Mail = mail,
+                Telefono = string.IsNullOrWhiteSpace(telefono) ? null : telefono.Trim(),
+                Usuario = usuario,
+                Empresa = empresa
+            });
+    }
+
+    public static async Task<int> GuardarEmpresaAsync(IDbConnection connection, string nombre, int empresa)
+    {
+        return await connection.ExecuteAsync(
+            "UPDATE Empresa SET nombre = @Nombre WHERE id = @Empresa",
+            new { Nombre = nombre, Empresa = empresa });
+    }
+
+    public static async Task<int> CambiarContrasenaAsync(IDbConnection connection, string nueva, int usuario, int empresa)
+    {
+        return await connection.ExecuteAsync(
+            "UPDATE Usuarios SET contrasena = @Nueva WHERE id = @Usuario AND empresaID = @Empresa",
+            new { Nueva = nueva, Usuario = usuario, Empresa = empresa });
+    }
+
+    public sealed class AnalisisVentasGananciasData
+    {
+        public decimal VentasTotales { get; set; }
+        public decimal GastosTotales { get; set; }
+        public decimal VentaPromedio { get; set; }
+        public decimal Ganancias { get; set; }
+        public int VentasTotalesCantidad { get; set; }
+        public List<ChartPoint> VentasDiarias { get; set; } = new();
+        public List<ChartPoint> VentaPorSemana { get; set; } = new();
+        public List<ChartPoint> GananciaPorCategoria { get; set; } = new();
+        public decimal MargenNeto { get; set; }
+        public decimal FormulaGanancia { get; set; }
+    }
+
+    public sealed class AnalisisProductoRow
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public string Categoria { get; set; } = string.Empty;
+        public decimal Precio { get; set; }
+        public decimal CostoCompra { get; set; }
+        public int StockActual { get; set; }
+        public int StockMinimo { get; set; }
+        public int CantidadVendida { get; set; }
+    }
+
+    public sealed class AnalisisVentaProductoRow
+    {
+        public int ProductoId { get; set; }
+        public int CantidadVendida { get; set; }
+        public decimal VentasTotales { get; set; }
+        public decimal GastoTotal { get; set; }
+        public decimal GananciaTotal { get; set; }
+    }
+
+    public sealed class AnalisisProductoData
+    {
+        public List<AnalisisProductoRow> Productos { get; set; } = new();
+        public List<AnalisisVentaProductoRow> VentasPorProducto { get; set; } = new();
+        public List<dynamic> VentasPorMes { get; set; } = new();
+        public List<dynamic> InteresCompraPorMes { get; set; } = new();
+        public List<dynamic> VentasSemana { get; set; } = new();
+    }
+
+    public sealed class IndicadoresYOportunidadesConsultaData
+    {
+        public List<ProductoIndicadorBase> Productos { get; set; } = new();
+        public List<ProductoVentaAggregate> VentasPorProducto { get; set; } = new();
+        public List<ProductoCategoriaAggregate> VentasPorCategoria { get; set; } = new();
+    }
+
+    public sealed class PerfilAjustesDatos
+    {
+        public string NombreUsuario { get; set; } = string.Empty;
+        public string Mail { get; set; } = string.Empty;
+        public string? NumeroTelefono { get; set; }
+        public string NombreEmpresa { get; set; } = string.Empty;
+        public bool PuedeEditarEmpresa { get; set; }
+    }
+
+    public sealed class DatosRepetidos
+    {
+        public int Mail { get; set; }
+        public int Nombre { get; set; }
+    }
 }

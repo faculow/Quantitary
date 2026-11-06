@@ -30,15 +30,7 @@ public sealed class AjustesController : Controller
         if (sesion is null) return RedirectToAction("Login", "Cuenta");
 
         using var connection = BD.CrearConexion(_configuration);
-        var datos = await connection.QuerySingleOrDefaultAsync<DatosAjustes>(
-            @"SELECT u.nombreUsuario, u.mail, u.numeroTelefono, e.nombre AS NombreEmpresa,
-                     CAST(CASE WHEN ISNULL(p.gestionarUsuarios, 0) = 1 THEN 1 ELSE 0 END AS bit) AS PuedeEditarEmpresa
-              FROM Usuarios u
-              INNER JOIN Empresa e ON e.id = u.empresaID
-              LEFT JOIN Rol r ON r.id = u.rolID
-              LEFT JOIN Permisos p ON p.id = r.permisoID
-              WHERE u.id = @Usuario AND u.empresaID = @Empresa",
-            new { Usuario = sesion.Value.Usuario, Empresa = sesion.Value.Empresa });
+        var datos = await BD.ObtenerDatosAjustesAsync(connection, sesion.Value.Usuario, sesion.Value.Empresa);
 
         if (datos is null)
         {
@@ -74,13 +66,7 @@ public sealed class AjustesController : Controller
         var mail = perfil.Mail.Trim().ToLowerInvariant();
         var nombre = perfil.NombreUsuario.Trim();
         using var connection = BD.CrearConexion(_configuration);
-        var repetidos = await connection.QuerySingleAsync<DatosRepetidos>(
-            @"SELECT
-                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(mail))) = @Mail THEN 1 END) AS Mail,
-                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(nombreUsuario))) = LOWER(@Nombre) THEN 1 END) AS Nombre
-              FROM Usuarios
-              WHERE id <> @Usuario",
-            new { Mail = mail, Nombre = nombre, Usuario = sesion.Value.Usuario });
+        var repetidos = await BD.ObtenerDatosRepetidosAsync(connection, mail, nombre, sesion.Value.Usuario);
 
         if (repetidos.Mail > 0)
             ModelState.AddModelError("Perfil.Mail", "Ese correo ya está registrado.");
@@ -91,18 +77,7 @@ public sealed class AjustesController : Controller
         if (!ModelState.IsValid)
             return await VistaConErrores("perfil", perfil: perfil);
 
-        await connection.ExecuteAsync(
-            @"UPDATE Usuarios
-              SET nombreUsuario = @Nombre, mail = @Mail, numeroTelefono = @Telefono
-              WHERE id = @Usuario AND empresaID = @Empresa",
-            new
-            {
-                Nombre = nombre,
-                Mail = mail,
-                Telefono = string.IsNullOrWhiteSpace(perfil.NumeroTelefono) ? null : perfil.NumeroTelefono.Trim(),
-                Usuario = sesion.Value.Usuario,
-                Empresa = sesion.Value.Empresa
-            });
+        await BD.GuardarPerfilAsync(connection, nombre, mail, perfil.NumeroTelefono, sesion.Value.Usuario, sesion.Value.Empresa);
 
         HttpContext.Session.SetString("NombreUsuario", nombre);
         TempData["AjustesExito"] = "Tus datos personales se guardaron correctamente.";
@@ -117,16 +92,14 @@ public sealed class AjustesController : Controller
         if (sesion is null) return RedirectToAction("Login", "Cuenta");
 
         using var connection = BD.CrearConexion(_configuration);
-        if (!await PuedeEditarEmpresa(connection, sesion.Value.Usuario, sesion.Value.Empresa))
+        if (await BD.TienePermisoEmpresaAsync(connection, sesion.Value.Usuario, sesion.Value.Empresa) != 1)
             return Forbid();
 
         if (!ModelState.IsValid)
             return await VistaConErrores("empresa", empresa: empresa);
 
         var nombre = empresa.Nombre.Trim();
-        await connection.ExecuteAsync(
-            "UPDATE Empresa SET nombre = @Nombre WHERE id = @Empresa",
-            new { Nombre = nombre, Empresa = sesion.Value.Empresa });
+        await BD.GuardarEmpresaAsync(connection, nombre, sesion.Value.Empresa);
 
         HttpContext.Session.SetString("NombreEmpresa", nombre);
         TempData["AjustesExito"] = "Los datos de la empresa se guardaron correctamente.";
@@ -160,9 +133,7 @@ public sealed class AjustesController : Controller
         }
 
         using var connection = BD.CrearConexion(_configuration);
-        var actual = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT contrasena FROM Usuarios WHERE id = @Usuario AND empresaID = @Empresa",
-            new { Usuario = sesion.Value.Usuario, Empresa = sesion.Value.Empresa });
+        var actual = await BD.ObtenerContrasenaActualAsync(connection, sesion.Value.Usuario, sesion.Value.Empresa);
 
         if (actual is null || !string.Equals(actual, seguridad.ContrasenaActual, StringComparison.Ordinal))
         {
@@ -170,14 +141,7 @@ public sealed class AjustesController : Controller
             return await VistaConErrores("seguridad", seguridad: seguridad);
         }
 
-        await connection.ExecuteAsync(
-            "UPDATE Usuarios SET contrasena = @Nueva WHERE id = @Usuario AND empresaID = @Empresa",
-            new
-            {
-                Nueva = seguridad.ContrasenaNueva,
-                Usuario = sesion.Value.Usuario,
-                Empresa = sesion.Value.Empresa
-            });
+        await BD.CambiarContrasenaAsync(connection, seguridad.ContrasenaNueva, sesion.Value.Usuario, sesion.Value.Empresa);
 
         TempData["AjustesExito"] = "La contraseña se cambió correctamente.";
         return RedirectToAction(nameof(Index), new { seccion = "seguridad" });
@@ -202,13 +166,7 @@ public sealed class AjustesController : Controller
     private static async Task<bool> PuedeEditarEmpresa(
         System.Data.IDbConnection connection, int usuario, int empresa)
     {
-        return await connection.ExecuteScalarAsync<int>(
-            @"SELECT COUNT(1)
-              FROM Usuarios u
-              INNER JOIN Rol r ON r.id = u.rolID
-              INNER JOIN Permisos p ON p.id = r.permisoID
-              WHERE u.id = @usuario AND u.empresaID = @empresa AND p.gestionarUsuarios = 1",
-            new { usuario, empresa }) == 1;
+        return await BD.TienePermisoEmpresaAsync(connection, usuario, empresa) == 1;
     }
 
     private sealed class DatosAjustes

@@ -25,5 +25,4 @@ public sealed class IAHistorialSql
     public async Task<bool> Eliminar(Guid chat, int usuario, int empresa)
         => await BD.IAEliminarChatAsync(_config, chat, usuario, empresa);
     public sealed record ChatResumen(string Titulo, DateTime ActualizadoEn);
-    public sealed record ChatTurn(string Rol, string Text);
 }

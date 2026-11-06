@@ -245,36 +245,9 @@ public class PdvController : Controller
             var precioCompraTotal = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad;
             var porcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m;
 
-            var ventaId = connection.ExecuteScalar<int>(
-                @"INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID, empresaID)
-                  VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId, @EmpresaId);
-                  SELECT CAST(SCOPE_IDENTITY() as int);",
-                new
-                {
-                    ProductoId = producto.Id,
-                    NombreProducto = producto.Nombre,
-                    Fecha = DateTime.Now,
-                    MetodoPago = metodo,
-                    Cantidad = item.Cantidad,
-                    Precio = precioVentaTotal,
-                    Costo = precioCompraTotal,
-                    UsuarioId = usuarioId.Value,
-                    EmpresaId = empresaId
-                });
+            var ventaId = BD.RegistroVentaAsync(connection, producto.Id, producto.Nombre, metodo, item.Cantidad, precioVentaTotal, precioCompraTotal, usuarioId.Value, empresaId).Result;
 
-            connection.Execute(
-                @"INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, precioCompra, porcentajeGanancia, ganancia)
-                  VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @PrecioCompra, @PorcentajeGanancia, @Ganancia)",
-                new
-                {
-                    VentaId = ventaId,
-                    ProductoId = producto.Id,
-                    Cantidad = item.Cantidad,
-                    PrecioVenta = precioVentaTotal,
-                    PrecioCompra = precioCompraTotal,
-                    PorcentajeGanancia = porcentajeGanancia,
-                    Ganancia = precioVentaTotal - precioCompraTotal
-                });
+            BD.InsertarDetalleVentaAsync(connection, ventaId, producto.Id, item.Cantidad, precioVentaTotal, precioCompraTotal, porcentajeGanancia, precioVentaTotal - precioCompraTotal).Wait();
 
             producto.StockActual -= item.Cantidad;
             producto.CantidadVentas += item.Cantidad;
