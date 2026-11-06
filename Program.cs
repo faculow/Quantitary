@@ -31,17 +31,17 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<ProductoRepository>();
 
-var gemini = builder.Configuration.GetSection("Gemini").Get<GeminiOptions>() ?? new GeminiOptions();
-gemini.ApiKey = builder.Configuration["GEMINI_API_KEY"]
-    ?? builder.Configuration["Gemini:ApiKey"]
+var claude = builder.Configuration.GetSection("Claude").Get<ClaudeOptions>() ?? new ClaudeOptions();
+claude.ApiKey = builder.Configuration["ANTHROPIC_API_KEY"]
+    ?? builder.Configuration["Claude:ApiKey"]
     ?? string.Empty;
 
-builder.Services.AddSingleton(gemini);
+builder.Services.AddSingleton(claude);
 builder.Services.AddScoped<ComercioDatosSql>();
 builder.Services.AddScoped<IAHistorialSql>();
 builder.Services.AddScoped<IAStockSql>();
 builder.Services.AddScoped<IAProductoSql>();
-builder.Services.AddHttpClient<IAiChatService, GeminiChatService>(client =>
+builder.Services.AddHttpClient<IAiChatService, ClaudeChatService>(client =>
     client.Timeout = TimeSpan.FromSeconds(60));
 
 builder.Services.AddRateLimiter(options =>
@@ -83,5 +83,6 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Landing}/{id?}");
 
 app.Run();
+
 
 

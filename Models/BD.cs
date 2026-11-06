@@ -42,9 +42,12 @@ public static class BD
 
     private static bool UsaEsquemaNormalizado(IConfiguration configuration)
     {
-        return TieneColumna(configuration, "Productos", "precioVenta")
+        return TieneColumna(configuration, "Productos", "nombre")
+            && TieneColumna(configuration, "Productos", "precioVenta")
             && TieneColumna(configuration, "Productos", "categoriaID")
-            && TieneColumna(configuration, "Stock", "cantidadMinimoAlerta");
+            && TieneColumna(configuration, "Productos", "activo")
+            && TieneColumna(configuration, "Stock", "cantidadMinimoAlerta")
+            && TieneColumna(configuration, "Proveedores", "nombre");
     }
 
     public static List<string> ObtenerCategorias(IConfiguration configuration, int? empresaId = null)
@@ -88,29 +91,34 @@ public static class BD
             var sqlLegacy = @"
                 SELECT p.id AS Id,
                        p.empresaID AS EmpresaID,
-                       ISNULL(p.categoriaID, 0) AS CategoriaID,
-                       p.proveedorID AS ProveedorID,
+                       0 AS CategoriaID,
+                       NULL AS ProveedorID,
                        p.nombre AS Nombre,
                        p.sku AS Sku,
-                       COALESCE(p.categoria, c.nombre, 'Sin categoría') AS Categoria,
+                       COALESCE(p.categoria, 'Sin categoría') AS Categoria,
                        p.descripcion AS Descripcion,
                        p.fechaCarga AS FechaCarga,
                        CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) AS PrecioVenta,
-                       CAST(COALESCE(p.costoCompra, p.costo, 0) AS decimal(12,2)) AS CostoCompra,
-                       CAST(COALESCE(s.cantidad, p.stockActual, 0) AS int) AS StockActual,
-                       CAST(COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) AS int) AS StockMinimo,
-                       CAST(COALESCE(p.activo, 1) AS bit) AS Activo,
-                       COALESCE(pe.nombre, p.proveedor, '') AS Proveedor
+                       CAST(COALESCE(p.costoCompra, 0) AS decimal(12,2)) AS CostoCompra,
+                       CAST(COALESCE(p.stockActual, 0) AS int) AS StockActual,
+                       CAST(COALESCE(p.stockMinimo, 0) AS int) AS StockMinimo,
+                       CAST(1 AS bit) AS Activo,
+                       COALESCE(p.proveedor, '') AS Proveedor
                 FROM Productos p
-                LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-                LEFT JOIN Categoria c ON c.id = p.categoriaID
-                LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
                 WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
                   AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                  AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(COALESCE(p.categoria, c.nombre)))) = LOWER(LTRIM(RTRIM(@Categoria))))
-                  AND (@PocoStock = 0 OR COALESCE(s.cantidad, p.stockActual, 0) <= COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) OR COALESCE(s.cantidad, p.stockActual, 0) = 0)
+                  AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(p.categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                  AND (@PocoStock = 0 OR COALESCE(p.stockActual, 0) <= COALESCE(p.stockMinimo, 0) OR COALESCE(p.stockActual, 0) = 0)
                   AND (@PrecioMinimo IS NULL OR CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) >= @PrecioMinimo)
-                ORDER BY p.nombre;";
+                ORDER BY
+                  CASE WHEN @Orden = 'nombre_asc' THEN p.nombre END ASC,
+                  CASE WHEN @Orden = 'nombre_desc' THEN p.nombre END DESC,
+                  CASE WHEN @Orden = 'precio_asc' THEN COALESCE(p.precioVenta, p.precio, 0) END ASC,
+                  CASE WHEN @Orden = 'precio_desc' THEN COALESCE(p.precioVenta, p.precio, 0) END DESC,
+                  CASE WHEN @Orden = 'stock_asc' THEN COALESCE(p.stockActual, 0) END ASC,
+                  CASE WHEN @Orden = 'stock_desc' THEN COALESCE(p.stockActual, 0) END DESC,
+                  CASE WHEN @Orden = 'sku_asc' THEN p.sku END ASC,
+                  CASE WHEN @Orden = 'sku_desc' THEN p.sku END DESC;";
             return connection.Query<Producto>(sqlLegacy, parametros).ToList();
         }
 
@@ -162,23 +170,20 @@ public static class BD
             return connection.QuerySingleOrDefault<Producto>(@"
                 SELECT p.id AS Id,
                        p.empresaID AS EmpresaID,
-                       ISNULL(p.categoriaID, 0) AS CategoriaID,
-                       p.proveedorID AS ProveedorID,
+                       0 AS CategoriaID,
+                       NULL AS ProveedorID,
                        p.nombre AS Nombre,
                        p.sku AS Sku,
-                       COALESCE(p.categoria, c.nombre, 'Sin categoría') AS Categoria,
+                       COALESCE(p.categoria, 'Sin categoría') AS Categoria,
                        p.descripcion AS Descripcion,
                        p.fechaCarga AS FechaCarga,
                        CAST(COALESCE(p.precioVenta, p.precio, 0) AS decimal(12,2)) AS PrecioVenta,
-                       CAST(COALESCE(p.costoCompra, p.costo, 0) AS decimal(12,2)) AS CostoCompra,
-                       CAST(COALESCE(s.cantidad, p.stockActual, 0) AS int) AS StockActual,
-                       CAST(COALESCE(s.cantidadMinimoAlerta, p.stockMinimo, 0) AS int) AS StockMinimo,
-                       CAST(COALESCE(p.activo, 1) AS bit) AS Activo,
-                       COALESCE(pe.nombre, p.proveedor, '') AS Proveedor
+                       CAST(COALESCE(p.costoCompra, 0) AS decimal(12,2)) AS CostoCompra,
+                       CAST(COALESCE(p.stockActual, 0) AS int) AS StockActual,
+                       CAST(COALESCE(p.stockMinimo, 0) AS int) AS StockMinimo,
+                       CAST(1 AS bit) AS Activo,
+                       COALESCE(p.proveedor, '') AS Proveedor
                 FROM Productos p
-                LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-                LEFT JOIN Categoria c ON c.id = p.categoriaID
-                LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
                 WHERE p.id = @Id", new { Id = id });
         }
 
@@ -1666,36 +1671,62 @@ public static class BD
 
     public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId)
     {
-        return connection.ExecuteScalar<int>(@"
+        var parametros = new
+        {
+            ProductoId = productoId,
+            NombreProducto = nombreProducto,
+            EmpresaId = empresaId,
+            UsuarioId = usuarioId,
+            Fecha = DateTime.Now,
+            MetodoPago = metodoPago,
+            Cantidad = cantidad,
+            Precio = precioVentaTotal,
+            Costo = precioCompraTotal,
+            TotalVenta = precioVentaTotal,
+            Observacion = $"Venta de {cantidad} unidades de {nombreProducto}"
+        };
+
+        if (ExisteColumna(connection, "Ventas", "productoId"))
+        {
+            return await connection.ExecuteScalarAsync<int>(@"
+                INSERT INTO Ventas
+                    (productoId, nombreProducto, empresaID, usuarioID, fecha, metodoPago, cantidad, precio, costo, totalVenta, observacion)
+                VALUES
+                    (@ProductoId, @NombreProducto, @EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @TotalVenta, @Observacion);
+                SELECT CAST(SCOPE_IDENTITY() as int);", parametros);
+        }
+
+        return await connection.ExecuteScalarAsync<int>(@"
             INSERT INTO Ventas (empresaID, usuarioID, fecha, metodoPago, totalVenta, observacion)
             VALUES (@EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @TotalVenta, @Observacion);
-            SELECT CAST(SCOPE_IDENTITY() as int);",
-            new
-            {
-                EmpresaId = empresaId,
-                UsuarioId = usuarioId,
-                Fecha = DateTime.Now,
-                MetodoPago = metodoPago,
-                TotalVenta = precioVentaTotal,
-                Observacion = $"Venta de {cantidad} unidades de {nombreProducto}",
-            });
+            SELECT CAST(SCOPE_IDENTITY() as int);", parametros);
     }
 
     public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia)
     {
-        return connection.Execute(@"
+        var parametros = new
+        {
+            VentaId = ventaId,
+            ProductoId = productoId,
+            Cantidad = cantidad,
+            PrecioVenta = precioVentaTotal,
+            CostoCompra = precioCompraTotal,
+            PorcentajeGanancia = porcentajeGanancia,
+            Ganancia = ganancia
+        };
+
+        if (ExisteColumna(connection, "DetalleVenta", "precioCompra"))
+        {
+            return await connection.ExecuteAsync(@"
+                INSERT INTO DetalleVenta
+                    (ventaID, productoID, cantidad, precioVenta, precioCompra, costoCompra, porcentajeGanancia, ganancia)
+                VALUES
+                    (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros);
+        }
+
+        return await connection.ExecuteAsync(@"
             INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
-            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)",
-            new
-            {
-                VentaId = ventaId,
-                ProductoId = productoId,
-                Cantidad = cantidad,
-                PrecioVenta = precioVentaTotal,
-                CostoCompra = precioCompraTotal,
-                PorcentajeGanancia = porcentajeGanancia,
-                Ganancia = ganancia
-            });
+            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros);
     }
 
     public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
@@ -1847,6 +1878,19 @@ public static class BD
                     CONSTRAINT PK_Categoria PRIMARY KEY (id));");
         }
 
+        if (!ExisteTabla(connection, "dbo.Proveedores"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.Proveedores (
+                    id int IDENTITY(1,1) NOT NULL,
+                    empresaID int NOT NULL,
+                    nombre varchar(150) NOT NULL,
+                    telefono varchar(30) NULL,
+                    mail varchar(150) NULL,
+                    costoEnvio decimal(12,2) NOT NULL DEFAULT 0,
+                    detalles varchar(max) NULL,
+                    CONSTRAINT PK_Proveedores PRIMARY KEY (id));");
+        }
+
         if (!ExisteTabla(connection, "dbo.Productos"))
         {
             connection.Execute(@"CREATE TABLE dbo.Productos (
@@ -1876,6 +1920,19 @@ public static class BD
                     CONSTRAINT PK_Stock PRIMARY KEY (id));");
         }
 
+        if (!ExisteTabla(connection, "dbo.Ventas"))
+        {
+            connection.Execute(@"CREATE TABLE dbo.Ventas (
+                    id int IDENTITY(1,1) NOT NULL,
+                    empresaID int NULL,
+                    usuarioID int NULL,
+                    fecha datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    metodoPago varchar(50) NOT NULL,
+                    totalVenta decimal(12,2) NOT NULL DEFAULT 0,
+                    observacion varchar(500) NULL,
+                    CONSTRAINT PK_Ventas PRIMARY KEY (id));");
+        }
+
         if (!ExisteTabla(connection, "dbo.DetalleVenta"))
         {
             connection.Execute(@"CREATE TABLE dbo.DetalleVenta (
@@ -1890,8 +1947,52 @@ public static class BD
                     CONSTRAINT PK_DetalleVenta PRIMARY KEY (id));");
         }
 
+        var columnasCategoria = new[]
+        {
+            ("empresaID", "ALTER TABLE dbo.Categoria ADD empresaID int NOT NULL DEFAULT 1;"),
+            ("nombre", "ALTER TABLE dbo.Categoria ADD nombre varchar(100) NULL;")
+        };
+
+        foreach (var (columna, sql) in columnasCategoria)
+        {
+            if (!ExisteColumna(connection, "Categoria", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
+
+        var columnasProveedores = new[]
+        {
+            ("empresaID", "ALTER TABLE dbo.Proveedores ADD empresaID int NOT NULL DEFAULT 1;"),
+            ("nombre", "ALTER TABLE dbo.Proveedores ADD nombre varchar(150) NULL;"),
+            ("telefono", "ALTER TABLE dbo.Proveedores ADD telefono varchar(30) NULL;"),
+            ("mail", "ALTER TABLE dbo.Proveedores ADD mail varchar(150) NULL;")
+        };
+
+        foreach (var (columna, sql) in columnasProveedores)
+        {
+            if (!ExisteColumna(connection, "Proveedores", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
+
+        if (ExisteColumna(connection, "Proveedores", "productoPrincipal"))
+        {
+            connection.Execute(@"UPDATE dbo.Proveedores
+                                 SET nombre = COALESCE(NULLIF(LTRIM(RTRIM(nombre)), ''), NULLIF(LTRIM(RTRIM(productoPrincipal)), ''), 'Proveedor ' + CAST(id AS varchar(20)))
+                                 WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';");
+        }
+        else
+        {
+            connection.Execute(@"UPDATE dbo.Proveedores
+                                 SET nombre = 'Proveedor ' + CAST(id AS varchar(20))
+                                 WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';");
+        }
+
         var columnasProductos = new[]
         {
+            ("empresaID", "ALTER TABLE dbo.Productos ADD empresaID int NOT NULL DEFAULT 1;"),
             ("nombre", "ALTER TABLE dbo.Productos ADD nombre varchar(150) NULL;"),
             ("sku", "ALTER TABLE dbo.Productos ADD sku varchar(100) NULL;"),
             ("categoriaID", "ALTER TABLE dbo.Productos ADD categoriaID int NULL;"),
@@ -1911,8 +2012,25 @@ public static class BD
             }
         }
 
+        if (ExisteColumna(connection, "Productos", "nombreProducto"))
+        {
+            connection.Execute(@"UPDATE dbo.Productos
+                                 SET nombre = COALESCE(NULLIF(LTRIM(RTRIM(nombre)), ''), nombreProducto)
+                                 WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';");
+        }
+
+        if (ExisteColumna(connection, "Productos", "precio"))
+        {
+            connection.Execute(@"UPDATE dbo.Productos
+                                 SET precioVenta = CASE
+                                     WHEN precioVenta IS NULL OR precioVenta = 0 THEN ISNULL(precio, 0)
+                                     ELSE precioVenta
+                                 END;");
+        }
+
         var columnasStock = new[]
         {
+            ("productoID", "ALTER TABLE dbo.Stock ADD productoID int NULL;"),
             ("cantidad", "ALTER TABLE dbo.Stock ADD cantidad int NOT NULL DEFAULT 0;"),
             ("cantidadMinimoAlerta", "ALTER TABLE dbo.Stock ADD cantidadMinimoAlerta int NOT NULL DEFAULT 0;"),
             ("activo", "ALTER TABLE dbo.Stock ADD activo bit NOT NULL DEFAULT 1;"),
@@ -1926,5 +2044,115 @@ public static class BD
                 connection.Execute(sql);
             }
         }
+
+        if (ExisteColumna(connection, "Productos", "stockActual"))
+        {
+            var minimo = ExisteColumna(connection, "Productos", "stockMinimo")
+                ? "ISNULL(p.stockMinimo, 0)"
+                : "0";
+
+            connection.Execute($@"INSERT INTO dbo.Stock
+                                      (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+                                  SELECT p.id, ISNULL(p.stockActual, 0), {minimo}, 1, SYSUTCDATETIME()
+                                  FROM dbo.Productos p
+                                  WHERE NOT EXISTS (
+                                      SELECT 1 FROM dbo.Stock s WHERE s.productoID = p.id);");
+        }
+
+        if (ExisteColumna(connection, "Productos", "categoria"))
+        {
+            connection.Execute(@"INSERT INTO dbo.Categoria (empresaID, nombre)
+                                 SELECT DISTINCT p.empresaID, LTRIM(RTRIM(p.categoria))
+                                 FROM dbo.Productos p
+                                 WHERE p.categoria IS NOT NULL
+                                   AND LTRIM(RTRIM(p.categoria)) <> ''
+                                   AND NOT EXISTS (
+                                       SELECT 1
+                                       FROM dbo.Categoria c
+                                       WHERE c.empresaID = p.empresaID
+                                         AND LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(p.categoria))));");
+
+            connection.Execute(@"UPDATE p
+                                 SET categoriaID = c.id
+                                 FROM dbo.Productos p
+                                 INNER JOIN dbo.Categoria c
+                                     ON c.empresaID = p.empresaID
+                                    AND LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(p.categoria)))
+                                 WHERE p.categoriaID IS NULL OR p.categoriaID = 0;");
+        }
+
+        if (ExisteColumna(connection, "Productos", "proveedor"))
+        {
+            connection.Execute(@"INSERT INTO dbo.Proveedores (empresaID, nombre)
+                                 SELECT DISTINCT p.empresaID, LTRIM(RTRIM(p.proveedor))
+                                 FROM dbo.Productos p
+                                 WHERE p.proveedor IS NOT NULL
+                                   AND LTRIM(RTRIM(p.proveedor)) <> ''
+                                   AND NOT EXISTS (
+                                       SELECT 1
+                                       FROM dbo.Proveedores pe
+                                       WHERE pe.empresaID = p.empresaID
+                                         AND LOWER(LTRIM(RTRIM(pe.nombre))) = LOWER(LTRIM(RTRIM(p.proveedor))));");
+
+            connection.Execute(@"UPDATE p
+                                 SET proveedorID = pe.id
+                                 FROM dbo.Productos p
+                                 INNER JOIN dbo.Proveedores pe
+                                     ON pe.empresaID = p.empresaID
+                                    AND LOWER(LTRIM(RTRIM(pe.nombre))) = LOWER(LTRIM(RTRIM(p.proveedor)))
+                                 WHERE p.proveedorID IS NULL OR p.proveedorID = 0;");
+        }
+
+        var columnasVentas = new[]
+        {
+            ("empresaID", "ALTER TABLE dbo.Ventas ADD empresaID int NULL;"),
+            ("usuarioID", "ALTER TABLE dbo.Ventas ADD usuarioID int NULL;"),
+            ("fecha", "ALTER TABLE dbo.Ventas ADD fecha datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME();"),
+            ("metodoPago", "ALTER TABLE dbo.Ventas ADD metodoPago varchar(50) NULL;"),
+            ("totalVenta", "ALTER TABLE dbo.Ventas ADD totalVenta decimal(12,2) NOT NULL DEFAULT 0;"),
+            ("observacion", "ALTER TABLE dbo.Ventas ADD observacion varchar(500) NULL;")
+        };
+
+        foreach (var (columna, sql) in columnasVentas)
+        {
+            if (!ExisteColumna(connection, "Ventas", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
+
+        if (ExisteColumna(connection, "Ventas", "precio"))
+        {
+            connection.Execute(@"UPDATE dbo.Ventas
+                                 SET totalVenta = ISNULL(precio, 0)
+                                 WHERE totalVenta = 0;");
+        }
+
+        var columnasDetalleVenta = new[]
+        {
+            ("ventaID", "ALTER TABLE dbo.DetalleVenta ADD ventaID int NULL;"),
+            ("productoID", "ALTER TABLE dbo.DetalleVenta ADD productoID int NULL;"),
+            ("cantidad", "ALTER TABLE dbo.DetalleVenta ADD cantidad int NOT NULL DEFAULT 1;"),
+            ("precioVenta", "ALTER TABLE dbo.DetalleVenta ADD precioVenta decimal(12,2) NOT NULL DEFAULT 0;"),
+            ("costoCompra", "ALTER TABLE dbo.DetalleVenta ADD costoCompra decimal(12,2) NOT NULL DEFAULT 0;"),
+            ("porcentajeGanancia", "ALTER TABLE dbo.DetalleVenta ADD porcentajeGanancia decimal(10,2) NULL;"),
+            ("ganancia", "ALTER TABLE dbo.DetalleVenta ADD ganancia decimal(12,2) NULL;")
+        };
+
+        foreach (var (columna, sql) in columnasDetalleVenta)
+        {
+            if (!ExisteColumna(connection, "DetalleVenta", columna))
+            {
+                connection.Execute(sql);
+            }
+        }
+
+        if (ExisteColumna(connection, "DetalleVenta", "precioCompra"))
+        {
+            connection.Execute(@"UPDATE dbo.DetalleVenta
+                                 SET costoCompra = ISNULL(precioCompra, 0)
+                                 WHERE costoCompra = 0;");
+        }
     }
+
 }

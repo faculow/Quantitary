@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,15 +8,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Quantitary.Services;
 
-/// <summary>Configuración de Gemini. La clave viene de GEMINI_API_KEY (variable de entorno o user-secrets).</summary>
-public sealed class GeminiOptions
+/// <summary>Configuración de Claude. La clave viene de ANTHROPIC_API_KEY (variable de entorno o user-secrets).</summary>
+public sealed class ClaudeOptions
 {
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "gemini-3.5-flash";
+    public string Model { get; set; } = "claude-sonnet-5-5";
+    public string ApiVersion { get; set; } = "2026-10-21";
 }
 
-/// <summary>Valida la conversación, llama a la API oficial de Gemini y convierte la respuesta en texto, tablas y gráficos.</summary>
-public sealed class GeminiChatService : IAiChatService
+/// <summary>Valida la conversación, llama a la API oficial de Claude y convierte la respuesta en texto, tablas y gráficos.</summary>
+public sealed class ClaudeChatService : IAiChatService
 {
     public const int MaxTables = 4;
     public const int MaxRows = 50;
@@ -31,13 +33,13 @@ public sealed class GeminiChatService : IAiChatService
     private const int MaxLabelLength = 160;
     private const int MaxSeriesNameLength = 80;
 
-    private const string ApiBase = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private const string ApiUrl = "https://api.anthropic.com/v1/messages";
 
     private readonly HttpClient _http;
-    private readonly GeminiOptions _options;
-    private readonly ILogger<GeminiChatService> _logger;
+    private readonly ClaudeOptions _options;
+    private readonly ILogger<ClaudeChatService> _logger;
 
-    public GeminiChatService(HttpClient http, GeminiOptions options, ILogger<GeminiChatService> logger)
+    public ClaudeChatService(HttpClient http, ClaudeOptions options, ILogger<ClaudeChatService> logger)
     {
         _http = http;
         _options = options;
@@ -59,15 +61,15 @@ public sealed class GeminiChatService : IAiChatService
 
         if (string.IsNullOrWhiteSpace(_options.ApiKey) || _options.ApiKey.StartsWith("PEGAR", StringComparison.OrdinalIgnoreCase))
             return ChatResult.Failure("config_missing",
-                "Falta la clave de Gemini. Configurala con dotnet user-secrets o GEMINI_API_KEY y volvé a iniciar la aplicación.");
+                "Falta la clave de Claude. Configurala con dotnet user-secrets o ANTHROPIC_API_KEY y volvé a iniciar la aplicación.");
 
         var history = NormalizeHistory(request?.History);
-        var body = BuildRequestBody(history, message, contexto);
+        var body = BuildRequestBody(history, message, contexto, _options.Model);
 
-        return await CallGeminiAsync(body, cancellationToken);
+        return await CallClaudeAsync(body, cancellationToken);
     }
 
-    /// <summary>Filtra, recorta y ordena el historial para que Gemini reciba roles correctos y sin basura.</summary>
+    /// <summary>Filtra, recorta y ordena el historial para que Claude reciba roles correctos y sin basura.</summary>
     private static List<(string Role, string Text)> NormalizeHistory(List<ChatTurn>? turns)
     {
         var result = new List<(string Role, string Text)>();
@@ -95,77 +97,66 @@ public sealed class GeminiChatService : IAiChatService
         return result;
     }
 
-    private static JsonObject BuildRequestBody(List<(string Role, string Text)> history, string message, string contexto)
+    private static JsonObject BuildRequestBody(
+        List<(string Role, string Text)> history,
+        string message,
+        string contexto,
+        string model)
     {
-        var contents = new JsonArray();
+        var messages = new JsonArray();
 
         var shortContext = string.IsNullOrWhiteSpace(contexto) ? "No hay datos del comercio." : contexto.Trim();
         if (shortContext.Length > 1200)
             shortContext = shortContext[..1200];
 
-        contents.Add(MakeContent("user", shortContext));
+        messages.Add(MakeMessage("user", shortContext));
 
         foreach (var (role, text) in history.TakeLast(4))
-            contents.Add(MakeContent(role == "assistant" ? "model" : "user", text));
+            messages.Add(MakeMessage(role, text));
 
-        contents.Add(MakeContent("user", message));
+        messages.Add(MakeMessage("user", message));
 
         return new JsonObject
         {
-            ["systemInstruction"] = new JsonObject
-            {
-                ["parts"] = new JsonArray(new JsonObject { ["text"] = QuantitaryAiPolicy.SystemInstruction })
-            },
-            ["contents"] = contents,
-            ["generationConfig"] = new JsonObject
-            {
-                ["temperature"] = 0.2,
-                ["topP"] = 0.9,
-                ["candidateCount"] = 1,
-                ["maxOutputTokens"] = 1024,
-                ["responseMimeType"] = "text/plain"
-            }
+            ["model"] = model,
+            ["max_tokens"] = 1024,
+            ["system"] = QuantitaryAiPolicy.SystemInstruction,
+            ["messages"] = messages
         };
     }
 
-    private static JsonObject SafetySetting(string category, string threshold) => new()
-    {
-        ["category"] = category,
-        ["threshold"] = threshold
-    };
-
-    private static JsonObject MakeContent(string role, string text) => new()
+    private static JsonObject MakeMessage(string role, string text) => new()
     {
         ["role"] = role,
-        ["parts"] = new JsonArray(new JsonObject { ["text"] = text })
+        ["content"] = text
     };
 
-    private async Task<ChatResult> CallGeminiAsync(JsonObject body, CancellationToken cancellationToken)
+    private async Task<ChatResult> CallClaudeAsync(JsonObject body, CancellationToken cancellationToken)
     {
-        var url = ApiBase + Uri.EscapeDataString(_options.Model) + ":generateContent";
         var payload = body.ToJsonString();
 
-        // Los errores temporales de Google (500 y 503) se reintentan hasta 3 veces, con una pausa creciente.
+        // Los errores temporales de Anthropic se reintentan hasta 3 veces, con una pausa creciente.
         const int maxAttempts = 3;
 
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
                 {
                     Content = new StringContent(payload, Encoding.UTF8, "application/json")
                 };
                 // La clave viaja en un encabezado, no en la URL, para que no quede en registros de URL.
-                httpRequest.Headers.Add("x-goog-api-key", _options.ApiKey);
+                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+                httpRequest.Headers.Add("anthropic-version", _options.ApiVersion);
 
                 using var response = await _http.SendAsync(httpRequest, cancellationToken);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
                 var statusCode = (int)response.StatusCode;
 
-                if ((statusCode == 500 || statusCode == 503) && attempt < maxAttempts)
+                if ((statusCode == 500 || statusCode == 503 || statusCode == 529) && attempt < maxAttempts)
                 {
-                    _logger.LogWarning("Gemini respondió HTTP {StatusCode}. Reintento {Attempt} de {Retries}.",
+                    _logger.LogWarning("Claude respondió HTTP {StatusCode}. Reintento {Attempt} de {Retries}.",
                         statusCode, attempt, maxAttempts - 1);
                     await Task.Delay(TimeSpan.FromSeconds(2 * attempt), cancellationToken);
                     continue;
@@ -175,15 +166,15 @@ public sealed class GeminiChatService : IAiChatService
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning("Gemini no respondió dentro del tiempo límite.");
+                _logger.LogWarning("Claude no respondió dentro del tiempo límite.");
                 return ChatResult.Failure("upstream_error",
-                    "Gemini tardó demasiado en responder. Intentá de nuevo en unos segundos.");
+                    "Claude tardó demasiado en responder. Intentá de nuevo en unos segundos.");
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning("Error de red al comunicarse con Gemini: {Message}", ex.Message);
+                _logger.LogWarning("Error de red al comunicarse con Claude: {Message}", ex.Message);
                 return ChatResult.Failure("upstream_error",
-                    "No se pudo conectar con Gemini. Revisá la conexión a internet e intentá de nuevo.");
+                    "No se pudo conectar con Claude. Revisá la conexión a internet e intentá de nuevo.");
             }
         }
     }
@@ -197,23 +188,18 @@ public sealed class GeminiChatService : IAiChatService
         {
             var root = JsonNode.Parse(responseText);
 
-            var blockReason = root?["promptFeedback"]?["blockReason"]?.GetValue<string>();
-            if (!string.IsNullOrEmpty(blockReason))
-                return ChatResult.Failure("empty_response",
-                    "Gemini no pudo responder a esa consulta. Probá reformularla con otras palabras.");
-
             var rawText = ExtractText(root);
             if (string.IsNullOrWhiteSpace(rawText))
                 return ChatResult.Failure("empty_response",
-                    "Gemini respondió, pero la respuesta no se pudo usar. Probá reformular la pregunta.");
+                    "Claude respondió, pero la respuesta no se pudo usar. Probá reformular la pregunta.");
 
             return TryParsePlainText(rawText) ?? ParseModelOutput(rawText);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            _logger.LogWarning("No se pudo interpretar la respuesta de Gemini.");
+            _logger.LogWarning("No se pudo interpretar la respuesta de Claude.");
             return ChatResult.Failure("upstream_error",
-                "Gemini devolvió una respuesta que no se pudo leer. Intentá de nuevo.");
+                "Claude devolvió una respuesta que no se pudo leer. Intentá de nuevo.");
         }
     }
 
@@ -237,15 +223,17 @@ public sealed class GeminiChatService : IAiChatService
 
     private static string ExtractText(JsonNode? root)
     {
-        var parts = root?["candidates"]?[0]?["content"]?["parts"] as JsonArray;
+        var content = root?["content"] as JsonArray;
         var builder = new StringBuilder();
 
-        if (parts is not null)
+        if (content is not null)
         {
-            foreach (var part in parts)
+            foreach (var block in content)
             {
-                if (part?["thought"]?.GetValue<bool>() == true) continue;
-                var text = part?["text"]?.GetValue<string>();
+                if (!string.Equals(block?["type"]?.GetValue<string>(), "text", StringComparison.Ordinal))
+                    continue;
+
+                var text = block?["text"]?.GetValue<string>();
                 if (!string.IsNullOrEmpty(text)) builder.Append(text);
             }
         }
@@ -430,28 +418,30 @@ public sealed class GeminiChatService : IAiChatService
 
     private ChatResult MapHttpError(int statusCode, string responseText)
     {
-        // Solo registra el mensaje público de Google; nunca la clave, el prompt ni el cuerpo completo.
+        // Solo registra el mensaje público de Anthropic; nunca la clave, el prompt ni el cuerpo completo.
         var apiMessage = ExtractApiErrorMessage(responseText);
         if (string.IsNullOrEmpty(apiMessage))
-            _logger.LogWarning("Gemini respondió con HTTP {StatusCode}.", statusCode);
+            _logger.LogWarning("Claude respondió con HTTP {StatusCode}.", statusCode);
         else
-            _logger.LogWarning("Gemini respondió con HTTP {StatusCode}: {ApiMessage}", statusCode, apiMessage);
+            _logger.LogWarning("Claude respondió con HTTP {StatusCode}: {ApiMessage}", statusCode, apiMessage);
 
         return statusCode switch
         {
             429 => ChatResult.Failure("rate_limited",
-                "Se alcanzó temporalmente el límite de solicitudes de Gemini. " +
-                "Esperá un momento, revisá tus cuotas en Google AI Studio y volvé a intentar."),
-            401 or 403 => ChatResult.Failure("auth_error",
-                "Gemini rechazó la clave configurada. Verificá que la clave sea válida " +
-                "y tenga acceso a la API de Gemini."),
-            400 when responseText.Contains("API key", StringComparison.OrdinalIgnoreCase) =>
-                ChatResult.Failure("auth_error",
-                    "Gemini no reconoce la clave configurada. Verificá que la clave sea correcta."),
+                "Se alcanzó temporalmente el límite de solicitudes de Claude. " +
+                "Esperá un momento, revisá tus límites en Anthropic Console y volvé a intentar."),
+            401 => ChatResult.Failure("auth_error",
+                "Claude rechazó la clave configurada. Verificá que la clave sea válida."),
+            403 => ChatResult.Failure("auth_error",
+                "La clave configurada no tiene permiso para usar la API o el modelo de Claude."),
             404 => ChatResult.Failure("model_not_found",
-                "El modelo de Gemini configurado no está disponible. Revisá la clave Gemini:Model en appsettings.json."),
+                "El modelo de Claude configurado no está disponible. Revisá Claude:Model en appsettings.json."),
+            413 => ChatResult.Failure("invalid_request",
+                "La consulta es demasiado grande para Claude. Probá con menos datos o un mensaje más corto."),
+            529 => ChatResult.Failure("upstream_error",
+                "Claude está temporalmente sobrecargado. Intentá de nuevo en unos segundos."),
             _ => ChatResult.Failure("upstream_error",
-                "Gemini no pudo responder en este momento. Intentá de nuevo en unos segundos.")
+                "Claude no pudo responder en este momento. Intentá de nuevo en unos segundos.")
         };
     }
 
@@ -471,3 +461,5 @@ public sealed class GeminiChatService : IAiChatService
         }
     }
 }
+
+
