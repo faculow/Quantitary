@@ -2954,3 +2954,6 @@ p {
 * Es clave respetar la jerarquía y especificidad de CSS.  
 * Seguir un patrón ordenado en el desarrollo del proyecto.
 
+# **26\. Ubicacion de las querys**
+* Todas las querys deben estar ubicadas en la clase BD.cs, nunca en ningun otro lugar
+* En la clase BD.cs solo deben haber querys

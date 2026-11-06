@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using System.Globalization;
+using Quantitary.Services;
 
 namespace Quantitary.Models;
 
@@ -711,5 +712,452 @@ public static class BD
                 Valor = porcentaje
             };
         }).ToList();
+    }
+
+    public sealed class ProductoIndicadorBase
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public string Categoria { get; set; } = string.Empty;
+        public decimal Precio { get; set; }
+        public int StockActual { get; set; }
+        public int StockMinimo { get; set; }
+        public decimal CostoCompra { get; set; }
+        public int EmpresaId { get; set; }
+    }
+
+    public sealed class ProductoVentaAggregate
+    {
+        public int ProductoId { get; set; }
+        public int CantidadVendida { get; set; }
+        public decimal VentasTotales { get; set; }
+        public decimal CostoTotal { get; set; }
+    }
+
+    public sealed class ProductoCategoriaAggregate
+    {
+        public string Categoria { get; set; } = string.Empty;
+        public decimal VentasTotales { get; set; }
+    }
+
+    public sealed class AlertaStockRegistro
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public int Stock { get; set; }
+        public int Minimo { get; set; }
+    }
+
+    public sealed class PermisosLectura
+    {
+        public string NombreEmpresa { get; set; } = string.Empty;
+        public bool VerProductos { get; set; }
+        public bool VerStock { get; set; }
+        public bool VerVentas { get; set; }
+        public bool VerGanancias { get; set; }
+    }
+
+    public sealed class ResumenStock
+    {
+        public int TotalProductos { get; set; }
+        public int Agotados { get; set; }
+        public int BajoMinimo { get; set; }
+    }
+
+    public sealed class ProductoLectura
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public string Categoria { get; set; } = string.Empty;
+        public int StockActual { get; set; }
+        public int StockMinimo { get; set; }
+        public decimal Precio { get; set; }
+        public decimal CostoCompra { get; set; }
+    }
+
+    public sealed class VentaDiaria
+    {
+        public DateTime Fecha { get; set; }
+        public int Operaciones { get; set; }
+        public int Unidades { get; set; }
+        public decimal Total { get; set; }
+        public decimal Costo { get; set; }
+    }
+
+    public static async Task<bool> TienePermisoEditarEmpresaAsync(IConfiguration configuration, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM Usuarios u
+            INNER JOIN Rol r ON r.id = u.rolID
+            INNER JOIN Permisos p ON p.id = r.permisoID
+            WHERE u.id = @usuario AND u.empresaID = @empresa AND p.gestionarUsuarios = 1",
+            new { usuario, empresa }) == 1;
+    }
+
+    public static async Task<PermisosLectura?> ObtenerPermisosLecturaAsync(IConfiguration configuration, int usuarioId, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.QuerySingleOrDefaultAsync<PermisosLectura>(@"
+            SELECT
+                e.nombre AS NombreEmpresa,
+                CAST(CASE WHEN p.verProductos = 1 THEN 1 ELSE 0 END AS bit) AS VerProductos,
+                CAST(CASE WHEN p.verStock = 1 THEN 1 ELSE 0 END AS bit) AS VerStock,
+                CAST(CASE WHEN p.verHistorialVentas = 1 THEN 1 ELSE 0 END AS bit) AS VerVentas,
+                CAST(CASE WHEN p.verGanacia = 1 THEN 1 ELSE 0 END AS bit) AS VerGanancias
+            FROM Usuarios u
+            INNER JOIN Empresa e ON e.id = u.empresaID
+            INNER JOIN Rol r ON r.id = u.rolID
+            INNER JOIN Permisos p ON p.id = r.permisoID
+            WHERE u.id = @UsuarioId
+              AND u.empresaID = @EmpresaId",
+            new { UsuarioId = usuarioId, EmpresaId = empresaId });
+    }
+
+    public static async Task<ResumenStock> ObtenerResumenStockAsync(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.QuerySingleOrDefaultAsync<ResumenStock>(@"
+            SELECT
+                COUNT(*) AS TotalProductos,
+                SUM(CASE WHEN stockActual <= 0 THEN 1 ELSE 0 END) AS Agotados,
+                SUM(CASE WHEN stockActual > 0 AND stockActual <= stockMinimo THEN 1 ELSE 0 END) AS BajoMinimo
+            FROM Productos
+            WHERE empresaID = @EmpresaId",
+            new { EmpresaId = empresaId }) ?? new ResumenStock();
+    }
+
+    public static async Task<List<ProductoLectura>> ObtenerProductosLecturaAsync(IConfiguration configuration, int empresaId, bool incluirStockBajo = true)
+    {
+        using var connection = CrearConexion(configuration);
+        var sql = @"
+            SELECT TOP (80)
+                nombre AS Nombre,
+                sku AS Sku,
+                categoria AS Categoria,
+                stockActual AS StockActual,
+                stockMinimo AS StockMinimo,
+                precio AS Precio,
+                costoCompra AS CostoCompra
+            FROM Productos
+            WHERE empresaID = @EmpresaId
+            ORDER BY
+                CASE WHEN @IncluirStockBajo = 1 AND (stockActual <= stockMinimo OR stockActual = 0) THEN 0 ELSE 1 END,
+                stockActual ASC,
+                nombre ASC";
+
+        return (await connection.QueryAsync<ProductoLectura>(sql, new { EmpresaId = empresaId, IncluirStockBajo = incluirStockBajo })).ToList();
+    }
+
+    public static async Task<int> ExisteTablaVentasAsync(IConfiguration configuration)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT CASE WHEN OBJECT_ID('dbo.Ventas', 'U') IS NOT NULL THEN 1 ELSE 0 END");
+    }
+
+    public static async Task<List<VentaDiaria>> ObtenerVentasUltimos30DiasAsync(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return (await connection.QueryAsync<VentaDiaria>(@"
+            SELECT
+                CAST(v.fecha AS date) AS Fecha,
+                COUNT(*) AS Operaciones,
+                SUM(CAST(v.cantidad AS int)) AS Unidades,
+                SUM(v.precio) AS Total,
+                SUM(v.costo) AS Costo
+            FROM Ventas v
+            WHERE v.empresaID = @EmpresaId
+              AND v.fecha >= DATEADD(day, -30, CAST(GETDATE() AS date))
+            GROUP BY CAST(v.fecha AS date)
+            ORDER BY CAST(v.fecha AS date) DESC",
+            new { EmpresaId = empresaId })).ToList();
+    }
+
+    public static async Task<bool> IAUsuarioValidoAsync(IConfiguration configuration, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM Usuarios
+            WHERE id = @Usuario
+              AND empresaID = @Empresa",
+            new { Usuario = usuario, Empresa = empresa }) == 1;
+    }
+
+    public static async Task<List<IAChatResumen>> IAListarChatsAsync(IConfiguration configuration, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return (await connection.QueryAsync<IAChatResumen>(@"
+            SELECT Titulo, ActualizadoEn
+            FROM IAChats
+            WHERE UsuarioId = @Usuario
+              AND EmpresaId = @Empresa
+            ORDER BY ActualizadoEn DESC, Titulo ASC",
+            new { Usuario = usuario, Empresa = empresa })).ToList();
+    }
+
+    public static async Task<Guid> IACrearChatAsync(IConfiguration configuration, int usuario, int empresa)
+    {
+        var chatId = Guid.NewGuid();
+        using var connection = CrearConexion(configuration);
+        await connection.ExecuteAsync(@"
+            INSERT INTO IAChats (Id, UsuarioId, EmpresaId, Titulo, CreadoEn, ActualizadoEn)
+            VALUES (@Id, @Usuario, @Empresa, @Titulo, SYSUTCDATETIME(), SYSUTCDATETIME())",
+            new { Id = chatId, Usuario = usuario, Empresa = empresa, Titulo = "Nuevo chat" });
+        return chatId;
+    }
+
+    public static async Task<bool> IAExisteChatAsync(IConfiguration configuration, Guid chat, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM IAChats
+            WHERE Id = @ChatId
+              AND UsuarioId = @Usuario
+              AND EmpresaId = @Empresa",
+            new { ChatId = chat, Usuario = usuario, Empresa = empresa }) == 1;
+    }
+
+    public static async Task<List<IAMensaje>> IALeerChatAsync(IConfiguration configuration, Guid chat, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return (await connection.QueryAsync<IAMensaje>(@"
+            SELECT m.Rol, m.Texto AS Text
+            FROM IAMensajes m
+            INNER JOIN IAChats c ON c.Id = m.ChatId
+            WHERE m.ChatId = @ChatId
+              AND c.UsuarioId = @Usuario
+              AND c.EmpresaId = @Empresa
+            ORDER BY m.Id ASC",
+            new { ChatId = chat, Usuario = usuario, Empresa = empresa })).ToList();
+    }
+
+    public static async Task GuardarIntercambioAsync(IConfiguration configuration, Guid chat, int usuario, int empresa, string pregunta, string respuesta, string? tituloSugerido)
+    {
+        using var connection = CrearConexion(configuration);
+        var tituloNormalizado = string.IsNullOrWhiteSpace(tituloSugerido) ? null : tituloSugerido.Trim();
+
+        await connection.ExecuteAsync(@"
+            INSERT INTO IAMensajes (ChatId, Rol, Texto)
+            VALUES (@ChatId, 'user', @Pregunta);
+
+            INSERT INTO IAMensajes (ChatId, Rol, Texto)
+            VALUES (@ChatId, 'assistant', @Respuesta);
+
+            UPDATE IAChats
+            SET ActualizadoEn = SYSUTCDATETIME(),
+                Titulo = CASE 
+                    WHEN @TituloSugerido IS NOT NULL AND LTRIM(RTRIM(@TituloSugerido)) <> '' THEN @TituloSugerido
+                    ELSE Titulo
+                END
+            WHERE Id = @ChatId
+              AND UsuarioId = @Usuario
+              AND EmpresaId = @Empresa",
+            new
+            {
+                ChatId = chat,
+                Usuario = usuario,
+                Empresa = empresa,
+                Pregunta = pregunta,
+                Respuesta = respuesta,
+                TituloSugerido = tituloNormalizado
+            });
+    }
+
+    public static async Task<bool> IARenombrarChatAsync(IConfiguration configuration, Guid chat, int usuario, int empresa, string titulo)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteAsync(@"
+            UPDATE IAChats
+            SET Titulo = @Titulo,
+                ActualizadoEn = SYSUTCDATETIME()
+            WHERE Id = @ChatId
+              AND UsuarioId = @Usuario
+              AND EmpresaId = @Empresa",
+            new { ChatId = chat, Usuario = usuario, Empresa = empresa, Titulo = titulo.Trim() }) > 0;
+    }
+
+    public static async Task<bool> IAEliminarChatAsync(IConfiguration configuration, Guid chat, int usuario, int empresa)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteAsync(@"
+            DELETE FROM IAChats
+            WHERE Id = @ChatId
+              AND UsuarioId = @Usuario
+              AND EmpresaId = @Empresa",
+            new { ChatId = chat, Usuario = usuario, Empresa = empresa }) > 0;
+    }
+
+    public static async Task<bool> IAUsuarioTienePermisoAsync(IConfiguration configuration, int usuario, int empresa, string permiso)
+    {
+        var columna = permiso?.Trim() switch
+        {
+            "verProductos" => "p.verProductos",
+            "crearProductos" => "p.crearProductos",
+            "editarProductos" => "p.editarProductos",
+            "eliminarProductos" => "p.eliminarProductos",
+            "verStock" => "p.verStock",
+            "verDashboard" => "p.verDashboard",
+            "gestionarUsuarios" => "p.gestionarUsuarios",
+            "verVentas" => "p.verHistorialVentas",
+            "registrarVentas" => "p.registrarVentas",
+            "verGanancias" => "p.verGanacia",
+            _ => "p.verProductos"
+        };
+
+        using var connection = CrearConexion(configuration);
+        var sql = $@"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM Usuarios u
+                INNER JOIN Rol r ON r.id = u.rolID
+                INNER JOIN Permisos p ON p.id = r.permisoID
+                WHERE u.id = @Usuario
+                  AND u.empresaID = @Empresa
+                  AND {columna} = 1
+            ) THEN 1 ELSE 0 END";
+
+        return await connection.ExecuteScalarAsync<int>(sql, new { Usuario = usuario, Empresa = empresa }) == 1;
+    }
+
+    public static async Task<List<AlertaStockRegistro>> ObtenerAlertasStockAsync(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return (await connection.QueryAsync<AlertaStockRegistro>(@"
+            SELECT
+                p.id AS Id,
+                p.nombre AS Nombre,
+                p.sku AS Sku,
+                p.stockActual AS Stock,
+                p.stockMinimo AS Minimo
+            FROM Productos p
+            WHERE p.empresaID = @EmpresaId
+            ORDER BY p.stockActual ASC, p.nombre ASC",
+            new { EmpresaId = empresaId })).ToList();
+    }
+
+    public static async Task<bool> IAPermitidoAsync(IConfiguration configuration, int usuario, int empresa, string tipo)
+    {
+        var permiso = tipo?.Trim() switch
+        {
+            "crear" => "crearProductos",
+            "precio" => "editarProductos",
+            "stock" => "editarProductos",
+            _ => "verProductos"
+        };
+
+        return await IAUsuarioTienePermisoAsync(configuration, usuario, empresa, permiso);
+    }
+
+    public static async Task<bool> IAProductoExisteSkuAsync(IConfiguration configuration, int empresaId, string sku)
+    {
+        using var connection = CrearConexion(configuration);
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(sku))) = LOWER(LTRIM(RTRIM(@Sku)))",
+            new { EmpresaId = empresaId, Sku = sku.Trim() }) > 0;
+    }
+
+    public static async Task<List<IAProductoSql.Item>> IABuscarProductoPorSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        var sql = @"
+            SELECT
+                p.id AS Id,
+                p.nombre AS Nombre,
+                p.sku AS Sku,
+                p.precio AS Precio,
+                p.stockActual AS Stock
+            FROM Productos p
+            WHERE p.empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(p.sku))) = LOWER(LTRIM(RTRIM(@Sku)))
+            ORDER BY p.id";
+
+        var items = await connection.QueryAsync<IAProductoSql.Item>(sql, new { EmpresaId = empresaId, Sku = sku.Trim() }, transaction);
+        return items.AsList();
+    }
+
+    public static async Task<int> IAProductoDuplicadoSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(sku))) = LOWER(LTRIM(RTRIM(@Sku)))",
+            new { EmpresaId = empresaId, Sku = sku.Trim() }, transaction);
+    }
+
+    public static async Task<int> IACrearProductoAsync(IConfiguration configuration, int empresaId, string nombre, string sku, string? categoria, string? descripcion, decimal precio, int stock, int stockMinimo, string? proveedor, decimal costoCompra, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        var sql = @"
+            INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
+            VALUES (@EmpresaId, @Nombre, @Sku, @Categoria, @Descripcion, GETDATE(), @Precio, @Stock, @StockMinimo, @Proveedor, @CostoCompra, @Precio, 0);
+            SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+        return await connection.QuerySingleAsync<int>(sql, new
+        {
+            EmpresaId = empresaId,
+            Nombre = nombre.Trim(),
+            Sku = sku.Trim(),
+            Categoria = string.IsNullOrWhiteSpace(categoria) ? "Sin categoría" : categoria.Trim(),
+            Descripcion = descripcion,
+            Precio = precio,
+            Stock = stock,
+            StockMinimo = stockMinimo,
+            Proveedor = proveedor,
+            CostoCompra = costoCompra
+        }, transaction);
+    }
+
+    public static async Task<bool> IAActualizarProductoPrecioAsync(IConfiguration configuration, int empresaId, int productoId, decimal precio, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        return await connection.ExecuteAsync(@"
+            UPDATE Productos
+            SET precio = @Precio,
+                precioVenta = @Precio
+            WHERE id = @ProductoId
+              AND empresaID = @EmpresaId",
+            new { EmpresaId = empresaId, ProductoId = productoId, Precio = precio }, transaction) > 0;
+    }
+
+    public static async Task<bool> IAActualizarProductoStockAsync(IConfiguration configuration, int empresaId, int productoId, int stock, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        return await connection.ExecuteAsync(@"
+            UPDATE Productos
+            SET stockActual = @Stock
+            WHERE id = @ProductoId
+              AND empresaID = @EmpresaId",
+            new { EmpresaId = empresaId, ProductoId = productoId, Stock = stock }, transaction) > 0;
+    }
+
+    public static async Task IAInsertarAuditoriaAsync(IConfiguration configuration, int usuario, int empresa, string accion, int productoId, string antes, string despues, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        await connection.ExecuteAsync(@"
+            INSERT INTO IAAuditoria (UsuarioId, EmpresaId, Accion, ProductoId, Antes, Despues, Fecha)
+            VALUES (@UsuarioId, @EmpresaId, @Accion, @ProductoId, @Antes, @Despues, SYSUTCDATETIME())",
+            new { UsuarioId = usuario, EmpresaId = empresa, Accion = accion, ProductoId = productoId, Antes = antes, Despues = despues }, transaction);
+    }
+
+    public sealed class IAChatResumen
+    {
+        public string Titulo { get; set; } = string.Empty;
+        public DateTime ActualizadoEn { get; set; }
+    }
+
+    public sealed class IAMensaje
+    {
+        public string? Rol { get; set; }
+        public string? Text { get; set; }
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Quantitary.Models;
 
@@ -10,6 +11,43 @@ public class StockController : Controller
     public StockController(ProductoRepository inventoryRepository)
     {
         _inventoryRepository = inventoryRepository;
+    }
+
+    private const string ClaveImportacionPendiente = "PendingImportProductos";
+
+    private void GuardarImportacionPendiente(List<Producto> productos)
+    {
+        HttpContext.Session.SetString(ClaveImportacionPendiente, JsonSerializer.Serialize(productos));
+    }
+
+    private List<Producto> ObtenerImportacionPendiente()
+    {
+        var valor = HttpContext.Session.GetString(ClaveImportacionPendiente);
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return new List<Producto>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<Producto>>(valor) ?? new List<Producto>();
+        }
+        catch
+        {
+            return new List<Producto>();
+        }
+    }
+
+    private void BorrarImportacionPendiente()
+    {
+        HttpContext.Session.Remove(ClaveImportacionPendiente);
+    }
+
+    private void LimpiarMensajesTempData()
+    {
+        TempData.Remove("MensajeExito");
+        TempData.Remove("MensajeAdvertencia");
+        TempData.Remove("MensajeError");
     }
 
     private bool HaySesionActiva()
@@ -187,6 +225,168 @@ public class StockController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public IActionResult ImportarConfirmado(string? modo, string[]? skusRenombradas = null, string[]? nuevosNombres = null, string[]? skusDuplicados = null)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        if (string.IsNullOrWhiteSpace(modo) || string.Equals(modo, "cancelar", StringComparison.OrdinalIgnoreCase))
+        {
+            BorrarImportacionPendiente();
+            LimpiarMensajesTempData();
+            TempData["MensajeAdvertencia"] = "La importación fue cancelada.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var productosImportados = ObtenerImportacionPendiente();
+        if (productosImportados.Count == 0)
+        {
+            LimpiarMensajesTempData();
+            TempData["MensajeError"] = "No se encontró una importación pendiente para confirmar.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var empresaId = BD.ObtenerEmpresaIdActual(_inventoryRepository.GetConfiguration(), HttpContext);
+        var productosExistentes = _inventoryRepository.ObtenerProductos(null, null, empresaId);
+
+        try
+        {
+            if (modo.Equals("renombrar", StringComparison.OrdinalIgnoreCase))
+            {
+                var renombres = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (skusRenombradas != null && nuevosNombres != null)
+                {
+                    for (var i = 0; i < Math.Min(skusRenombradas.Length, nuevosNombres.Length); i++)
+                    {
+                        var sku = (skusRenombradas[i] ?? string.Empty).Trim();
+                        var nombreNuevo = (nuevosNombres[i] ?? string.Empty).Trim();
+                        if (!string.IsNullOrWhiteSpace(sku) && !string.IsNullOrWhiteSpace(nombreNuevo))
+                        {
+                            renombres[sku] = nombreNuevo;
+                        }
+                    }
+                }
+
+                foreach (var producto in productosImportados)
+                {
+                    var sku = (producto.Sku ?? string.Empty).Trim();
+                    if (renombres.TryGetValue(sku, out var nombreRenombrado) && !string.IsNullOrWhiteSpace(nombreRenombrado))
+                    {
+                        producto.Nombre = nombreRenombrado;
+                    }
+                }
+
+                var insertados = 0;
+                var errores = new List<string>();
+                foreach (var producto in productosImportados)
+                {
+                    producto.EmpresaID = empresaId;
+                    if (producto.StockActual < 0) producto.StockActual = 0;
+                    if (producto.StockMinimo < 0) producto.StockMinimo = 0;
+
+                    try
+                    {
+                        _inventoryRepository.AgregarProducto(producto);
+                        insertados++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errores.Add($"SKU {producto.Sku}: {ex.Message}");
+                    }
+                }
+
+                BorrarImportacionPendiente();
+                LimpiarMensajesTempData();
+                if (insertados > 0)
+                {
+                    TempData["MensajeExito"] = $"Se importaron {insertados} productos con nombres ajustados.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                TempData["MensajeError"] = $"No se pudo importar ningún producto. {string.Join(" | ", errores.Take(5))}";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (modo.Equals("sumar", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var producto in productosImportados)
+                {
+                    var existente = productosExistentes.FirstOrDefault(p =>
+                        string.Equals((p.Sku ?? string.Empty).Trim(), (producto.Sku ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    if (existente != null)
+                    {
+                        existente.StockActual += producto.StockActual;
+                        existente.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? existente.Categoria : producto.Categoria;
+                        existente.Proveedor = string.IsNullOrWhiteSpace(producto.Proveedor) ? existente.Proveedor : producto.Proveedor;
+                        existente.Precio = producto.Precio > 0 ? producto.Precio : existente.Precio;
+                        _inventoryRepository.ActualizarProducto(existente.Id, existente);
+                    }
+                    else
+                    {
+                        producto.EmpresaID = empresaId;
+                        _inventoryRepository.AgregarProducto(producto);
+                    }
+                }
+
+                BorrarImportacionPendiente();
+                LimpiarMensajesTempData();
+                TempData["MensajeExito"] = "Se sumaron los stocks de los productos duplicados y se importaron los nuevos.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (modo.Equals("reemplazar", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var producto in productosImportados)
+                {
+                    var existente = productosExistentes.FirstOrDefault(p =>
+                        string.Equals((p.Sku ?? string.Empty).Trim(), (producto.Sku ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    if (existente != null)
+                    {
+                        existente.Nombre = producto.Nombre;
+                        existente.Sku = producto.Sku;
+                        existente.Categoria = producto.Categoria;
+                        existente.Descripcion = producto.Descripcion;
+                        existente.Precio = producto.Precio;
+                        existente.StockActual = producto.StockActual;
+                        existente.StockMinimo = producto.StockMinimo;
+                        existente.Proveedor = producto.Proveedor;
+                        existente.EmpresaID = empresaId;
+                        _inventoryRepository.ActualizarProducto(existente.Id, existente);
+                    }
+                    else
+                    {
+                        producto.EmpresaID = empresaId;
+                        _inventoryRepository.AgregarProducto(producto);
+                    }
+                }
+
+                BorrarImportacionPendiente();
+                LimpiarMensajesTempData();
+                TempData["MensajeExito"] = "Se reemplazaron los productos duplicados y se importaron los nuevos.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            BorrarImportacionPendiente();
+            LimpiarMensajesTempData();
+            TempData["MensajeAdvertencia"] = "La importación fue cancelada.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (Exception ex)
+        {
+            BorrarImportacionPendiente();
+            LimpiarMensajesTempData();
+            TempData["MensajeError"] = ex.Message;
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult Importar(IFormFile archivo)
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -218,6 +418,21 @@ public class StockController : Controller
             {
                 throw new InvalidOperationException("No se pudo identificar la empresa activa. Inicie sesión nuevamente.");
             }
+
+            var productosExistentes = _inventoryRepository.ObtenerProductos(null, null, empresaId);
+            var importacion = ImportacionExcelHelper.AnalizarImportacion(productos, productosExistentes);
+
+            if (importacion.Conflictos.Count > 0 || importacion.ConflictosPorNombre.Count > 0)
+            {
+                GuardarImportacionPendiente(productos);
+                ViewBag.Conflictos = importacion.Conflictos;
+                ViewBag.ConflictosPorNombre = importacion.ConflictosPorNombre;
+                ViewBag.ProductosNuevos = importacion.Productos;
+                ViewBag.NombreArchivo = archivo.FileName;
+                return View(nameof(Importar));
+            }
+
+            BorrarImportacionPendiente();
 
             var insertados = 0;
             var omitidos = 0;

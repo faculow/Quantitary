@@ -17,24 +17,7 @@ public sealed class ComercioDatosSql
         if (usuarioId <= 0 || empresaId <= 0)
             throw new UnauthorizedAccessException("Sesión inválida.");
 
-        await using var db = new SqlConnection(BD.ObtenerCadenaConexion(_configuration));
-        await db.OpenAsync(ct);
-
-        // No confiar en empresaID recibido desde el navegador: se contrasta usuario/empresa con SQL.
-        // Si faltan registros de permisos, se deniega el acceso (fallar cerrado).
-        var permisos = await db.QuerySingleOrDefaultAsync<PermisosLectura>(new CommandDefinition(@"
-            SELECT e.nombre AS NombreEmpresa,
-                   CAST(ISNULL(pe.verProductos, 0) AS bit) AS VerProductos,
-                   CAST(ISNULL(pe.verStock, 0) AS bit) AS VerStock,
-                   CAST(ISNULL(pe.verHistorialVentas, 0) AS bit) AS VerVentas,
-                   CAST(ISNULL(pe.verGanacia, 0) AS bit) AS VerGanancias
-            FROM dbo.Usuarios u
-            INNER JOIN dbo.Empresa e ON e.id = u.empresaID
-            INNER JOIN dbo.Rol r ON r.id = u.rolID
-            INNER JOIN dbo.Permisos pe ON pe.id = r.permisoID
-            WHERE u.id = @UsuarioId AND u.empresaID = @EmpresaId",
-            new { UsuarioId = usuarioId, EmpresaId = empresaId }, cancellationToken: ct));
-
+        var permisos = await BD.ObtenerPermisosLecturaAsync(_configuration, usuarioId, empresaId);
         if (permisos is null || !(permisos.VerProductos || permisos.VerStock || permisos.VerVentas))
             throw new UnauthorizedAccessException("Tu usuario no tiene permisos para consultar datos desde Quantitary IA.");
 
@@ -46,26 +29,12 @@ public sealed class ComercioDatosSql
 
         if (permisos.VerProductos || permisos.VerStock)
         {
-            var resumen = await db.QuerySingleAsync<ResumenStock>(new CommandDefinition(@"
-                SELECT COUNT(*) AS TotalProductos,
-                       COALESCE(SUM(CASE WHEN stockActual = 0 THEN 1 ELSE 0 END), 0) AS Agotados,
-                       COALESCE(SUM(CASE WHEN stockActual > 0 AND stockActual <= stockMinimo THEN 1 ELSE 0 END), 0) AS BajoMinimo
-                FROM dbo.Productos WHERE empresaID = @EmpresaId",
-                new { EmpresaId = empresaId }, cancellationToken: ct));
+            var resumen = await BD.ObtenerResumenStockAsync(_configuration, empresaId);
             sb.AppendLine($"Cantidad de productos: {resumen.TotalProductos}.");
             if (permisos.VerStock)
                 sb.AppendLine($"Agotados: {resumen.Agotados}; con stock bajo: {resumen.BajoMinimo}.");
 
-            var productos = (await db.QueryAsync<ProductoLectura>(new CommandDefinition(@"
-                SELECT TOP (80) nombre AS Nombre, sku AS Sku, categoria AS Categoria,
-                       stockActual AS StockActual, stockMinimo AS StockMinimo,
-                       precio AS Precio, costoCompra AS CostoCompra
-                FROM dbo.Productos
-                WHERE empresaID = @EmpresaId
-                ORDER BY CASE WHEN @VerStock = 1 AND stockActual <= stockMinimo THEN 0 ELSE 1 END,
-                         nombre, id",
-                new { EmpresaId = empresaId, VerStock = permisos.VerStock }, cancellationToken: ct))).ToList();
-
+            var productos = await BD.ObtenerProductosLecturaAsync(_configuration, empresaId, permisos.VerStock);
             sb.AppendLine($"Detalle de hasta 80 productos ({productos.Count} incluidos, priorizando los de bajo stock):");
             foreach (var p in productos)
             {
@@ -89,26 +58,10 @@ public sealed class ComercioDatosSql
 
         if (permisos.VerVentas)
         {
-            // El script.sql incluido en el repo tiene 'Venta' (legacy), mientras el PDV usa 'Ventas'.
-            // No mezclar tablas incompatibles ni inventar importes si 'Ventas' no existe.
-            var existeVentas = await db.ExecuteScalarAsync<int>(new CommandDefinition(
-                "SELECT CASE WHEN OBJECT_ID(N'dbo.Ventas', N'U') IS NOT NULL THEN 1 ELSE 0 END",
-                cancellationToken: ct));
+            var existeVentas = await BD.ExisteTablaVentasAsync(_configuration);
             if (existeVentas == 1)
             {
-                var ventas = (await db.QueryAsync<VentaDiaria>(new CommandDefinition(@"
-                    SELECT CAST(v.fecha AS date) AS Fecha,
-                           COUNT(*) AS Operaciones,
-                           COALESCE(SUM(v.cantidad), 0) AS Unidades,
-                           COALESCE(SUM(v.precio), 0) AS Total,
-                           COALESCE(SUM(v.costo), 0) AS Costo
-                    FROM dbo.Ventas v
-                    INNER JOIN dbo.Productos p ON p.id = v.productoId
-                    WHERE p.empresaID = @EmpresaId
-                      AND v.fecha >= DATEADD(day, -30, GETDATE())
-                    GROUP BY CAST(v.fecha AS date)
-                    ORDER BY CAST(v.fecha AS date)",
-                    new { EmpresaId = empresaId }, cancellationToken: ct))).ToList();
+                var ventas = await BD.ObtenerVentasUltimos30DiasAsync(_configuration, empresaId);
                 sb.AppendLine("Ventas de los últimos 30 días (fecha | operaciones | unidades | total de ventas):");
                 foreach (var v in ventas)
                 {
@@ -133,37 +86,4 @@ public sealed class ComercioDatosSql
     private static string Limpiar(string? value) =>
         (value ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Replace('|', '/').Trim();
     private static string Num(decimal n) => n.ToString("0.##", CultureInfo.InvariantCulture);
-
-    public sealed class PermisosLectura
-    {
-        public string NombreEmpresa { get; set; } = string.Empty;
-        public bool VerProductos { get; set; }
-        public bool VerStock { get; set; }
-        public bool VerVentas { get; set; }
-        public bool VerGanancias { get; set; }
-    }
-    public sealed class ResumenStock
-    {
-        public int TotalProductos { get; set; }
-        public int Agotados { get; set; }
-        public int BajoMinimo { get; set; }
-    }
-    public sealed class ProductoLectura
-    {
-        public string Nombre { get; set; } = string.Empty;
-        public string Sku { get; set; } = string.Empty;
-        public string Categoria { get; set; } = string.Empty;
-        public int StockActual { get; set; }
-        public int StockMinimo { get; set; }
-        public decimal Precio { get; set; }
-        public decimal CostoCompra { get; set; }
-    }
-    public sealed class VentaDiaria
-    {
-        public DateTime Fecha { get; set; }
-        public int Operaciones { get; set; }
-        public int Unidades { get; set; }
-        public decimal Total { get; set; }
-        public decimal Costo { get; set; }
-    }
 }

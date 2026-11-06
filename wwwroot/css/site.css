@@ -2306,3 +2306,88 @@ html[data-quantitary-theme="dark"] .btn-outline-secondary:hover {
     background: #26364d;
     color: #fff;
 }
+
+.producto-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: 2000;
+}
+
+.producto-modal.show {
+    display: block;
+}
+
+.producto-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 1990;
+    pointer-events: auto;
+}
+
+.producto-modal-dialog {
+    position: relative;
+    z-index: 2001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 24px;
+}
+
+.producto-modal-content {
+    position: relative;
+    z-index: 2002;
+    width: min(700px, 100%);
+    background: #fff;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+    padding: 24px;
+}
+
+.import-conflict-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: block;
+}
+
+.import-conflict-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.56);
+    backdrop-filter: blur(2px);
+    z-index: 2990;
+    pointer-events: auto;
+}
+
+.import-conflict-dialog {
+    position: relative;
+    z-index: 3001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 24px;
+}
+
+.import-conflict-card {
+    position: relative;
+    z-index: 3002;
+    width: min(1100px, 100%);
+    max-height: 85vh;
+    overflow: auto;
+    border-radius: 18px;
+    box-shadow: 0 30px 70px rgba(15, 23, 42, 0.32);
+}
+
+body.modal-open {
+    overflow: hidden;
+}
+
+.btn-close-modal {
+    border-radius: 10px;
+}

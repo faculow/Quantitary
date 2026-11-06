@@ -185,4 +185,130 @@ public static class ImportacionExcelHelper
         var limpio = new string(sinAcentos.Where(ch => char.IsLetterOrDigit(ch)).ToArray());
         return limpio.ToLowerInvariant();
     }
+
+    public static ImportacionPendiente AnalizarImportacion(List<Producto> productosImportados, List<Producto> productosExistentes)
+    {
+        var diccionarioExistentes = productosExistentes
+            .GroupBy(p => (p.Sku ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var nombresExistentes = productosExistentes
+            .Where(p => !string.IsNullOrWhiteSpace(p.Nombre))
+            .GroupBy(p => p.Nombre.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var productosNuevos = new List<Producto>();
+        var conflictos = new List<ProductoImportacionPreview>();
+        var conflictosPorNombre = new List<ProductoNombreConflicto>();
+
+        foreach (var producto in productosImportados)
+        {
+            var sku = (producto.Sku ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(sku))
+            {
+                continue;
+            }
+
+            if (diccionarioExistentes.TryGetValue(sku, out var existente))
+            {
+                conflictos.Add(new ProductoImportacionPreview
+                {
+                    Sku = sku,
+                    NombreActual = existente.Nombre,
+                    NombreNuevo = producto.Nombre,
+                    CategoriaActual = existente.Categoria,
+                    CategoriaNueva = producto.Categoria,
+                    ProveedorActual = existente.Proveedor,
+                    ProveedorNuevo = producto.Proveedor,
+                    StockActual = existente.StockActual,
+                    StockNuevo = producto.StockActual,
+                    PrecioActual = existente.Precio,
+                    PrecioNuevo = producto.Precio,
+                    Tipo = "duplicado"
+                });
+                continue;
+            }
+
+            var nombreImportado = (producto.Nombre ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(nombreImportado) && nombresExistentes.TryGetValue(nombreImportado, out var productosMismoNombre))
+            {
+                conflictosPorNombre.Add(new ProductoNombreConflicto
+                {
+                    Sku = sku,
+                    NombreImportado = nombreImportado,
+                    NombreActual = productosMismoNombre.First().Nombre,
+                    ProductosCoincidentes = productosMismoNombre.Select(p => new ProductoCoincidente
+                    {
+                        Id = p.Id,
+                        Nombre = p.Nombre,
+                        Sku = p.Sku,
+                        Categoria = p.Categoria,
+                        Precio = p.Precio,
+                        StockActual = p.StockActual
+                    }).ToList(),
+                    NombreSugerido = nombreImportado
+                });
+                continue;
+            }
+
+            productosNuevos.Add(producto);
+        }
+
+        return new ImportacionPendiente
+        {
+            Productos = productosNuevos,
+            Conflictos = conflictos,
+            ConflictosPorNombre = conflictosPorNombre
+        };
+    }
+
+    public static Producto? BuscarProductoExistente(List<Producto> productosExistentes, string sku)
+    {
+        return productosExistentes.FirstOrDefault(p =>
+            string.Equals((p.Sku ?? string.Empty).Trim(), (sku ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+public class ProductoCoincidente
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public decimal Precio { get; set; }
+    public int StockActual { get; set; }
+}
+
+public class ProductoNombreConflicto
+{
+    public string Sku { get; set; } = string.Empty;
+    public string NombreImportado { get; set; } = string.Empty;
+    public string NombreActual { get; set; } = string.Empty;
+    public string NombreSugerido { get; set; } = string.Empty;
+    public List<ProductoCoincidente> ProductosCoincidentes { get; set; } = new();
+}
+
+public class ProductoImportacionPreview
+{
+    public string Sku { get; set; } = string.Empty;
+    public string NombreActual { get; set; } = string.Empty;
+    public string NombreNuevo { get; set; } = string.Empty;
+    public string CategoriaActual { get; set; } = string.Empty;
+    public string CategoriaNueva { get; set; } = string.Empty;
+    public string ProveedorActual { get; set; } = string.Empty;
+    public string ProveedorNuevo { get; set; } = string.Empty;
+    public int StockActual { get; set; }
+    public int StockNuevo { get; set; }
+    public decimal PrecioActual { get; set; }
+    public decimal PrecioNuevo { get; set; }
+    public string Tipo { get; set; } = "duplicado";
+}
+
+public class ImportacionPendiente
+{
+    public string NombreArchivo { get; set; } = string.Empty;
+    public List<Producto> Productos { get; set; } = new();
+    public List<ProductoImportacionPreview> Conflictos { get; set; } = new();
+    public List<ProductoNombreConflicto> ConflictosPorNombre { get; set; } = new();
 }
