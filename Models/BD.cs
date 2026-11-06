@@ -28,11 +28,12 @@ public static class BD
     public static List<string> ObtenerCategorias(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        var sql = @"SELECT DISTINCT LTRIM(RTRIM(categoria)) AS categoria
-                    FROM Productos
-                    WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
-                      AND LTRIM(RTRIM(categoria)) <> ''
-                    ORDER BY LTRIM(RTRIM(categoria))";
+        var sql = @"SELECT DISTINCT c.nombre AS categoria
+                    FROM Productos p
+                    INNER JOIN Categoria c ON c.id = p.categoriaID
+                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                      AND LTRIM(RTRIM(c.nombre)) <> ''
+                    ORDER BY c.nombre";
         return connection.Query<string>(sql, new { EmpresaId = empresaId }).ToList();
     }
 
@@ -49,34 +50,68 @@ public static class BD
         using var connection = CrearConexion(configuration);
 
         var sql = @"
-            SELECT *
-            FROM Productos
-            WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
-              AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-              AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(categoria))) = LOWER(LTRIM(RTRIM(@Categoria))))
-              AND (@PocoStock = 0 OR stockActual <= stockMinimo OR stockActual = 0)
-              AND (@PrecioMinimo IS NULL OR precio >= @PrecioMinimo)
+            SELECT p.id AS Id,
+                   p.empresaID AS EmpresaID,
+                   p.categoriaID AS CategoriaID,
+                   p.proveedorID AS ProveedorID,
+                   p.nombre AS Nombre,
+                   p.sku AS Sku,
+                   c.nombre AS Categoria,
+                   p.descripcion AS Descripcion,
+                   p.fechaCarga AS FechaCarga,
+                   p.precioVenta AS PrecioVenta,
+                   p.costoCompra AS CostoCompra,
+                   ISNULL(s.cantidad, 0) AS StockActual,
+                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
+                   p.activo AS Activo,
+                   pe.nombre AS Proveedor
+            FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
+            LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+              AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+              AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+              AND (@PocoStock = 0 OR ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) OR ISNULL(s.cantidad, 0) = 0)
+              AND (@PrecioMinimo IS NULL OR p.precioVenta >= @PrecioMinimo)
             ORDER BY 
-              CASE WHEN @Orden = 'nombre_asc' THEN nombre END ASC,
-              CASE WHEN @Orden = 'nombre_desc' THEN nombre END DESC,
-              CASE WHEN @Orden = 'precio_asc' THEN precio END ASC,
-              CASE WHEN @Orden = 'precio_desc' THEN precio END DESC,
-              CASE WHEN @Orden = 'stock_asc' THEN stockActual END ASC,
-              CASE WHEN @Orden = 'stock_desc' THEN stockActual END DESC,
-              CASE WHEN @Orden = 'sku_asc' THEN sku END ASC,
-              CASE WHEN @Orden = 'sku_desc' THEN sku END DESC;
+              CASE WHEN @Orden = 'nombre_asc' THEN p.nombre END ASC,
+              CASE WHEN @Orden = 'nombre_desc' THEN p.nombre END DESC,
+              CASE WHEN @Orden = 'precio_asc' THEN p.precioVenta END ASC,
+              CASE WHEN @Orden = 'precio_desc' THEN p.precioVenta END DESC,
+              CASE WHEN @Orden = 'stock_asc' THEN ISNULL(s.cantidad, 0) END ASC,
+              CASE WHEN @Orden = 'stock_desc' THEN ISNULL(s.cantidad, 0) END DESC,
+              CASE WHEN @Orden = 'sku_asc' THEN p.sku END ASC,
+              CASE WHEN @Orden = 'sku_desc' THEN p.sku END DESC;
         ";
 
         return connection.Query<Producto>(sql, parametros).ToList();
     }
 
-    public static List<Producto> ObtenerProductos(IConfiguration configuration, string? sku = null, string? categoria = null, int? empresaId = null)
-        => ObtenerProductos(configuration, sku, categoria, null, null, null, empresaId);
-
     public static Producto? BuscarPorId(IConfiguration configuration, int id)
     {
         using var connection = CrearConexion(configuration);
-        return connection.QuerySingleOrDefault<Producto>("SELECT * FROM Productos WHERE id = @Id", new { Id = id });
+        return connection.QuerySingleOrDefault<Producto>(@"
+            SELECT p.id AS Id,
+                   p.empresaID AS EmpresaID,
+                   p.categoriaID AS CategoriaID,
+                   p.proveedorID AS ProveedorID,
+                   p.nombre AS Nombre,
+                   p.sku AS Sku,
+                   c.nombre AS Categoria,
+                   p.descripcion AS Descripcion,
+                   p.fechaCarga AS FechaCarga,
+                   p.precioVenta AS PrecioVenta,
+                   p.costoCompra AS CostoCompra,
+                   ISNULL(s.cantidad, 0) AS StockActual,
+                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
+                   p.activo AS Activo,
+                   pe.nombre AS Proveedor
+            FROM Productos p
+            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+            LEFT JOIN Categoria c ON c.id = p.categoriaID
+            LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+            WHERE p.id = @Id", new { Id = id });
     }
 
     public static Producto AgregarProducto(IConfiguration configuration, Producto producto)
@@ -88,40 +123,47 @@ public static class BD
 
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
-        producto.Categoria = producto.Categoria.Trim();
         producto.Proveedor = producto.Proveedor.Trim();
 
-        if (producto.Precio <= 0)
+        if (producto.PrecioVenta <= 0)
         {
             throw new ArgumentException($"El producto '{producto.Nombre}' tiene un precio inválido.");
         }
 
         using var connection = CrearConexion(configuration);
 
-        var sql = @"INSERT INTO Productos (empresaID, nombre, sku, categoria, descripcion, fechaCarga, precio, stockActual, stockMinimo, proveedor, costoCompra, precioVenta, cantidadVentas)
-                    VALUES (@EmpresaID, @Nombre, @Sku, @Categoria, @Descripcion, @FechaCarga, @Precio, @StockActual, @StockMinimo, @Proveedor, @CostoCompra, @PrecioVenta, @CantidadVentas);
+        var sql = @"INSERT INTO Productos (empresaID, categoriaID, proveedorID, nombre, sku, descripcion, fechaCarga, precioVenta, costoCompra, activo)
+                    VALUES (@EmpresaID, @CategoriaID, @ProveedorID, @Nombre, @Sku, @Descripcion, @FechaCarga, @PrecioVenta, @CostoCompra, @Activo);
                     SELECT CAST(SCOPE_IDENTITY() as int);";
 
         producto.Id = connection.QuerySingle<int>(sql, producto);
+
+        var stockSql = @"INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+                        VALUES (@ProductoId, @Cantidad, @CantidadMinimoAlerta, @Activo, @ActualizadoEn);";
+
+        connection.Execute(stockSql, new
+        {
+            ProductoId = producto.Id,
+            Cantidad = producto.StockActual,
+            CantidadMinimoAlerta = producto.StockMinimo,
+            Activo = true,
+            ActualizadoEn = DateTime.Now
+        });
+
         return producto;
     }
 
     public static bool ActualizarProducto(IConfiguration configuration, int id, Producto producto)
     {
-        System.Console.WriteLine($"Actualizando producto con ID: {id}");
-
         var sql = @"UPDATE Productos
                     SET nombre = @Nombre,
                         sku = @Sku,
-                        categoria = @Categoria,
+                        categoriaID = @CategoriaID,
+                        proveedorID = @ProveedorID,
                         descripcion = @Descripcion,
-                        precio = @Precio,
-                        stockActual = @StockActual,
-                        stockMinimo = @StockMinimo,
-                        proveedor = @Proveedor,
-                        costoCompra = @CostoCompra,
                         precioVenta = @PrecioVenta,
-                        cantidadVentas = @CantidadVentas
+                        costoCompra = @CostoCompra,
+                        activo = @Activo
                     WHERE id = @Id";
 
         using var connection = CrearConexion(configuration);
@@ -129,17 +171,27 @@ public static class BD
         {
             producto.Nombre,
             producto.Sku,
-            producto.Categoria,
+            producto.CategoriaID,
+            producto.ProveedorID,
             producto.Descripcion,
-            producto.Precio,
-            producto.StockActual,
-            producto.StockMinimo,
-            producto.Proveedor,
-            producto.CostoCompra,
             producto.PrecioVenta,
-            producto.CantidadVentas,
+            producto.CostoCompra,
+            producto.Activo,
             Id = id
         });
+
+        connection.Execute(@"UPDATE Stock
+                            SET cantidad = @Cantidad,
+                                cantidadMinimoAlerta = @CantidadMinimoAlerta,
+                                actualizadoEn = @ActualizadoEn
+                            WHERE productoID = @ProductoId",
+            new
+            {
+                Cantidad = producto.StockActual,
+                CantidadMinimoAlerta = producto.StockMinimo,
+                ActualizadoEn = DateTime.Now,
+                ProductoId = id
+            });
 
         return filasAfectadas > 0;
     }
@@ -147,18 +199,32 @@ public static class BD
     public static bool EliminarProducto(IConfiguration configuration, int id)
     {
         using var connection = CrearConexion(configuration);
-        return connection.Execute("DELETE FROM Productos WHERE id = @Id", new { Id = id }) > 0;
+        using var transaction = connection.BeginTransaction();
+
+        connection.Execute("DELETE FROM Stock WHERE productoID = @Id", new { Id = id }, transaction);
+        var filas = connection.Execute("DELETE FROM Productos WHERE id = @Id", new { Id = id }, transaction);
+
+        transaction.Commit();
+        return filas > 0;
     }
 
     public static bool AgregarStock(IConfiguration configuration, int id, int cantidad, decimal precioUnitario)
     {
-        var sql = @"UPDATE Productos
-                    SET stockActual = stockActual + @Cantidad,
-                        costoCompra = @PrecioUnitario
-                    WHERE id = @Id";
-
         using var connection = CrearConexion(configuration);
-        return connection.Execute(sql, new { Id = id, Cantidad = cantidad, PrecioUnitario = precioUnitario }) > 0;
+        var existe = connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Stock WHERE productoID = @Id", new { Id = id });
+
+        if (existe.HasValue)
+        {
+            return connection.Execute(@"UPDATE Stock
+                                        SET cantidad = cantidad + @Cantidad,
+                                            actualizadoEn = @ActualizadoEn
+                                        WHERE productoID = @Id",
+                new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
+        }
+
+        return connection.Execute(@"INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+                                    VALUES (@Id, @Cantidad, 0, 1, @ActualizadoEn)",
+            new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
     }
 
     public static int ObtenerTotalProductos(IConfiguration configuration, int? empresaId = null)
@@ -174,9 +240,10 @@ public static class BD
         using var connection = CrearConexion(configuration);
         return connection.ExecuteScalar<int>(
             @"SELECT COUNT(*)
-              FROM Productos
-              WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
-                AND (stockActual <= stockMinimo OR stockActual = 0)",
+              FROM Productos p
+              LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                AND (ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) OR ISNULL(s.cantidad, 0) = 0)",
             new { EmpresaId = empresaId == 0 ? null : empresaId });
     }
 
@@ -185,9 +252,10 @@ public static class BD
         using var connection = CrearConexion(configuration);
         return connection.ExecuteScalar<int>(
             @"SELECT COUNT(*)
-              FROM Productos
-              WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)
-                AND stockActual <= 0",
+              FROM Productos p
+              LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                AND ISNULL(s.cantidad, 0) <= 0",
             new { EmpresaId = empresaId == 0 ? null : empresaId });
     }
 
@@ -1428,35 +1496,32 @@ public static class BD
     public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId)
     {
         return connection.ExecuteScalar<int>(@"
-            INSERT INTO Ventas (productoId, nombreProducto, fecha, metodoPago, cantidad, precio, costo, usuarioID, empresaID)
-            VALUES (@ProductoId, @NombreProducto, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @UsuarioId, @EmpresaId);
+            INSERT INTO Ventas (empresaID, usuarioID, fecha, metodoPago, totalVenta, observacion)
+            VALUES (@EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @TotalVenta, @Observacion);
             SELECT CAST(SCOPE_IDENTITY() as int);",
             new
             {
-                ProductoId = productoId,
-                NombreProducto = nombreProducto,
+                EmpresaId = empresaId,
+                UsuarioId = usuarioId,
                 Fecha = DateTime.Now,
                 MetodoPago = metodoPago,
-                Cantidad = cantidad,
-                Precio = precioVentaTotal,
-                Costo = precioCompraTotal,
-                UsuarioId = usuarioId,
-                EmpresaId = empresaId
+                TotalVenta = precioVentaTotal,
+                Observacion = $"Venta de {cantidad} unidades de {nombreProducto}",
             });
     }
 
     public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia)
     {
         return connection.Execute(@"
-            INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, precioCompra, porcentajeGanancia, ganancia)
-            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @PrecioCompra, @PorcentajeGanancia, @Ganancia)",
+            INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
+            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)",
             new
             {
                 VentaId = ventaId,
                 ProductoId = productoId,
                 Cantidad = cantidad,
                 PrecioVenta = precioVentaTotal,
-                PrecioCompra = precioCompraTotal,
+                CostoCompra = precioCompraTotal,
                 PorcentajeGanancia = porcentajeGanancia,
                 Ganancia = ganancia
             });

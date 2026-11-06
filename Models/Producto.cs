@@ -8,6 +8,8 @@ public class Producto
 {
     public int Id { get; set; }
     public int EmpresaID { get; set; }
+    public int CategoriaID { get; set; }
+    public int? ProveedorID { get; set; }
 
     [Required(ErrorMessage = "El nombre es obligatorio.")]
     [StringLength(150, MinimumLength = 2, ErrorMessage = "El nombre debe tener entre 2 y 150 caracteres.")]
@@ -21,11 +23,13 @@ public class Producto
     public string Categoria { get; set; } = string.Empty;
 
     public string Descripcion { get; set; } = string.Empty;
-
     public DateTime FechaCarga { get; set; } = DateTime.Now;
 
     [Range(0.01, double.MaxValue, ErrorMessage = "El precio debe ser mayor a cero.")]
-    public decimal Precio { get; set; }
+    public decimal PrecioVenta { get; set; }
+
+    [Range(0, double.MaxValue, ErrorMessage = "El costo no puede ser negativo.")]
+    public decimal CostoCompra { get; set; }
 
     [Range(0, int.MaxValue, ErrorMessage = "El stock no puede ser negativo.")]
     public int StockActual { get; set; }
@@ -33,12 +37,17 @@ public class Producto
     [Range(0, int.MaxValue, ErrorMessage = "El stock mínimo no puede ser negativo.")]
     public int StockMinimo { get; set; }
 
+    public int StockMinimoAlerta { get; set; }
     public string Proveedor { get; set; } = string.Empty;
-
-    [Range(0, double.MaxValue, ErrorMessage = "El costo no puede ser negativo.")]
-    public decimal CostoCompra { get; set; }
-    public decimal? PrecioVenta { get; set; }
+    public bool Activo { get; set; } = true;
     public int CantidadVentas { get; set; }
+
+    // Compatibilidad con el código viejo del proyecto.
+    public decimal Precio
+    {
+        get => PrecioVenta;
+        set => PrecioVenta = value;
+    }
 
     public string Marca { get; set; } = string.Empty;
     public decimal? Peso { get; set; }
