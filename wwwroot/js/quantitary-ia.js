@@ -42,6 +42,8 @@
   document.getElementById('assistantBackdrop').addEventListener('click', () => setFullscreen(false));
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !panel.classList.contains('visible')) return;
+    var dialog = document.getElementById('chatDialog');
+    if (dialog && !dialog.hidden) return;
     if (document.getElementById('quantitary-ia').classList.contains('fullscreen')) setFullscreen(false);
     else setOpen(false);
   });
@@ -54,7 +56,7 @@
     stock: [
       '¿Qué productos tengo que reponer primero?',
       'Mostrame los productos con stock bajo.',
-      '¿Qué productos llevan más tiempo sin movimiento?'
+      'Mostrame una tabla del stock.'
     ],
     pdv: [
       '¿Qué productos conviene ofrecer en esta venta?',
@@ -86,12 +88,24 @@
   var form = document.getElementById('chatForm');
   var input = document.getElementById('chatInput');
   var sendBtn = document.getElementById('sendButton');
+  var attachBtn = document.getElementById('attachButton');
+  var imageInput = document.getElementById('chatImageInput');
+  var attachmentPreview = document.getElementById('attachmentPreview');
+  var attachmentThumbnail = document.getElementById('attachmentThumbnail');
+  var attachmentName = document.getElementById('attachmentName');
+  var attachmentMeta = document.getElementById('attachmentMeta');
   var newChatBtn = document.getElementById('newChatButton');
   var statusEl = document.getElementById('assistantStatus');
   var historyPanel = document.getElementById('chatHistoryPanel');
   var historyList = document.getElementById('chatHistoryList');
   var historySearch = document.getElementById('historySearch');
   var historyNewChatBtn = document.getElementById('historyNewChatButton');
+  var dialogBackdrop = document.getElementById('chatDialog');
+  var dialogTitle = document.getElementById('chatDialogTitle');
+  var dialogText = document.getElementById('chatDialogText');
+  var dialogInput = document.getElementById('chatDialogInput');
+  var dialogConfirm = document.getElementById('chatDialogConfirm');
+  var dialogCancel = document.getElementById('chatDialogCancel');
   var currentChatId = null;
   var assistantRoot = document.getElementById('quantitary-ia');
   var currentSection = assistantRoot.dataset.section || 'home';
@@ -123,6 +137,46 @@
     return result;
   }
 
+  function showDialog(options) {
+    return new Promise(function (resolve) {
+      dialogTitle.textContent = options.title || 'Confirmar';
+      dialogText.textContent = options.text || '';
+      dialogText.hidden = !options.text;
+      dialogInput.hidden = !options.input;
+      dialogInput.value = options.value || '';
+      dialogInput.placeholder = options.placeholder || '';
+      dialogConfirm.textContent = options.confirmLabel || 'Confirmar';
+      dialogConfirm.classList.toggle('danger', !!options.danger);
+      dialogBackdrop.hidden = false;
+
+      function finish(value) {
+        dialogBackdrop.hidden = true;
+        dialogConfirm.classList.remove('danger');
+        dialogConfirm.removeEventListener('click', confirm);
+        dialogCancel.removeEventListener('click', cancel);
+        dialogBackdrop.removeEventListener('click', outside);
+        document.removeEventListener('keydown', keyboard);
+        resolve(value);
+      }
+      function confirm() {
+        var value = options.input ? dialogInput.value.trim() : true;
+        if (options.input && !value) { dialogInput.focus(); return; }
+        finish(value);
+      }
+      function cancel() { finish(null); }
+      function outside(event) { if (event.target === dialogBackdrop) cancel(); }
+      function keyboard(event) {
+        if (event.key === 'Escape') { event.stopPropagation(); cancel(); }
+        if (event.key === 'Enter' && (options.input || event.target !== dialogCancel)) { event.preventDefault(); confirm(); }
+      }
+      dialogConfirm.addEventListener('click', confirm);
+      dialogCancel.addEventListener('click', cancel);
+      dialogBackdrop.addEventListener('click', outside);
+      document.addEventListener('keydown', keyboard);
+      setTimeout(function () { (options.input ? dialogInput : dialogConfirm).focus(); if (options.input) dialogInput.select(); }, 0);
+    });
+  }
+
 
   // Estado de la conversación actual (en memoria: se conserva al cerrar y abrir el panel,
   // y se pierde al recargar la página).
@@ -130,7 +184,8 @@
   var hasSentMessage = false;
   var busy = false;
   var sessionId = 0;         // cambia con "Nuevo chat" para descartar respuestas viejas
-  var pendingText = null;    // último mensaje que falló, para reintentar
+  var pendingRequest = null; // última consulta completa, incluida la imagen, para reintentar
+  var selectedImage = null;
   var errorRow = null;
   var suggestionsEl = null;
 
@@ -166,6 +221,22 @@
     var row = createEl('div', 'msg-row ' + role);
     if (role === 'assistant') row.appendChild(avatar());
     row.appendChild(createEl('div', 'msg ' + role, text));
+    messagesEl.appendChild(row);
+    scrollToEnd();
+    return row;
+  }
+
+  function addUserMessage(text, image) {
+    var row = createEl('div', 'msg-row user');
+    var bubble = createEl('div', 'msg user');
+    if (image) {
+      var preview = createEl('img', 'msg-image');
+      preview.src = image.previewUrl;
+      preview.alt = image.fileName || 'Imagen adjunta';
+      bubble.appendChild(preview);
+    }
+    if (text) bubble.appendChild(createEl('div', 'msg-text', text));
+    row.appendChild(bubble);
     messagesEl.appendChild(row);
     scrollToEnd();
     return row;
@@ -224,7 +295,7 @@
     var retry = createEl('button', 'retry-button', 'Reintentar');
     retry.type = 'button';
     retry.addEventListener('click', function () {
-      if (pendingText !== null) sendMessage(pendingText, true);
+      if (pendingRequest !== null) sendMessage(pendingRequest.text, true, pendingRequest.image);
     });
     box.appendChild(retry);
     errorRow.appendChild(box);
@@ -243,6 +314,20 @@
     (charts || []).forEach(function (chart) { wrap.appendChild(renderChart(chart)); });
     (tables || []).forEach(function (table) { wrap.appendChild(renderTable(table)); });
     messagesEl.appendChild(wrap);
+    scrollToEnd();
+  }
+
+  function renderActions(actions) {
+    if (!Array.isArray(actions) || !actions.length) return;
+    var wrap = createEl('div', 'chat-actions');
+    actions.forEach(function (action) {
+      if (!action || typeof action.url !== 'string' || action.url.charAt(0) !== '/') return;
+      var link = createEl('a', 'chat-action', action.label || 'Abrir');
+      link.href = action.url;
+      link.appendChild(document.createTextNode(' →'));
+      wrap.appendChild(link);
+    });
+    if (wrap.childNodes.length) messagesEl.appendChild(wrap);
     scrollToEnd();
   }
 
@@ -524,13 +609,84 @@
 
   // ---------- Envío de consultas ----------
 
+  function clearAttachment() {
+    selectedImage = null;
+    imageInput.value = '';
+    attachmentPreview.hidden = true;
+    attachmentThumbnail.removeAttribute('src');
+    updateSendState();
+  }
+
+  function formatBytes(bytes) {
+    return bytes < 1024 * 1024 ? Math.round(bytes / 1024) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || '')); };
+      reader.onerror = function () { reject(new Error('No se pudo leer la imagen.')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadBrowserImage(url) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('El archivo no contiene una imagen válida.')); };
+      img.src = url;
+    });
+  }
+
+  async function prepareImage(file) {
+    var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) throw new Error('Solo podés adjuntar imágenes JPG, PNG o WebP.');
+    if (file.size > 15 * 1024 * 1024) throw new Error('La imagen original supera el límite de 15 MB.');
+    var originalUrl = await readFileAsDataUrl(file);
+    var img = await loadBrowserImage(originalUrl);
+    var scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    var width = Math.max(1, Math.round(img.naturalWidth * scale));
+    var height = Math.max(1, Math.round(img.naturalHeight * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+    var base64 = dataUrl.split(',')[1] || '';
+    var bytes = Math.floor(base64.length * 3 / 4);
+    if (bytes > 4 * 1024 * 1024) throw new Error('No se pudo reducir la imagen por debajo de 4 MB.');
+    return { mediaType:'image/jpeg', base64Data:base64, fileName:file.name, width:width, height:height, previewUrl:dataUrl, bytes:bytes };
+  }
+
+  attachBtn.addEventListener('click', function () { if (!busy) imageInput.click(); });
+  document.getElementById('removeAttachment').addEventListener('click', clearAttachment);
+  imageInput.addEventListener('change', async function () {
+    var file = imageInput.files && imageInput.files[0];
+    if (!file) return;
+    attachBtn.disabled = true;
+    try {
+      selectedImage = await prepareImage(file);
+      attachmentThumbnail.src = selectedImage.previewUrl;
+      attachmentName.textContent = selectedImage.fileName;
+      attachmentMeta.textContent = selectedImage.width + ' × ' + selectedImage.height + ' · ' + formatBytes(selectedImage.bytes);
+      attachmentPreview.hidden = false;
+      updateSendState();
+    } catch (error) {
+      clearAttachment();
+      addMessage('assistant', error.message || 'No se pudo preparar la imagen.');
+    } finally { attachBtn.disabled = false; }
+  });
+
   function updateSendState() {
-    sendBtn.disabled = busy || input.value.trim() === '';
+    sendBtn.disabled = busy || (input.value.trim() === '' && !selectedImage);
   }
 
   function setBusy(value) {
     busy = value;
     input.disabled = value;
+    attachBtn.disabled = value;
     statusEl.textContent = value ? STATUS_BUSY : STATUS_IDLE;
     updateSendState();
   }
@@ -540,18 +696,25 @@
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   }
 
-  function sendMessage(rawText, isRetry) {
+  function sendMessage(rawText, isRetry, imageOverride) {
     var text = String(rawText || '').trim();
-    if (busy || !text) return;
-    if (!isRetry && /\b(elimin|borr|sac[aá]|quit[aá])\b/i.test(text) && /producto|sku|stock|precio|cat[aá]logo/i.test(text)) {
+    var image = imageOverride || selectedImage;
+    if (busy || (!text && !image)) return;
+    var normalizedQuestion = text.replace(/^[¿¡\s]+/, '');
+    var asksHow = /^(c[oó]mo|d[oó]nde|puedo|se puede|qu[eé] pasa|qu[eé] necesito|cu[aá]l es)/i.test(normalizedQuestion);
+    var skuMatch = text.match(/sku\s*[:#-]?\s*([a-z0-9._-]+)/i);
+    var initialSku = skuMatch ? skuMatch[1] : '';
+    if (!image && !isRetry && !asksHow && /\b(elimin|borr|sac[aá]|quit[aá])\b/i.test(text) && /producto|sku|cat[aá]logo/i.test(text)) {
       addMessage('user',text);
-      addMessage('assistant','Para eliminar necesito el nombre exacto o el SKU. Por seguridad, la eliminación todavía no está habilitada en esta versión de la integración; no modifiqué nada.');
+      addMessage('assistant','Abrí la eliminación segura. Identificá el producto por SKU y revisá las dos confirmaciones antes de eliminarlo.');
+      manageProduct('eliminar', '', initialSku);
       return;
     }
-    if (!isRetry && /\b(cre[aá]|agreg[aá]|nuevo producto|modific[aá]|cambi[aá]|sub[ií]|baj[aá]|aument[aá])\b/i.test(text) && /producto|sku|precio|stock/i.test(text)) {
+    if (!image && !isRetry && !asksHow && /\b(cre[aá]|agreg[aá]|nuevo producto|modific[aá]|cambi[aá]|sub[ií]|baj[aá]|aument[aá])\b/i.test(text) && /producto|sku|precio|stock/i.test(text)) {
       addMessage('user',text);
       addMessage('assistant','Abrí el formulario para identificar el producto por SKU y preparar el cambio. Antes de guardar te pediré dos confirmaciones.');
-      manageProduct(''); return;
+      var operation = /\b(cre[aá]|agreg[aá]|nuevo producto)\b/i.test(text) ? 'crear' : (/stock/i.test(text) ? 'stock' : 'precio');
+      manageProduct(operation, '', initialSku); return;
     }
     if (text.length > MAX_LENGTH) text = text.slice(0, MAX_LENGTH);
 
@@ -559,11 +722,12 @@
     var session = sessionId;
     removeErrorRow();
     removeSuggestions();
-    pendingText = text;
+    pendingRequest = { text:text, image:image };
 
     if (!isRetry) {
-      addMessage('user', text);
+      addUserMessage(text, image);
       hasSentMessage = true;
+      clearAttachment();
     }
 
     setBusy(true);
@@ -572,7 +736,13 @@
     fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('#chatForm input[name="__RequestVerificationToken"]').value },
-      body: JSON.stringify({ message: text, chatId: currentChatId })
+      body: JSON.stringify({
+        message: text,
+        chatId: currentChatId,
+        image: image ? { mediaType:image.mediaType, base64Data:image.base64Data, fileName:image.fileName, width:image.width, height:image.height } : null,
+        section: currentSection,
+        action: currentAction
+      })
     })
       .then(function (res) {
         return res.json()
@@ -585,7 +755,8 @@
             ok: true,
             reply: r.data.reply,
             tables: Array.isArray(r.data.tables) ? r.data.tables : [],
-            charts: Array.isArray(r.data.charts) ? r.data.charts : []
+            charts: Array.isArray(r.data.charts) ? r.data.charts : [],
+            actions: Array.isArray(r.data.actions) ? r.data.actions : []
           };
         }
         var serverMessage = r.data && r.data.error && r.data.error.message;
@@ -603,11 +774,12 @@
 
         typingRow.remove();
         if (result.ok) {
-          // En el historial se guarda solo el texto: así Gemini recibe el contexto sin JSON de bloques.
-          turns.push({ role: 'user', text: text }, { role: 'assistant', text: result.reply });
-          pendingText = null;
+          // En el historial se guarda el texto; la imagen no se conserva ni se vuelve a facturar.
+          turns.push({ role: 'user', text: text || '[Imagen adjunta]' }, { role: 'assistant', text: result.reply });
+          pendingRequest = null;
           if (result.reply) addMessage('assistant', result.reply);
           renderBlocks(result.tables, result.charts);
+          renderActions(result.actions);
           loadHistory().catch(function () {});
         } else {
           showError(result.message);
@@ -622,7 +794,7 @@
   function submitFromInput() {
     if (busy) return;
     var text = input.value.trim();
-    if (!text) return;
+    if (!text && !selectedImage) return;
     input.value = '';
     autoResize();
     sendMessage(text, false);
@@ -651,7 +823,8 @@
     sessionId++;
     turns = [];
     hasSentMessage = false;
-    pendingText = null;
+    pendingRequest = null;
+    clearAttachment();
     errorRow = null;
     suggestionsEl = null;
     busy = false;
@@ -668,6 +841,7 @@
     historyList.textContent = '';
     data.forEach(function (item) {
       var line = createEl('div', 'ia-history-entry');
+      line.dataset.chatId = item.id;
       var open = createEl('button', 'ia-chat-open', item.titulo || 'Nuevo chat');
       open.type = 'button';
       if (item.id === currentChatId) open.classList.add('active');
@@ -675,24 +849,29 @@
       var rename = createEl('button', '', '✎');
       rename.type = 'button'; rename.title = 'Renombrar';
       rename.addEventListener('click', async function () {
-        var name = window.prompt('Nuevo nombre del chat', item.titulo || '');
-        if (!name || !name.trim()) return;
-        try { await api('/api/ia/chats/' + item.id + '/renombrar', 'POST', { titulo: name.trim().slice(0,120) }); await loadHistory(); }
+        var name = await showDialog({ title:'Renombrar conversación', text:'Elegí un nombre corto que te ayude a encontrarla después.', input:true, value:item.titulo || '', confirmLabel:'Guardar' });
+        if (!name) return;
+        try { await api('/api/ia/chats/' + item.id + '/renombrar', 'POST', { titulo: name.slice(0,120) }); await loadHistory(); }
         catch (err) { report(err); }
       });
       var remove = createEl('button', '', '×');
       remove.type = 'button'; remove.title = 'Eliminar chat';
       remove.addEventListener('click', async function () {
-        if (!window.confirm('¿Eliminar definitivamente este chat y sus mensajes?')) return;
+        var confirmed = await showDialog({ title:'Eliminar conversación', text:'Se eliminarán definitivamente este chat y todos sus mensajes.', confirmLabel:'Eliminar', danger:true });
+        if (!confirmed) return;
         try {
           await api('/api/ia/chats/' + item.id + '/eliminar', 'POST');
-          if (item.id === currentChatId) await newChat();
-          else await loadHistory();
+          var remaining = await loadHistory();
+          if (item.id === currentChatId) {
+            if (remaining.length) await openChat(remaining[0].id);
+            else { currentChatId = null; await newChat(); }
+          }
         } catch (err) { report(err); }
       });
       line.append(open, rename, remove);
       historyList.appendChild(line);
     });
+    if (!data.length) historyList.appendChild(createEl('div', 'ia-history-empty', 'Todavía no hay conversaciones.'));
     filterHistory();
     return data;
   }
@@ -710,6 +889,10 @@
     var rows = await api('/api/ia/chats/' + id);
     resetChat();
     currentChatId = id;
+    historyList.querySelectorAll('.ia-history-entry').forEach(function (entry) {
+      var openButton = entry.querySelector('.ia-chat-open');
+      if (openButton) openButton.classList.toggle('active', entry.dataset.chatId === String(id));
+    });
     messagesEl.textContent = '';
     if (!rows.length) addMessage('assistant', GREETING);
     rows.forEach(function (r) {
@@ -726,6 +909,11 @@
   }
 
   async function newChat() {
+    if (currentChatId && !hasSentMessage) {
+      resetChat();
+      historyPanel.hidden = true;
+      return;
+    }
     var item = await api('/api/ia/chats', 'POST');
     await openChat(item.id);
     await loadHistory();
@@ -754,57 +942,86 @@
     label.appendChild(field); parent.appendChild(label);
     return field;
   }
-  function manageProduct(initial) {
+  function formTextArea(parent, title, name) {
+    var label = createEl('label', '', title);
+    var field = createEl('textarea'); field.name = name; field.rows = 2;
+    label.appendChild(field); parent.appendChild(label);
+    return field;
+  }
+  function manageProduct(initialType, initialName, initialSku) {
     removeSuggestions();
     var form = createEl('form', 'ia-product-form');
-    var title = createEl('strong', '', 'Administrar producto');
-    form.appendChild(title);
+    form.appendChild(createEl('strong', '', 'Administrar producto'));
+    form.appendChild(createEl('p', 'form-intro', 'Los cambios se validan en el servidor y siempre requieren dos confirmaciones.'));
     var select = createEl('select');
-    [['crear','Crear producto'],['precio','Modificar precio'],['stock','Modificar stock']].forEach(function (pair) {
+    [['crear','Crear producto'],['precio','Modificar precio'],['stock','Modificar stock'],['eliminar','Eliminar producto']].forEach(function (pair) {
       var opt = createEl('option', '', pair[1]); opt.value = pair[0]; select.appendChild(opt);
     });
+    select.value = initialType || 'crear';
     form.appendChild(select);
-    var nombre = formRow(form, 'Nombre (para crear)', 'nombre', 'text', initial || '');
-    var sku = formRow(form, 'SKU exacto (obligatorio)', 'sku', 'text');
+    var nombre = formRow(form, 'Nombre', 'nombre', 'text', initialName || '');
+    var sku = formRow(form, 'SKU exacto', 'sku', 'text', initialSku || '');
     var categoria = formRow(form, 'Categoría (opcional)', 'categoria', 'text');
     var precio = formRow(form, 'Precio nuevo / inicial', 'precio', 'number');
     var stock = formRow(form, 'Stock nuevo / inicial (opcional al crear)', 'stock', 'number');
     var minimo = formRow(form, 'Stock mínimo (opcional)', 'minimo', 'number');
     var costo = formRow(form, 'Costo (opcional)', 'costo', 'number');
+    var proveedor = formRow(form, 'Proveedor (opcional)', 'proveedor', 'text');
+    var descripcion = formTextArea(form, 'Descripción (opcional)', 'descripcion');
     function updateFields() {
-      nombre.parentElement.hidden = categoria.parentElement.hidden = minimo.parentElement.hidden = costo.parentElement.hidden = select.value !== 'crear';
-      precio.parentElement.hidden = select.value === 'stock';
-      stock.parentElement.hidden = select.value === 'precio';
+      var creating = select.value === 'crear';
+      nombre.parentElement.hidden = categoria.parentElement.hidden = minimo.parentElement.hidden = costo.parentElement.hidden = proveedor.parentElement.hidden = descripcion.parentElement.hidden = !creating;
+      precio.parentElement.hidden = select.value === 'stock' || select.value === 'eliminar';
+      stock.parentElement.hidden = select.value === 'precio' || select.value === 'eliminar';
     }
     select.addEventListener('change', updateFields); updateFields();
-    var button = createEl('button', '', 'Revisar antes de guardar'); button.type='submit';form.appendChild(button);
+    var actions = createEl('div', 'form-actions');
+    var close = createEl('button', 'secondary', 'Cancelar'); close.type='button';
+    var button = createEl('button', '', 'Revisar operación'); button.type='submit';
+    actions.append(close, button); form.appendChild(actions);
+    close.addEventListener('click', function () { form.remove(); });
     form.addEventListener('submit', async function (event) {
       event.preventDefault();
       var data = {tipo: select.value, sku: sku.value.trim(), nombre: nombre.value.trim(), categoria: categoria.value.trim(),
         precio: precio.value === '' ? null : Number(precio.value), stock: stock.value === '' ? null : Number(stock.value),
-        stockMinimo: minimo.value === '' ? null : Number(minimo.value), costo: costo.value === '' ? null : Number(costo.value)};
+        stockMinimo: minimo.value === '' ? null : Number(minimo.value), costo: costo.value === '' ? null : Number(costo.value),
+        proveedor: proveedor.value.trim(), descripcion: descripcion.value.trim()};
       button.disabled = true;
       try {
         var result = await api('/api/ia/productos/preparar', 'POST', data);
         var preview = createEl('div', 'ia-product-form');
         preview.appendChild(createEl('strong','', 'Confirmación 1 de 2'));
-        preview.appendChild(createEl('div','',JSON.stringify(result.resumen, null, 2)));
-        var confirm = createEl('button', '', 'Confirmar datos'); confirm.type='button';
-        var cancel = createEl('button','', 'Cancelar'); cancel.type='button';
-        preview.append(confirm,cancel); messagesEl.appendChild(preview); scrollToEnd();
-        cancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();});
+        preview.appendChild(createEl('p','form-intro','Revisá cuidadosamente los datos antes de continuar.'));
+        var grid = createEl('div','preview-grid');
+        Object.keys(result.resumen || {}).forEach(function (key) {
+          var item = createEl('div','preview-item');
+          item.appendChild(createEl('small','',key.replace(/([A-Z])/g,' $1')));
+          item.appendChild(createEl('strong','',String(result.resumen[key] ?? '—')));
+          grid.appendChild(item);
+        });
+        preview.appendChild(grid);
+        var previewActions = createEl('div','form-actions');
+        var cancel = createEl('button','secondary','Cancelar'); cancel.type='button';
+        var confirm = createEl('button', select.value === 'eliminar' ? 'danger' : '', 'Confirmar datos'); confirm.type='button';
+        previewActions.append(cancel,confirm);preview.appendChild(previewActions);messagesEl.appendChild(preview);scrollToEnd();
+        cancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();button.disabled=false;});
         confirm.addEventListener('click', async function () {
           confirm.disabled = true;
           try {
             var stage = await api('/api/ia/productos/confirmar','POST',{token:result.token});
-            preview.appendChild(createEl('strong','',stage.mensaje));
-            var final = createEl('button','', 'Confirmar definitivamente');final.type='button';preview.appendChild(final);
+            previewActions.remove();
+            preview.appendChild(createEl('p','form-intro',stage.mensaje));
+            var finalActions = createEl('div','form-actions');
+            var finalCancel = createEl('button','secondary','Cancelar');finalCancel.type='button';
+            var final = createEl('button',select.value === 'eliminar' ? 'danger' : '', select.value === 'eliminar' ? 'Eliminar definitivamente' : 'Confirmar definitivamente');
+            final.type='button';finalActions.append(finalCancel,final);preview.appendChild(finalActions);
+            finalCancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();button.disabled=false;});
             final.addEventListener('click', async function () {
               final.disabled=true;
               try {var done=await api('/api/ia/productos/confirmar','POST',{token:result.token});addMessage('assistant',done.mensaje);preview.remove();form.remove();}
-              catch(e){addMessage('assistant',e.message);}
+              catch(e){addMessage('assistant',e.message);final.disabled=false;}
             });
-          }catch(e){addMessage('assistant',e.message);}
+          }catch(e){addMessage('assistant',e.message);confirm.disabled=false;}
         });
       } catch(e){addMessage('assistant',e.message);}finally{button.disabled=false;}
     });

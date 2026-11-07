@@ -72,6 +72,16 @@ public sealed class ComercioDatosSql
                     sb.AppendLine("- " + linea);
                 }
                 if (ventas.Count == 0) sb.AppendLine("No hay ventas registradas para el período.");
+
+                var ranking = await BD.ObtenerRankingProductosUltimos30DiasAsync(_configuration, empresaId);
+                sb.AppendLine("Productos más vendidos de los últimos 30 días (producto | SKU | unidades | facturación):");
+                foreach (var p in ranking.Take(15))
+                {
+                    var linea = $"- {Limpiar(p.Nombre)} | {Limpiar(p.Sku)} | {p.Unidades} | {Num(p.Facturacion)}";
+                    if (permisos.VerGanancias) linea += " | ganancia " + Num(p.Ganancia);
+                    sb.AppendLine(linea);
+                }
+                if (ranking.Count == 0) sb.AppendLine("No hay productos vendidos para el período.");
             }
             else
                 sb.AppendLine("El historial de ventas todavía no está disponible: falta la tabla Ventas que utiliza el PDV. No inventar datos de ventas.");

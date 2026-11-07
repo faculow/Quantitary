@@ -32,6 +32,8 @@ dotnet build
 dotnet run
 ```
 
-Probar el chat, el historial, las alertas y una modificación de producto con un usuario de pruebas. Las altas y modificaciones requieren dos confirmaciones y quedan registradas en `dbo.IAAuditoria`.
+Probar el chat, el historial, las alertas, una imagen JPG/PNG/WebP y una modificación de producto con un usuario de pruebas. Las altas, modificaciones y eliminaciones habilitadas requieren dos confirmaciones y quedan registradas en `dbo.IAAuditoria`.
+
+La configuración predeterminada usa `claude-haiku-5-5`. Las imágenes se reducen en el navegador a un máximo de 1600 px y el servidor rechaza formatos distintos de JPG, PNG o WebP y archivos procesados mayores de 4 MB.
 
 

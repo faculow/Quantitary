@@ -1064,6 +1064,26 @@ public static class BD
             new { EmpresaId = empresaId })).ToList();
     }
 
+    public static async Task<List<ProductoVentaIA>> ObtenerRankingProductosUltimos30DiasAsync(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return (await connection.QueryAsync<ProductoVentaIA>(@"
+            SELECT TOP (20)
+                p.nombre AS Nombre,
+                p.sku AS Sku,
+                SUM(d.cantidad) AS Unidades,
+                SUM(d.precioVenta) AS Facturacion,
+                SUM(COALESCE(d.ganancia, d.precioVenta - d.precioCompra)) AS Ganancia
+            FROM DetalleVenta d
+            INNER JOIN Ventas v ON v.id = d.ventaID
+            INNER JOIN Productos p ON p.id = d.productoID AND p.empresaID = v.empresaID
+            WHERE v.empresaID = @EmpresaId
+              AND v.fecha >= DATEADD(DAY, -30, CAST(GETDATE() AS date))
+            GROUP BY p.id, p.nombre, p.sku
+            ORDER BY SUM(d.cantidad) DESC, SUM(d.precioVenta) DESC",
+            new { EmpresaId = empresaId })).ToList();
+    }
+
     public static async Task<bool> IAUsuarioValidoAsync(IConfiguration configuration, int usuario, int empresa)
     {
         using var connection = CrearConexion(configuration);
@@ -1079,7 +1099,7 @@ public static class BD
     {
         using var connection = CrearConexion(configuration);
         return (await connection.QueryAsync<IAChatResumen>(@"
-            SELECT Titulo, ActualizadoEn
+            SELECT Id, Titulo, ActualizadoEn
             FROM IAChats
             WHERE UsuarioId = @Usuario
               AND EmpresaId = @Empresa
@@ -1139,7 +1159,9 @@ public static class BD
             UPDATE IAChats
             SET ActualizadoEn = SYSUTCDATETIME(),
                 Titulo = CASE 
-                    WHEN @TituloSugerido IS NOT NULL AND LTRIM(RTRIM(@TituloSugerido)) <> '' THEN @TituloSugerido
+                    WHEN Titulo = 'Nuevo chat'
+                         AND @TituloSugerido IS NOT NULL
+                         AND LTRIM(RTRIM(@TituloSugerido)) <> '' THEN @TituloSugerido
                     ELSE Titulo
                 END
             WHERE Id = @ChatId
@@ -1236,6 +1258,7 @@ public static class BD
             "crear" => "crearProductos",
             "precio" => "editarProductos",
             "stock" => "editarProductos",
+            "eliminar" => "eliminarProductos",
             _ => "verProductos"
         };
 
@@ -1364,6 +1387,35 @@ public static class BD
             new { EmpresaId = empresaId, ProductoId = productoId, Stock = stock }, transaction) > 0;
     }
 
+    public static async Task<int> IAContarVentasProductoAsync(IConfiguration configuration, int empresaId, int productoId, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT CASE WHEN
+                EXISTS (
+                    SELECT 1
+                    FROM DetalleVenta dv
+                    INNER JOIN Ventas v ON v.id = dv.ventaID
+                    WHERE dv.productoID = @ProductoId AND v.empresaID = @EmpresaId
+                )
+                OR EXISTS (
+                    SELECT 1 FROM Ventas v
+                    WHERE v.productoId = @ProductoId AND v.empresaID = @EmpresaId
+                )
+            THEN 1 ELSE 0 END",
+            new { EmpresaId = empresaId, ProductoId = productoId }, transaction);
+    }
+
+    public static async Task<bool> IAEliminarProductoAsync(IConfiguration configuration, int empresaId, int productoId, IDbTransaction? transaction = null)
+    {
+        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        return await connection.ExecuteAsync(@"
+            DELETE FROM Productos
+            WHERE id = @ProductoId
+              AND empresaID = @EmpresaId",
+            new { EmpresaId = empresaId, ProductoId = productoId }, transaction) > 0;
+    }
+
     public static async Task IAInsertarAuditoriaAsync(IConfiguration configuration, int usuario, int empresa, string accion, int productoId, string antes, string despues, IDbTransaction? transaction = null)
     {
         using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
@@ -1375,8 +1427,18 @@ public static class BD
 
     public sealed class IAChatResumen
     {
+        public Guid Id { get; set; }
         public string Titulo { get; set; } = string.Empty;
         public DateTime ActualizadoEn { get; set; }
+    }
+
+    public sealed class ProductoVentaIA
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public int Unidades { get; set; }
+        public decimal Facturacion { get; set; }
+        public decimal Ganancia { get; set; }
     }
 
     public sealed class IAMensaje

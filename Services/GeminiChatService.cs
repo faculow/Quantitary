@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -12,7 +10,7 @@ namespace Quantitary.Services;
 public sealed class ClaudeOptions
 {
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "claude-sonnet-5-5";
+    public string Model { get; set; } = "claude-haiku-5-5";
     public string ApiVersion { get; set; } = "2026-10-21";
 }
 
@@ -25,7 +23,8 @@ public sealed class ClaudeChatService : IAiChatService
     public const int MaxCharts = 4;
     public const int MaxLabels = 30;
     public const int MaxSeries = 4;
-    public const int MaxReplyLength = 6000;
+    // IAMensajes.Texto es nvarchar(4000); se deja margen para evitar fallos al guardar.
+    public const int MaxReplyLength = 3800;
 
     private const int MaxTitleLength = 120;
     private const int MaxColumnLength = 80;
@@ -64,9 +63,12 @@ public sealed class ClaudeChatService : IAiChatService
                 "Falta la clave de Claude. Configurala con dotnet user-secrets o ANTHROPIC_API_KEY y volvé a iniciar la aplicación.");
 
         var history = NormalizeHistory(request?.History);
-        var body = BuildRequestBody(history, message, contexto, _options.Model);
+        var body = BuildRequestBody(history, message, contexto, _options.Model, request?.Image);
 
-        return await CallClaudeAsync(body, cancellationToken);
+        var result = await CallClaudeAsync(body, cancellationToken);
+        if (result.Ok && string.IsNullOrWhiteSpace(result.ChatTitle))
+            result = result with { ChatTitle = TitleFromMessage(message) };
+        return result;
     }
 
     /// <summary>Filtra, recorta y ordena el historial para que Claude reciba roles correctos y sin basura.</summary>
@@ -101,20 +103,21 @@ public sealed class ClaudeChatService : IAiChatService
         List<(string Role, string Text)> history,
         string message,
         string contexto,
-        string model)
+        string model,
+        ChatImage? image)
     {
         var messages = new JsonArray();
 
         var shortContext = string.IsNullOrWhiteSpace(contexto) ? "No hay datos del comercio." : contexto.Trim();
-        if (shortContext.Length > 1200)
-            shortContext = shortContext[..1200];
+        if (shortContext.Length > 24000)
+            shortContext = shortContext[..24000] + "\n[Contexto recortado por seguridad]";
 
         messages.Add(MakeMessage("user", shortContext));
 
-        foreach (var (role, text) in history.TakeLast(4))
+        foreach (var (role, text) in history.TakeLast(8))
             messages.Add(MakeMessage(role, text));
 
-        messages.Add(MakeMessage("user", message));
+        messages.Add(MakeUserMessage(message, image));
 
         return new JsonObject
         {
@@ -130,6 +133,29 @@ public sealed class ClaudeChatService : IAiChatService
         ["role"] = role,
         ["content"] = text
     };
+
+    private static JsonObject MakeUserMessage(string text, ChatImage? image)
+    {
+        if (image is null) return MakeMessage("user", text);
+        return new JsonObject
+        {
+            ["role"] = "user",
+            ["content"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "image",
+                    ["source"] = new JsonObject
+                    {
+                        ["type"] = "base64",
+                        ["media_type"] = image.MediaType,
+                        ["data"] = image.Base64Data
+                    }
+                },
+                new JsonObject { ["type"] = "text", ["text"] = text }
+            }
+        };
+    }
 
     private async Task<ChatResult> CallClaudeAsync(JsonObject body, CancellationToken cancellationToken)
     {
@@ -147,7 +173,7 @@ public sealed class ClaudeChatService : IAiChatService
                     Content = new StringContent(payload, Encoding.UTF8, "application/json")
                 };
                 // La clave viaja en un encabezado, no en la URL, para que no quede en registros de URL.
-                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+                httpRequest.Headers.Add("x-api-key", _options.ApiKey);
                 httpRequest.Headers.Add("anthropic-version", _options.ApiVersion);
 
                 using var response = await _http.SendAsync(httpRequest, cancellationToken);
@@ -218,7 +244,7 @@ public sealed class ClaudeChatService : IAiChatService
                 return null;
         }
 
-        return ChatResult.Success(text, new List<ChatTable>(), new List<ChatChart>(), "Consulta");
+        return ChatResult.Success(text, new List<ChatTable>(), new List<ChatChart>());
     }
 
     private static string ExtractText(JsonNode? root)
@@ -295,6 +321,14 @@ public sealed class ClaudeChatService : IAiChatService
         if (clean.Length == 0 || clean.Equals("Nuevo chat", StringComparison.OrdinalIgnoreCase)) return null;
         const int maxLength = 54;
         return clean.Length <= maxLength ? clean : clean[..maxLength].TrimEnd();
+    }
+
+    private static string TitleFromMessage(string message)
+    {
+        var clean = string.Join(" ", message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .Trim(' ', '"', '\'', '¿', '?', '¡', '!', '.', ',', ':', ';', '-', '–', '—');
+        if (clean.Length == 0) return "Nueva consulta";
+        return clean.Length <= 54 ? clean : clean[..54].TrimEnd();
     }
 
     private static string StripCodeFence(string text)

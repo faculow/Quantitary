@@ -13,14 +13,16 @@ public sealed class AsistenteController : Controller
     private readonly IAHistorialSql _historial;
     private readonly IAStockSql _stock;
     private readonly IAProductoSql _producto;
+    private readonly IARespuestaLocalSql _local;
 
-    public AsistenteController(ComercioDatosSql datos, IAiChatService ai, IAHistorialSql historial, IAStockSql stock, IAProductoSql producto, ILogger<AsistenteController> logger)
+    public AsistenteController(ComercioDatosSql datos, IAiChatService ai, IAHistorialSql historial, IAStockSql stock, IAProductoSql producto, IARespuestaLocalSql local, ILogger<AsistenteController> logger)
     {
         _datos = datos;
         _ai = ai;
         _historial = historial;
         _stock = stock;
         _producto = producto;
+        _local = local;
         _logger = logger;
     }
 
@@ -34,19 +36,40 @@ public sealed class AsistenteController : Controller
         if (usuarioId is not > 0 || empresaId is not > 0)
             return Unauthorized(ChatResult.Failure("unauthorized", "Iniciá sesión para usar Quantitary IA."));
 
-        if (string.IsNullOrWhiteSpace(request?.Message) || request.Message.Length > AiChatLimits.MaxMessageLength)
-            return BadRequest(ChatResult.Failure("invalid_request", "Escribí una pregunta de hasta 2000 caracteres."));
+        if (request is null || (string.IsNullOrWhiteSpace(request.Message) && request.Image is null) ||
+            (request.Message?.Length ?? 0) > AiChatLimits.MaxMessageLength)
+            return BadRequest(ChatResult.Failure("invalid_request", "Escribí una pregunta o adjuntá una imagen válida."));
+
+        if (!ChatImageValidator.TryValidate(request.Image, out var safeImage, out var imageError))
+            return BadRequest(ChatResult.Failure("invalid_image", imageError!));
+
+        var message = string.IsNullOrWhiteSpace(request.Message)
+            ? "Analizá esta imagen y explicame la información útil para mi negocio."
+            : request.Message.Trim();
+        request = request with { Message = message, Image = safeImage };
 
         try
         {
             if (request.ChatId is not Guid chatId || !await _historial.Existe(chatId, usuarioId.Value, empresaId.Value))
                 return BadRequest(ChatResult.Failure("invalid_chat", "Elegí un chat válido antes de enviar."));
+
+            var local = await _local.Resolver(usuarioId.Value, empresaId.Value, request);
+            if (local is not null)
+            {
+                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, message, local.Reply!, local.ChatTitle);
+                return Ok(local);
+            }
+
             var historico = await _historial.Leer(chatId, usuarioId.Value, empresaId.Value);
             var contexto = await _datos.ConstruirContextoAsync(usuarioId.Value, empresaId.Value, cancellationToken);
+            contexto = $"Pantalla actual: {LimpiarRuta(request.Section)} / {LimpiarRuta(request.Action)}.\n" + contexto;
             var seguro = request with { History = historico.TakeLast(AiChatLimits.MaxHistoryTurns).ToList() };
             var resultado = await _ai.SendAsync(seguro, contexto, cancellationToken);
             if (resultado.Ok && resultado.Reply is not null)
-                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, request.Message!, resultado.Reply, resultado.ChatTitle);
+            {
+                var preguntaGuardada = safeImage is null ? message : $"{message} [Imagen adjunta: {safeImage.FileName}]";
+                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, preguntaGuardada, resultado.Reply, resultado.ChatTitle);
+            }
             return StatusCode(resultado.Error?.Code switch
             {
                 null => 200,
@@ -70,6 +93,12 @@ public sealed class AsistenteController : Controller
             return StatusCode(503, ChatResult.Failure("data_unavailable",
                 "No se pudieron consultar los datos del comercio. Verificá la base de datos."));
         }
+    }
+
+    private static string LimpiarRuta(string? value)
+    {
+        var clean = new string((value ?? "desconocida").Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        return clean.Length == 0 ? "desconocida" : clean[..Math.Min(clean.Length, 40)];
     }
 
     private (int Usuario, int Empresa)? Sesion()

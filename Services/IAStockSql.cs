@@ -11,6 +11,11 @@ public sealed class IAStockSql
     {
         if (!await BD.IAUsuarioTienePermisoAsync(_config, usuario, empresa, "verStock")) throw new UnauthorizedAccessException();
         var productos = await BD.ObtenerAlertasStockAsync(_config, empresa);
-        return new { agotados = productos.Count(x => x.Stock == 0), bajos = productos.Count(x => x.Stock > 0), productos };
+        return new
+        {
+            agotados = productos.Count(x => x.Stock == 0),
+            bajos = productos.Count(x => x.Stock > 0 && x.Stock <= x.Minimo),
+            productos
+        };
     }
 }

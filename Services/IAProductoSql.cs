@@ -16,7 +16,7 @@ public sealed class IAProductoSql
         => await BD.IAPermitidoAsync(_config,u,e,tipo);
     public async Task<object> VistaPrevia(int u,int e,Solicitud solicitud)
     {
-        if (solicitud.Tipo is not ("crear" or "precio" or "stock")) throw new ArgumentException("Acción no habilitada.");
+        if (solicitud.Tipo is not ("crear" or "precio" or "stock" or "eliminar")) throw new ArgumentException("Acción no habilitada.");
         if (!await Permitido(new SqlConnection(BD.ObtenerCadenaConexion(_config)),u,e,solicitud.Tipo)) throw new UnauthorizedAccessException();
         if(solicitud.Tipo=="crear")
         {
@@ -36,6 +36,12 @@ public sealed class IAProductoSql
         var coincidencias=(await BD.IABuscarProductoPorSkuAsync(_config,e,solicitud.Sku.Trim())).ToList();
         if(coincidencias.Count!=1) throw new ArgumentException("No se encontró un único producto con ese SKU. Revisalo.");
         var item=coincidencias[0];
+        if(solicitud.Tipo=="eliminar")
+        {
+            var ventas=await BD.IAContarVentasProductoAsync(_config,e,item.Id);
+            if(ventas>0) throw new ArgumentException("Este producto tiene ventas registradas y todavía no puede eliminarse sin romper el historial. No se modificó nada.");
+            return new { tipo="eliminar", producto=item.Nombre, sku=item.Sku, precio=item.Precio, stock=item.Stock, advertencia="Esta acción elimina el producto definitivamente." };
+        }
         if(solicitud.Tipo=="precio" && (solicitud.Precio is null or <=0 or >9999999999))throw new ArgumentException("Indicá un precio válido.");
         if(solicitud.Tipo=="stock" && (solicitud.Stock is null or <0))throw new ArgumentException("Indicá un stock válido.");
         return new { tipo=solicitud.Tipo, producto=item.Nombre, sku=item.Sku, anterior=solicitud.Tipo=="precio"?(object)item.Precio:item.Stock, nuevo=solicitud.Tipo=="precio"?(object)solicitud.Precio!:solicitud.Stock! };
@@ -62,7 +68,16 @@ public sealed class IAProductoSql
             if(items.Count != 1) throw new InvalidOperationException("El producto no existe o hay múltiples coincidencias. No se aplicó el cambio.");
             var item=items[0];
             id=item.Id;
-            if(s.Tipo=="precio")
+            if(s.Tipo=="eliminar")
+            {
+                var ventas=await BD.IAContarVentasProductoAsync(_config,e,id,tx);
+                if(ventas>0) throw new InvalidOperationException("El producto tiene ventas registradas y no puede eliminarse. No se modificó nada.");
+                antes=$"Producto: {item.Nombre}; SKU: {item.Sku}; precio: {item.Precio}; stock: {item.Stock}";
+                despues="Producto eliminado";
+                var eliminado=await BD.IAEliminarProductoAsync(_config,e,id,tx);
+                if(!eliminado) throw new InvalidOperationException("No se pudo eliminar el producto.");
+            }
+            else if(s.Tipo=="precio")
             {
                 if(s.Precio is null or <=0)throw new ArgumentException("Precio inválido.");
                 antes=item.Precio.ToString(); despues=s.Precio.Value.ToString();
@@ -80,6 +95,11 @@ public sealed class IAProductoSql
         }
         await BD.IAInsertarAuditoriaAsync(_config,u,e,s.Tipo,id,antes,despues,tx);
         await tx.CommitAsync();
-        return s.Tipo=="crear"?"Producto creado correctamente.":"Cambio guardado correctamente.";
+        return s.Tipo switch
+        {
+            "crear" => "Producto creado correctamente.",
+            "eliminar" => "Producto eliminado correctamente.",
+            _ => "Cambio guardado correctamente."
+        };
     }
 }
