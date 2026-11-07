@@ -11,7 +11,7 @@ public sealed class IAHistorialSql
     public async Task<bool> UsuarioValido(int usuario, int empresa)
         => await BD.IAUsuarioValidoAsync(_config, usuario, empresa);
     public async Task<IReadOnlyList<ChatResumen>> Listar(int usuario, int empresa)
-        => (await BD.IAListarChatsAsync(_config, usuario, empresa)).Select(x => new ChatResumen(x.Titulo, x.ActualizadoEn)).ToList();
+        => (await BD.IAListarChatsAsync(_config, usuario, empresa)).Select(x => new ChatResumen(x.Id, x.Titulo, x.ActualizadoEn)).ToList();
     public async Task<Guid> Crear(int usuario, int empresa)
         => await BD.IACrearChatAsync(_config, usuario, empresa);
     public async Task<bool> Existe(Guid chat, int usuario, int empresa)
@@ -24,5 +24,5 @@ public sealed class IAHistorialSql
         => await BD.IARenombrarChatAsync(_config, chat, usuario, empresa, titulo);
     public async Task<bool> Eliminar(Guid chat, int usuario, int empresa)
         => await BD.IAEliminarChatAsync(_config, chat, usuario, empresa);
-    public sealed record ChatResumen(string Titulo, DateTime ActualizadoEn);
+    public sealed record ChatResumen(Guid Id, string Titulo, DateTime ActualizadoEn);
 }
