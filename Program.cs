@@ -41,6 +41,7 @@ builder.Services.AddScoped<ComercioDatosSql>();
 builder.Services.AddScoped<IAHistorialSql>();
 builder.Services.AddScoped<IAStockSql>();
 builder.Services.AddScoped<IAProductoSql>();
+builder.Services.AddScoped<IARespuestaLocalSql>();
 builder.Services.AddHttpClient<IAiChatService, ClaudeChatService>(client =>
     client.Timeout = TimeSpan.FromSeconds(60));
 
