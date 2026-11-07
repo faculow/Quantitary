@@ -56,13 +56,32 @@
       </div>
 
       <footer class="chat-footer">
+        <div id="attachmentPreview" class="attachment-preview" hidden>
+          <img id="attachmentThumbnail" alt="Vista previa del archivo" />
+          <div><strong id="attachmentName"></strong><small id="attachmentMeta"></small></div>
+          <button id="removeAttachment" type="button" aria-label="Quitar imagen">×</button>
+        </div>
         <form id="chatForm" class="input-row" autocomplete="off">
           @Html.AntiForgeryToken()
+          <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
           <textarea id="chatInput" rows="1" maxlength="2000" placeholder="Preguntale algo a Quantitary..." aria-label="Escribí tu pregunta"></textarea>
-          <button class="attach" type="button" disabled aria-label="Adjuntar (próximamente)" title="Próximamente">＋</button>
+          <button class="attach" id="attachButton" type="button" aria-label="Adjuntar imagen" title="Adjuntar imagen">＋</button>
           <button class="send" id="sendButton" type="submit" aria-label="Enviar" disabled>↗</button>
         </form>
+        <small class="attachment-help">JPG, PNG o WebP · máximo 1600 px</small>
       </footer>
     </div>
   </section>
+
+  <div id="chatDialog" class="ia-dialog-backdrop" hidden>
+    <section class="ia-dialog" role="dialog" aria-modal="true" aria-labelledby="chatDialogTitle">
+      <h3 id="chatDialogTitle"></h3>
+      <p id="chatDialogText"></p>
+      <input id="chatDialogInput" type="text" maxlength="120" hidden />
+      <div class="ia-dialog-actions">
+        <button id="chatDialogCancel" type="button" class="secondary">Cancelar</button>
+        <button id="chatDialogConfirm" type="button">Confirmar</button>
+      </div>
+    </section>
+  </div>
 </div>
