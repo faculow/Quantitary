@@ -1064,24 +1064,78 @@ public static class BD
             new { EmpresaId = empresaId })).ToList();
     }
 
-    public static async Task<List<ProductoVentaIA>> ObtenerRankingProductosUltimos30DiasAsync(IConfiguration configuration, int empresaId)
+    public static Task<List<ProductoVentaIA>> ObtenerRankingProductosUltimos30DiasAsync(IConfiguration configuration, int empresaId) =>
+        ObtenerRankingProductosAsync(configuration, empresaId, 30);
+
+    /// <summary>
+    /// Ranking real de productos vendidos. Incluye el esquema actual (DetalleVenta) y,
+    /// cuando existe, ventas antiguas guardadas solamente en la tabla Ventas.
+    /// Un valor nulo en ultimosDias consulta todo el historial de la empresa.
+    /// </summary>
+    public static async Task<List<ProductoVentaIA>> ObtenerRankingProductosAsync(IConfiguration configuration, int empresaId, int? ultimosDias = null)
     {
         using var connection = CrearConexion(configuration);
-        return (await connection.QueryAsync<ProductoVentaIA>(@"
+        var desde = ultimosDias is > 0 ? DateTime.Now.Date.AddDays(-ultimosDias.Value) : (DateTime?)null;
+
+        var tieneVentasAntiguas =
+            ExisteColumna(connection, "Ventas", "productoId") &&
+            ExisteColumna(connection, "Ventas", "cantidad") &&
+            ExisteColumna(connection, "Ventas", "precio") &&
+            ExisteColumna(connection, "Ventas", "costo");
+
+        var ventasAntiguasSql = tieneVentasAntiguas
+            ? @"
+                UNION ALL
+                SELECT
+                    v.productoId AS ProductoId,
+                    SUM(ISNULL(v.cantidad, 1)) AS Unidades,
+                    SUM(ISNULL(v.precio, v.totalVenta)) AS Facturacion,
+                    SUM(ISNULL(v.precio, v.totalVenta) - ISNULL(v.costo, 0)) AS Ganancia
+                FROM Ventas v
+                WHERE v.empresaID = @EmpresaId
+                  AND (@Desde IS NULL OR v.fecha >= @Desde)
+                  AND v.productoId IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM DetalleVenta d WHERE d.ventaID = v.id)
+                GROUP BY v.productoId"
+            : string.Empty;
+
+        var sql = @"
+            WITH Movimientos AS
+            (
+                SELECT
+                    d.productoID AS ProductoId,
+                    SUM(d.cantidad) AS Unidades,
+                    SUM(d.precioVenta) AS Facturacion,
+                    SUM(COALESCE(d.ganancia, d.precioVenta - d.costoCompra)) AS Ganancia
+                FROM DetalleVenta d
+                INNER JOIN Ventas v ON v.id = d.ventaID
+                WHERE v.empresaID = @EmpresaId
+                  AND (@Desde IS NULL OR v.fecha >= @Desde)
+                GROUP BY d.productoID
+                " + ventasAntiguasSql + @"
+            ),
+            Totales AS
+            (
+                SELECT
+                    ProductoId,
+                    SUM(Unidades) AS Unidades,
+                    SUM(Facturacion) AS Facturacion,
+                    SUM(Ganancia) AS Ganancia
+                FROM Movimientos
+                GROUP BY ProductoId
+            )
             SELECT TOP (20)
                 p.nombre AS Nombre,
                 p.sku AS Sku,
-                SUM(d.cantidad) AS Unidades,
-                SUM(d.precioVenta) AS Facturacion,
-                SUM(COALESCE(d.ganancia, d.precioVenta - d.precioCompra)) AS Ganancia
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID AND p.empresaID = v.empresaID
-            WHERE v.empresaID = @EmpresaId
-              AND v.fecha >= DATEADD(DAY, -30, CAST(GETDATE() AS date))
-            GROUP BY p.id, p.nombre, p.sku
-            ORDER BY SUM(d.cantidad) DESC, SUM(d.precioVenta) DESC",
-            new { EmpresaId = empresaId })).ToList();
+                t.Unidades,
+                t.Facturacion,
+                t.Ganancia
+            FROM Totales t
+            INNER JOIN Productos p ON p.id = t.ProductoId
+            WHERE p.empresaID = @EmpresaId
+            ORDER BY t.Unidades DESC, t.Facturacion DESC";
+
+        return (await connection.QueryAsync<ProductoVentaIA>(sql, new { EmpresaId = empresaId, Desde = desde })).ToList();
     }
 
     public static async Task<bool> IAUsuarioValidoAsync(IConfiguration configuration, int usuario, int empresa)

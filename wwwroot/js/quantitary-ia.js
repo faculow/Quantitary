@@ -76,12 +76,18 @@
   };
   var MAX_LENGTH = 2000;
   var MAX_HISTORY = 20;
+  var MIN_TYPING_MS = 1000;
   var AVATAR_SRC = '/ia/assets/quantitary-ia-normal.svg';
   var STATUS_IDLE = 'Tu asistente inteligente';
   var STATUS_BUSY = 'Pensando…';
   var CONNECTION_ERROR = 'No pude conectarme con el servidor de Quantitary IA. Verificá que la aplicación siga en ejecución e intentá de nuevo.';
   var SVG_NS = 'http://www.w3.org/2000/svg';
   var COLORS = ['#1769e8', '#26e5ff', '#071a3d', '#7fa6d9'];
+  var ALLOWED_ACTION_PATHS = [
+    '/Stock/Index', '/Stock/Crear', '/Stock/Importar', '/Pdv/Index',
+    '/Home/Historial', '/Home/IndicadoresYOportunidades',
+    '/Home/AnalisisVentasGanancias', '/Home/AnalisisProducto', '/Ajustes/Index'
+  ];
 
   var panel = document.getElementById('chatPanel');
   var messagesEl = document.getElementById('messages');
@@ -181,6 +187,7 @@
   // Estado de la conversación actual (en memoria: se conserva al cerrar y abrir el panel,
   // y se pierde al recargar la página).
   var turns = [];            // intercambios completos: [{role, text}, ...]
+  var lastStockComparisonChart = null;
   var hasSentMessage = false;
   var busy = false;
   var sessionId = 0;         // cambia con "Nuevo chat" para descartar respuestas viejas
@@ -217,13 +224,128 @@
 
   // ---------- Mensajes ----------
 
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Formato mínimo y seguro: permite negritas de Claude sin insertar HTML.
+  function appendFormattedText(container, text) {
+    String(text || '').split(/(\*\*[^*\n]+\*\*)/g).forEach(function (part) {
+      if (!part) return;
+      if (part.length >= 4 && part.slice(0, 2) === '**' && part.slice(-2) === '**') {
+        container.appendChild(createEl('strong', null, part.slice(2, -2)));
+      } else {
+        container.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+
+  function copyText(text, button) {
+    var value = String(text || '');
+    var done = function () {
+      button.textContent = 'Copiado';
+      button.classList.add('copied');
+      setTimeout(function () {
+        button.textContent = 'Copiar';
+        button.classList.remove('copied');
+      }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(done).catch(function () {});
+      return;
+    }
+    var helper = document.createElement('textarea');
+    helper.value = value;
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    try { document.execCommand('copy'); done(); } catch (_) {}
+    helper.remove();
+  }
+
+  function addCopyButton(bubble, text) {
+    var copy = createEl('button', 'copy-message', 'Copiar');
+    copy.type = 'button';
+    copy.setAttribute('aria-label', 'Copiar respuesta');
+    copy.addEventListener('click', function (event) {
+      event.stopPropagation();
+      copyText(text, copy);
+    });
+    bubble.classList.add('has-copy');
+    bubble.appendChild(copy);
+  }
+
   function addMessage(role, text) {
     var row = createEl('div', 'msg-row ' + role);
     if (role === 'assistant') row.appendChild(avatar());
-    row.appendChild(createEl('div', 'msg ' + role, text));
+    var bubble = createEl('div', 'msg ' + role);
+    if (role === 'assistant') {
+      var content = createEl('div', 'msg-content');
+      appendFormattedText(content, text);
+      bubble.appendChild(content);
+      addCopyButton(bubble, text);
+    }
+    else bubble.textContent = text;
+    row.appendChild(bubble);
     messagesEl.appendChild(row);
     scrollToEnd();
     return row;
+  }
+
+  function addAssistantMessageProgressively(text) {
+    if (reduceMotion) {
+      addMessage('assistant', text);
+      return Promise.resolve();
+    }
+
+    var row = createEl('div', 'msg-row assistant');
+    row.appendChild(avatar());
+    var bubble = createEl('div', 'msg assistant is-writing');
+    var content = createEl('div', 'msg-content');
+    var cursor = createEl('span', 'typing-cursor');
+    bubble.append(content, cursor);
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollToEnd();
+
+    var visibleText = String(text || '').replace(/\*\*/g, '');
+    var words = visibleText.match(/\S+\s*/g) || [visibleText];
+    var wordsPerStep = Math.max(1, Math.ceil(words.length / 45));
+    var steps = Math.max(1, Math.ceil(words.length / wordsPerStep));
+    var totalDuration = Math.min(1400, Math.max(500, words.length * 34));
+    var interval = Math.max(18, Math.round(totalDuration / steps));
+
+    return new Promise(function (resolve) {
+      var index = 0;
+      var finished = false;
+      var timer = null;
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        bubble.removeEventListener('click', finish);
+        content.textContent = '';
+        appendFormattedText(content, text);
+        cursor.remove();
+        bubble.classList.remove('is-writing');
+        addCopyButton(bubble, text);
+        scrollToEnd();
+        resolve();
+      }
+
+      function writeNext() {
+        if (finished) return;
+        var end = Math.min(words.length, index + wordsPerStep);
+        content.appendChild(document.createTextNode(words.slice(index, end).join('')));
+        index = end;
+        scrollToEnd();
+        if (index >= words.length) { finish(); return; }
+        timer = setTimeout(writeNext, interval);
+      }
+
+      bubble.addEventListener('click', finish);
+      writeNext();
+    });
   }
 
   function addUserMessage(text, image) {
@@ -308,6 +430,7 @@
   function renderBlocks(tables, charts) {
     var hasCharts = charts && charts.length > 0;
     var hasTables = tables && tables.length > 0;
+    lastStockComparisonChart = (charts || []).find(isStockComparisonChart) || null;
     if (!hasCharts && !hasTables) return;
 
     var wrap = createEl('div', 'blocks');
@@ -322,6 +445,8 @@
     var wrap = createEl('div', 'chat-actions');
     actions.forEach(function (action) {
       if (!action || typeof action.url !== 'string' || action.url.charAt(0) !== '/') return;
+      var path = action.url.split('?')[0].replace(/\/$/, '');
+      if (ALLOWED_ACTION_PATHS.indexOf(path) === -1) return;
       var link = createEl('a', 'chat-action', action.label || 'Abrir');
       link.href = action.url;
       link.appendChild(document.createTextNode(' →'));
@@ -365,6 +490,8 @@
   }
 
   function renderChart(chart) {
+    if (isStockComparisonChart(chart)) return renderStockColumnChart(chart);
+
     var card = createEl('div', 'block-card');
     if (chart.title) card.appendChild(createEl('div', 'block-title', chart.title));
 
@@ -387,6 +514,165 @@
     scroll.appendChild(svg);
     card.appendChild(scroll);
     card.appendChild(renderLegend(chart));
+    return card;
+  }
+
+  function normalizedChartText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  function isStockComparisonChart(chart) {
+    if (!chart || chart.type !== 'bar' || !Array.isArray(chart.series) || chart.series.length < 2) return false;
+    var names = chart.series.map(function (serie) { return normalizedChartText(serie.name); });
+    var hasMinimum = names.some(function (name) { return name.indexOf('minimo') !== -1; });
+    var hasCurrent = names.some(function (name) {
+      return name.indexOf('actual') !== -1 || name.indexOf('disponible') !== -1;
+    });
+    return hasMinimum && hasCurrent;
+  }
+
+  function stockSeries(chart) {
+    var currentIndex = chart.series.findIndex(function (serie) {
+      var name = normalizedChartText(serie.name);
+      return name.indexOf('actual') !== -1 || name.indexOf('disponible') !== -1;
+    });
+    var minimumIndex = chart.series.findIndex(function (serie) {
+      return normalizedChartText(serie.name).indexOf('minimo') !== -1;
+    });
+    return { current: chart.series[currentIndex], minimum: chart.series[minimumIndex] };
+  }
+
+  function renderStockColumnChart(chart) {
+    var card = createEl('div', 'block-card stock-column-chart');
+    if (chart.title) card.appendChild(createEl('div', 'block-title', chart.title));
+
+    var series = stockSeries(chart);
+    var values = series.current.values.concat(series.minimum.values).map(Number).filter(Number.isFinite);
+    var maxValue = Math.max.apply(null, values.concat([1]));
+    var step = Math.max(1, Math.ceil(maxValue / 4));
+    var scaleMax = step * 4;
+    var categoryWidth = 112;
+    var W = Math.max(350, 46 + chart.labels.length * categoryWidth + 12);
+    var H = 230;
+    var pad = { l: 38, r: 12, t: 16, b: 48 };
+    var plotHeight = H - pad.t - pad.b;
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + W + ' ' + H,
+      role: 'img',
+      'class': 'chart-svg stock-column-svg',
+      'aria-label': chart.title || 'Comparación de stock actual y mínimo'
+    });
+    svg.style.width = W + 'px';
+    svg.style.minWidth = '100%';
+
+    function yOf(value) { return pad.t + plotHeight - (Math.max(0, Number(value) || 0) / scaleMax) * plotHeight; }
+
+    for (var tick = 0; tick <= 4; tick++) {
+      var tickValue = step * tick;
+      var y = yOf(tickValue);
+      svg.appendChild(svgEl('line', { x1:pad.l, x2:W-pad.r, y1:y, y2:y, 'class':'axis stock-grid-line' }));
+      var tickLabel = svgEl('text', { x:pad.l-5, y:y+3, 'text-anchor':'end', 'class':'stock-axis-label' });
+      tickLabel.textContent = formatNumber(tickValue);
+      svg.appendChild(tickLabel);
+    }
+
+    chart.labels.forEach(function (label, index) {
+      var centerX = pad.l + (index + 0.5) * ((W-pad.l-pad.r) / chart.labels.length);
+      var labelLines = wrapLabel(label, categoryWidth-12).slice(0, 2);
+      var labelText = svgEl('text', { x:centerX, y:H-pad.b+15, 'text-anchor':'middle', 'class':'stock-category-label' });
+      labelLines.forEach(function (line, lineIndex) {
+        var tspan = svgEl('tspan', { x:centerX, dy:lineIndex === 0 ? 0 : 11 });
+        tspan.textContent = line;
+        labelText.appendChild(tspan);
+      });
+      var labelTip = svgEl('title'); labelTip.textContent = label; labelText.appendChild(labelTip);
+      svg.appendChild(labelText);
+
+      var actual = Number(series.current.values[index]) || 0;
+      var minimo = Number(series.minimum.values[index]) || 0;
+      var actualColor = actual <= minimo ? '#e24b5b' : '#1769e8';
+      drawStockColumn(svg, centerX-24, yOf(actual), yOf(0)-yOf(actual), actual, actualColor);
+      drawStockColumn(svg, centerX+3, yOf(minimo), yOf(0)-yOf(minimo), minimo, '#f0a11a');
+    });
+
+    var legend = createEl('div', 'legend stock-chart-legend');
+    legend.appendChild(legendItem('#1769e8', 'Stock actual'));
+    legend.appendChild(legendItem('#f0a11a', 'Stock mínimo'));
+    legend.appendChild(legendItem('#e24b5b', 'Necesita reposición'));
+    card.appendChild(legend);
+    var scroll = createEl('div', 'chart-scroll');
+    scroll.appendChild(svg);
+    card.appendChild(scroll);
+    return card;
+  }
+
+  function drawStockColumn(svg, x, y, height, value, color) {
+    svg.appendChild(svgEl('rect', { x:x, y:y, width:21, height:Math.max(height, value > 0 ? 2 : 0), rx:4, fill:color }));
+    var valueText = svgEl('text', { x:x+10.5, y:Math.max(10, y-5), 'text-anchor':'middle', 'class':'stock-value-label' });
+    valueText.textContent = formatNumber(value);
+    svg.appendChild(valueText);
+  }
+
+  function renderStockComparison(chart) {
+    var card = createEl('div', 'block-card stock-comparison');
+    if (chart.title) card.appendChild(createEl('div', 'block-title', chart.title));
+
+    var series = stockSeries(chart);
+    var current = series.current;
+    var minimum = series.minimum;
+    var values = current.values.concat(minimum.values).filter(function (value) {
+      return value !== null && Number.isFinite(Number(value));
+    });
+    var globalMax = Math.max.apply(null, values.concat([1]));
+    var scaleMax = globalMax * 1.08;
+    var list = createEl('div', 'stock-comparison-list');
+
+    chart.labels.forEach(function (label, index) {
+      var actual = Number(current.values[index]) || 0;
+      var minimo = Number(minimum.values[index]) || 0;
+      var state = actual <= 0 ? 'empty' : actual <= minimo ? 'low' : 'ok';
+      var stateText = state === 'empty' ? 'Agotado' : state === 'low' ? 'Stock bajo' : 'Disponible';
+      var row = createEl('div', 'stock-comparison-row is-' + state);
+
+      var heading = createEl('div', 'stock-comparison-heading');
+      var product = createEl('strong', 'stock-product-name', label);
+      product.title = label;
+      heading.appendChild(product);
+      heading.appendChild(createEl('span', 'stock-status', stateText));
+      row.appendChild(heading);
+
+      var metrics = createEl('div', 'stock-metrics');
+      metrics.setAttribute('role', 'img');
+      metrics.setAttribute('aria-label', label + ': stock actual ' + formatNumber(actual) + '; stock mínimo ' + formatNumber(minimo));
+
+      var actualMetric = createEl('div', 'stock-metric stock-metric-current');
+      actualMetric.appendChild(createEl('span', 'stock-metric-label', 'Stock actual'));
+      var actualTrack = createEl('span', 'stock-track');
+      var actualFill = createEl('span', 'stock-fill');
+      actualFill.style.width = Math.max(actual > 0 ? 2 : 0, Math.min(100, (actual / scaleMax) * 100)) + '%';
+      actualTrack.appendChild(actualFill);
+      actualMetric.appendChild(actualTrack);
+      actualMetric.appendChild(createEl('b', 'stock-metric-value', formatNumber(actual)));
+
+      var minimumMetric = createEl('div', 'stock-metric stock-metric-minimum');
+      minimumMetric.appendChild(createEl('span', 'stock-metric-label', 'Stock mínimo'));
+      var minimumTrack = createEl('span', 'stock-track');
+      var minimumFill = createEl('span', 'stock-fill');
+      minimumFill.style.width = Math.max(minimo > 0 ? 2 : 0, Math.min(100, (minimo / scaleMax) * 100)) + '%';
+      minimumTrack.appendChild(minimumFill);
+      minimumMetric.appendChild(minimumTrack);
+      minimumMetric.appendChild(createEl('b', 'stock-metric-value', formatNumber(minimo)));
+
+      metrics.appendChild(actualMetric);
+      metrics.appendChild(minimumMetric);
+      row.appendChild(metrics);
+      list.appendChild(row);
+    });
+
+    card.appendChild(list);
     return card;
   }
 
@@ -683,11 +969,20 @@
     sendBtn.disabled = busy || (input.value.trim() === '' && !selectedImage);
   }
 
-  function setBusy(value) {
+  function statusForQuestion(text, image) {
+    if (image) return 'Analizando imagen…';
+    var value = String(text || '').toLowerCase();
+    if (/stock|inventario|reponer|agotad/.test(value)) return 'Consultando stock…';
+    if (/venta|vend[ií]|ganancia|margen|facturaci[oó]n/.test(value)) return 'Analizando ventas…';
+    if (/producto|sku|precio|categor[ií]a/.test(value)) return 'Revisando productos…';
+    return STATUS_BUSY;
+  }
+
+  function setBusy(value, busyLabel) {
     busy = value;
     input.disabled = value;
     attachBtn.disabled = value;
-    statusEl.textContent = value ? STATUS_BUSY : STATUS_IDLE;
+    statusEl.textContent = value ? (busyLabel || STATUS_BUSY) : STATUS_IDLE;
     updateSendState();
   }
 
@@ -700,10 +995,29 @@
     var text = String(rawText || '').trim();
     var image = imageOverride || selectedImage;
     if (busy || (!text && !image)) return;
+    var intentText = normalizedChartText(text);
+    var asksForSimplerChart = /no entiendo|no se entiende|mostra(lo|me) mas simple|explica(me)? el grafico|simplifica/.test(intentText);
+    if (!image && !isRetry && asksForSimplerChart && lastStockComparisonChart) {
+      addMessage('user', text);
+      addMessage('assistant', 'Te lo muestro de una forma más directa, separando el stock actual del mínimo recomendado.');
+      var simpleWrap = createEl('div', 'blocks');
+      simpleWrap.appendChild(renderStockComparison(lastStockComparisonChart));
+      messagesEl.appendChild(simpleWrap);
+      scrollToEnd();
+      return;
+    }
     var normalizedQuestion = text.replace(/^[¿¡\s]+/, '');
     var asksHow = /^(c[oó]mo|d[oó]nde|puedo|se puede|qu[eé] pasa|qu[eé] necesito|cu[aá]l es)/i.test(normalizedQuestion);
     var skuMatch = text.match(/sku\s*[:#-]?\s*([a-z0-9._-]+)/i);
     var initialSku = skuMatch ? skuMatch[1] : '';
+    var requestsCreation = /\b(crea|crear|creame|creo|agrega|agregar|agregame|carga|cargar|registra|registrar|alta|nuevo)\b/.test(intentText) &&
+      /\b(producto|articulo|item)\b/.test(intentText) && !/\b(no|sin)\s+(crear|agregar|cargar|registrar)\b/.test(intentText);
+    if (!image && !isRetry && requestsCreation) {
+      addMessage('user', text);
+      addMessage('assistant', 'Sí, podés crearlo desde acá. Completá los datos básicos y revisalos antes de guardarlo.');
+      manageProduct('crear', '', initialSku);
+      return;
+    }
     if (!image && !isRetry && !asksHow && /\b(elimin|borr|sac[aá]|quit[aá])\b/i.test(text) && /producto|sku|cat[aá]logo/i.test(text)) {
       addMessage('user',text);
       addMessage('assistant','Abrí la eliminación segura. Identificá el producto por SKU y revisá las dos confirmaciones antes de eliminarlo.');
@@ -730,8 +1044,9 @@
       clearAttachment();
     }
 
-    setBusy(true);
+    setBusy(true, statusForQuestion(text, image));
     var typingRow = showTyping();
+    var requestStartedAt = Date.now();
 
     fetch('/api/chat', {
       method: 'POST',
@@ -769,6 +1084,13 @@
         return { ok: false, message: CONNECTION_ERROR };
       })
       .then(function (result) {
+        var remaining = MIN_TYPING_MS - (Date.now() - requestStartedAt);
+        if (remaining <= 0) return result;
+        return new Promise(function (resolve) {
+          setTimeout(function () { resolve(result); }, remaining);
+        });
+      })
+      .then(async function (result) {
         // Si se inició un chat nuevo mientras esperábamos, descartamos esta respuesta.
         if (session !== sessionId) return;
 
@@ -777,7 +1099,10 @@
           // En el historial se guarda el texto; la imagen no se conserva ni se vuelve a facturar.
           turns.push({ role: 'user', text: text || '[Imagen adjunta]' }, { role: 'assistant', text: result.reply });
           pendingRequest = null;
-          if (result.reply) addMessage('assistant', result.reply);
+          if (result.reply) {
+            statusEl.textContent = 'Escribiendo…';
+            await addAssistantMessageProgressively(result.reply);
+          }
           renderBlocks(result.tables, result.charts);
           renderActions(result.actions);
           loadHistory().catch(function () {});
@@ -822,6 +1147,7 @@
   function resetChat() {
     sessionId++;
     turns = [];
+    lastStockComparisonChart = null;
     hasSentMessage = false;
     pendingRequest = null;
     clearAttachment();
@@ -950,34 +1276,57 @@
   }
   function manageProduct(initialType, initialName, initialSku) {
     removeSuggestions();
+    var dedicatedCreate = initialType === 'crear';
     var form = createEl('form', 'ia-product-form');
-    form.appendChild(createEl('strong', '', 'Administrar producto'));
-    form.appendChild(createEl('p', 'form-intro', 'Los cambios se validan en el servidor y siempre requieren dos confirmaciones.'));
+    form.appendChild(createEl('strong', '', dedicatedCreate ? 'Nuevo producto' : 'Administrar producto'));
+    form.appendChild(createEl('p', 'form-intro', dedicatedCreate
+      ? 'Completá nombre, SKU y precio. Después vas a poder revisar todo antes de crear el producto.'
+      : 'El cambio se valida en el servidor antes de guardarse.'));
     var select = createEl('select');
     [['crear','Crear producto'],['precio','Modificar precio'],['stock','Modificar stock'],['eliminar','Eliminar producto']].forEach(function (pair) {
       var opt = createEl('option', '', pair[1]); opt.value = pair[0]; select.appendChild(opt);
     });
     select.value = initialType || 'crear';
+    select.hidden = dedicatedCreate;
     form.appendChild(select);
     var nombre = formRow(form, 'Nombre', 'nombre', 'text', initialName || '');
     var sku = formRow(form, 'SKU exacto', 'sku', 'text', initialSku || '');
     var categoria = formRow(form, 'Categoría (opcional)', 'categoria', 'text');
-    var precio = formRow(form, 'Precio nuevo / inicial', 'precio', 'number');
-    var stock = formRow(form, 'Stock nuevo / inicial (opcional al crear)', 'stock', 'number');
+    var precio = formRow(form, dedicatedCreate ? 'Precio de venta' : 'Precio nuevo / inicial', 'precio', 'number');
+    var stock = formRow(form, dedicatedCreate ? 'Stock inicial (opcional)' : 'Stock nuevo / inicial', 'stock', 'number');
     var minimo = formRow(form, 'Stock mínimo (opcional)', 'minimo', 'number');
     var costo = formRow(form, 'Costo (opcional)', 'costo', 'number');
     var proveedor = formRow(form, 'Proveedor (opcional)', 'proveedor', 'text');
     var descripcion = formTextArea(form, 'Descripción (opcional)', 'descripcion');
+    nombre.required = sku.required = precio.required = dedicatedCreate;
+
+    var advanced = createEl('div', 'product-advanced-fields');
+    [categoria.parentElement, minimo.parentElement, costo.parentElement, proveedor.parentElement, descripcion.parentElement].forEach(function (field) {
+      advanced.appendChild(field);
+    });
+    form.appendChild(advanced);
+    var advancedToggle = createEl('button', 'product-advanced-toggle', '＋ Agregar categoría, costo y otros datos');
+    advancedToggle.type = 'button';
+    advancedToggle.setAttribute('aria-expanded', 'false');
+    advancedToggle.addEventListener('click', function () {
+      var open = advanced.classList.toggle('visible');
+      advancedToggle.setAttribute('aria-expanded', String(open));
+      advancedToggle.textContent = open ? '− Ocultar datos opcionales' : '＋ Agregar categoría, costo y otros datos';
+    });
+    form.insertBefore(advancedToggle, advanced);
+
     function updateFields() {
       var creating = select.value === 'crear';
-      nombre.parentElement.hidden = categoria.parentElement.hidden = minimo.parentElement.hidden = costo.parentElement.hidden = proveedor.parentElement.hidden = descripcion.parentElement.hidden = !creating;
+      nombre.parentElement.hidden = !creating;
+      advancedToggle.hidden = !creating;
+      advanced.hidden = !creating;
       precio.parentElement.hidden = select.value === 'stock' || select.value === 'eliminar';
       stock.parentElement.hidden = select.value === 'precio' || select.value === 'eliminar';
     }
     select.addEventListener('change', updateFields); updateFields();
     var actions = createEl('div', 'form-actions');
     var close = createEl('button', 'secondary', 'Cancelar'); close.type='button';
-    var button = createEl('button', '', 'Revisar operación'); button.type='submit';
+    var button = createEl('button', '', dedicatedCreate ? 'Revisar producto' : 'Revisar operación'); button.type='submit';
     actions.append(close, button); form.appendChild(actions);
     close.addEventListener('click', function () { form.remove(); });
     form.addEventListener('submit', async function (event) {
@@ -990,8 +1339,10 @@
       try {
         var result = await api('/api/ia/productos/preparar', 'POST', data);
         var preview = createEl('div', 'ia-product-form');
-        preview.appendChild(createEl('strong','', 'Confirmación 1 de 2'));
-        preview.appendChild(createEl('p','form-intro','Revisá cuidadosamente los datos antes de continuar.'));
+        preview.appendChild(createEl('strong','', select.value === 'crear' ? 'Revisá el producto' : 'Confirmación 1 de 2'));
+        preview.appendChild(createEl('p','form-intro', select.value === 'crear'
+          ? 'Si está todo bien, confirmá para crearlo.'
+          : 'Revisá cuidadosamente los datos antes de continuar.'));
         var grid = createEl('div','preview-grid');
         Object.keys(result.resumen || {}).forEach(function (key) {
           var item = createEl('div','preview-item');
@@ -1002,13 +1353,21 @@
         preview.appendChild(grid);
         var previewActions = createEl('div','form-actions');
         var cancel = createEl('button','secondary','Cancelar'); cancel.type='button';
-        var confirm = createEl('button', select.value === 'eliminar' ? 'danger' : '', 'Confirmar datos'); confirm.type='button';
+        var confirm = createEl('button', select.value === 'eliminar' ? 'danger' : '', select.value === 'crear' ? 'Crear producto' : 'Confirmar datos'); confirm.type='button';
         previewActions.append(cancel,confirm);preview.appendChild(previewActions);messagesEl.appendChild(preview);scrollToEnd();
         cancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();button.disabled=false;});
         confirm.addEventListener('click', async function () {
           confirm.disabled = true;
           try {
             var stage = await api('/api/ia/productos/confirmar','POST',{token:result.token});
+            if (select.value === 'crear') {
+              var created = await api('/api/ia/productos/confirmar','POST',{token:result.token});
+              addMessage('assistant', created.mensaje + ' Para la próxima, también podés cargarlo desde Stock; ahí es más fácil si querés completar todos los datos.');
+              renderActions([{label:'Agregar otro desde Stock',url:'/Stock/Crear'}]);
+              preview.remove();
+              form.remove();
+              return;
+            }
             previewActions.remove();
             preview.appendChild(createEl('p','form-intro',stage.mensaje));
             var finalActions = createEl('div','form-actions');

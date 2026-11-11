@@ -80,8 +80,18 @@
 #quantitary-ia.fullscreen .messages{padding:28px max(35px,calc((100% - 820px)/2));gap:15px}
 #quantitary-ia .messages>*{flex-shrink:0}
 #quantitary-ia .msg-row{display:flex;align-items:flex-end;gap:8px;min-width:0}
+#quantitary-ia .msg-row.user{justify-content:flex-end;padding-left:18%;animation:qtyMessageRight .18s ease-out both}
+#quantitary-ia .msg-row.assistant{justify-content:flex-start;padding-right:10%;animation:qtyMessageLeft .18s ease-out both}
 #quantitary-ia .msg-avatar{width:27px;height:27px;border-radius:50%;flex:0 0 auto}
-#quantitary-ia .msg{max-width:82%;min-width:0;padding:10px 13px;border-radius:15px;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+#quantitary-ia .msg{position:relative;max-width:82%;min-width:0;padding:10px 13px;border-radius:15px;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+#quantitary-ia .msg strong{font-weight:750}
+#quantitary-ia .msg.assistant.has-copy{padding-right:50px}
+#quantitary-ia .copy-message{position:absolute;right:8px;top:7px;border:0;border-radius:6px;background:transparent;color:#6d829f;padding:3px 5px;font-size:10px;line-height:1.2;opacity:0;cursor:pointer;transition:opacity .15s ease,background .15s ease,color .15s ease}
+#quantitary-ia .msg.assistant:hover .copy-message,#quantitary-ia .copy-message:focus-visible,#quantitary-ia .copy-message.copied{opacity:1}
+#quantitary-ia .copy-message:hover{background:#dce9fa;color:#1659b7}
+#quantitary-ia .typing-cursor{display:inline-block;width:2px;height:1em;margin-left:3px;vertical-align:-2px;border-radius:2px;background:#1769e8;animation:qtyCursor .75s step-end infinite}
+#quantitary-ia .blocks,#quantitary-ia .chat-actions{animation:qtyContentIn .2s ease-out both}
+#quantitary-ia .is-writing{cursor:pointer}
 #quantitary-ia.fullscreen .msg{max-width:650px;font-size:14px;padding:12px 15px}
 #quantitary-ia .msg.user{background:var(--ia-blue);color:#fff;border-bottom-right-radius:4px}
 #quantitary-ia .msg-image{display:block;width:min(240px,100%);max-height:220px;margin-bottom:8px;border-radius:10px;object-fit:cover;background:#dce8f8}
@@ -94,6 +104,10 @@
 #quantitary-ia .typing span{width:6px;height:6px;border-radius:50%;background:#7fa6d9;animation:qtyDot 1.2s infinite ease-in-out}
 #quantitary-ia .typing span:nth-child(2){animation-delay:.15s}#quantitary-ia .typing span:nth-child(3){animation-delay:.3s}
 @keyframes qtyDot{0%,80%,100%{opacity:.3}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes qtyCursor{0%,45%{opacity:1}46%,100%{opacity:0}}
+@keyframes qtyMessageRight{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+@keyframes qtyMessageLeft{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+@keyframes qtyContentIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 #quantitary-ia .suggestions{display:flex;flex-wrap:wrap;gap:7px;padding-left:35px}
 #quantitary-ia .suggestion{border:1px solid #cfe0f7;background:#fff;color:#1f4f9a;border-radius:999px;padding:8px 11px;font-size:12px;cursor:pointer}
@@ -138,6 +152,31 @@
 #quantitary-ia .legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;font-size:11px;color:#5a6f92}
 #quantitary-ia .legend-item{display:inline-flex;align-items:center;gap:5px}
 #quantitary-ia .swatch{width:10px;height:10px;border-radius:3px;display:inline-block}
+#quantitary-ia .stock-column-chart .block-title{margin-bottom:7px}
+#quantitary-ia .stock-chart-legend{margin:0 0 3px}
+#quantitary-ia .stock-column-svg .stock-grid-line{stroke:#e8eef7;stroke-dasharray:3 3}
+#quantitary-ia .stock-column-svg .stock-category-label{font-size:9.5px;fill:#405674;font-weight:650}
+#quantitary-ia .stock-column-svg .stock-axis-label{font-size:8.5px;fill:#8493a8}
+#quantitary-ia .stock-column-svg .stock-value-label{font-size:8.5px;fill:#405674;font-weight:750}
+#quantitary-ia .stock-comparison{padding:14px}
+#quantitary-ia .stock-comparison .block-title{margin-bottom:13px;font-size:13px}
+#quantitary-ia .stock-comparison-list{display:grid;gap:13px;max-height:380px;overflow-y:auto;padding-right:3px;scrollbar-width:thin}
+#quantitary-ia .stock-comparison-row{display:grid;gap:7px;padding:0 1px 12px;border-bottom:1px solid #edf2fa}
+#quantitary-ia .stock-comparison-row:last-child{padding-bottom:1px;border-bottom:0}
+#quantitary-ia .stock-comparison-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#quantitary-ia .stock-product-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#243a5c;font-size:12px}
+#quantitary-ia .stock-status{flex:0 0 auto;padding:3px 7px;border-radius:999px;background:#e9f8f1;color:#16704b;font-size:9px;font-weight:800;letter-spacing:.025em;text-transform:uppercase}
+#quantitary-ia .is-low .stock-status{background:#fff4dc;color:#9b6410}
+#quantitary-ia .is-empty .stock-status{background:#ffebeb;color:#b52f38}
+#quantitary-ia .stock-metrics{display:grid;gap:6px}
+#quantitary-ia .stock-metric{display:grid;grid-template-columns:72px minmax(70px,1fr) 28px;align-items:center;gap:7px;color:#657893;font-size:10px}
+#quantitary-ia .stock-metric-label{white-space:nowrap}
+#quantitary-ia .stock-metric-value{text-align:right;color:#243a5c;font-size:11px;font-variant-numeric:tabular-nums}
+#quantitary-ia .stock-track{position:relative;height:8px;border-radius:999px;background:#edf2f8;box-shadow:inset 0 1px 2px rgba(15,42,79,.08)}
+#quantitary-ia .stock-fill{position:absolute;inset:0 auto 0 0;border-radius:inherit;background:linear-gradient(90deg,#1769e8,#35a3f4);transition:width .45s ease}
+#quantitary-ia .is-low .stock-metric-current .stock-fill{background:#e24b5b}
+#quantitary-ia .is-empty .stock-metric-current .stock-fill{background:#e24b5b}
+#quantitary-ia .stock-metric-minimum .stock-fill{background:#f0a11a}
 #quantitary-ia .ia-product-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-left:35px;background:#f4f8ff;border:1px solid var(--ia-border);padding:15px;border-radius:16px;color:var(--ia-text);font-size:12px;box-shadow:0 8px 24px rgba(7,26,61,.06)}
 #quantitary-ia .ia-product-form>strong,#quantitary-ia .ia-product-form>.form-intro,#quantitary-ia .ia-product-form>select,#quantitary-ia .ia-product-form>.form-actions,#quantitary-ia .ia-product-form>.preview-grid{grid-column:1/-1}
 #quantitary-ia .ia-product-form>strong{font-size:14px;color:#203a62}
@@ -150,6 +189,11 @@
 #quantitary-ia .ia-product-form button.secondary{background:#e6edf7;color:#405674}
 #quantitary-ia .ia-product-form button.danger{background:#c63a3a}
 #quantitary-ia .ia-product-form button:disabled{opacity:.55;cursor:default}
+#quantitary-ia .ia-product-form .product-advanced-toggle{grid-column:1/-1;padding:4px 0;background:transparent;color:#3567a6;text-align:left;font-size:11px;font-weight:700}
+#quantitary-ia .ia-product-form .product-advanced-toggle:hover{color:#164f99;text-decoration:underline}
+#quantitary-ia .product-advanced-fields{display:none;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+#quantitary-ia .product-advanced-fields.visible{display:grid}
+#quantitary-ia .product-advanced-fields label:last-child{grid-column:1/-1}
 #quantitary-ia .preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #quantitary-ia .preview-item{padding:9px;border:1px solid #dbe6f5;border-radius:10px;background:#fff}
 #quantitary-ia .preview-item small,#quantitary-ia .preview-item strong{display:block}
@@ -186,15 +230,20 @@
   #quantitary-ia.fullscreen .history-close{display:block}
   #quantitary-ia .messages,#quantitary-ia.fullscreen .messages{padding:15px 11px;gap:11px}
   #quantitary-ia .msg,#quantitary-ia.fullscreen .msg{max-width:88%;padding:10px 12px;font-size:12.5px}
+  #quantitary-ia .msg-row.user{padding-left:10%}
+  #quantitary-ia .msg-row.assistant{padding-right:0}
+  #quantitary-ia .copy-message{opacity:.65}
   #quantitary-ia .suggestions,#quantitary-ia .blocks,#quantitary-ia .chat-actions{padding-left:0}
   #quantitary-ia .ia-product-form{grid-template-columns:1fr;margin-left:0;padding:13px}
   #quantitary-ia .ia-product-form>*{grid-column:1!important}
+  #quantitary-ia .product-advanced-fields{grid-template-columns:1fr}
+  #quantitary-ia .product-advanced-fields>*{grid-column:1!important}
   #quantitary-ia .preview-grid{grid-template-columns:1fr}
   #quantitary-ia .ia-product-form .form-actions{flex-direction:column-reverse}
   #quantitary-ia .ia-product-form .form-actions button{width:100%}
   #quantitary-ia .chat-footer,#quantitary-ia.fullscreen .chat-footer{padding:10px}
 }
-@media(prefers-reduced-motion:reduce){#quantitary-ia *,#quantitary-ia *::before,#quantitary-ia *::after{transition-duration:.01ms!important}#quantitary-ia .typing span{animation:none}}
+@media(prefers-reduced-motion:reduce){#quantitary-ia *,#quantitary-ia *::before,#quantitary-ia *::after{transition-duration:.01ms!important;animation:none!important}#quantitary-ia .typing span{animation:none}}
 
 html[data-quantitary-theme="dark"] #quantitary-ia {
   --ia-text:#dce9f8;--ia-muted:#9db0c9;--ia-border:#2b405e;--ia-soft:#111f34;
@@ -231,6 +280,13 @@ html[data-quantitary-theme="dark"] #quantitary-ia .block-title,
 html[data-quantitary-theme="dark"] #quantitary-ia .legend {color:#c9d8eb}
 html[data-quantitary-theme="dark"] #quantitary-ia .chart-svg text {fill:#a9bad0}
 html[data-quantitary-theme="dark"] #quantitary-ia .chart-svg .axis {stroke:#344964}
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-column-svg .stock-grid-line {stroke:#344964}
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-column-svg .stock-category-label,
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-column-svg .stock-value-label {fill:#c9d8eb}
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-comparison-row {border-color:#263a55}
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-product-name,
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-metric-value {color:#dce9f8}
+html[data-quantitary-theme="dark"] #quantitary-ia .stock-track {background:#263a55}
 html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form {background:#13233a;color:#dce9f8}
 html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form input,
 html[data-quantitary-theme="dark"] #quantitary-ia .ia-product-form select,
