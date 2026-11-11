@@ -210,6 +210,29 @@ public static class BD
             WHERE p.id = @Id", new { Id = id });
     }
 
+    private static int ObtenerOCrearCategoriaId(IDbConnection connection, int empresaId, string? categoriaNombre, IDbTransaction? transaction = null)
+    {
+        var nombre = string.IsNullOrWhiteSpace(categoriaNombre) ? "Sin categoría" : categoriaNombre.Trim();
+
+        var categoriaId = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Categoria
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction) ?? 0;
+
+        if (categoriaId > 0)
+        {
+            return categoriaId;
+        }
+
+        return connection.QuerySingle<int>(@"
+            INSERT INTO Categoria (empresaID, nombre)
+            VALUES (@EmpresaId, @Nombre);
+            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction);
+    }
+
     public static Producto AgregarProducto(IConfiguration configuration, Producto producto)
     {
         if (string.IsNullOrWhiteSpace(producto.Nombre) || string.IsNullOrWhiteSpace(producto.Sku))
@@ -220,6 +243,7 @@ public static class BD
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
         producto.Proveedor = producto.Proveedor.Trim();
+        producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
 
         if (producto.PrecioVenta <= 0)
         {
@@ -227,6 +251,8 @@ public static class BD
         }
 
         using var connection = CrearConexion(configuration);
+
+        producto.CategoriaID = ObtenerOCrearCategoriaId(connection, producto.EmpresaID, producto.Categoria);
 
         if (producto.Id > 0)
         {
@@ -285,6 +311,7 @@ public static class BD
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
         producto.Proveedor = producto.Proveedor.Trim();
+        producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
 
         if (producto.PrecioVenta <= 0)
         {
@@ -303,6 +330,8 @@ public static class BD
         {
             return false;
         }
+
+        producto.CategoriaID = ObtenerOCrearCategoriaId(connection, empresaId.Value, producto.Categoria);
 
         var skuDuplicado = connection.ExecuteScalar<int>(@"
             SELECT COUNT(1)
@@ -951,7 +980,7 @@ public static class BD
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-              WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+              WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -987,7 +1016,7 @@ public static class BD
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-              WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+              WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -1494,7 +1523,8 @@ public static class BD
         var categoriaId = connection.QuerySingleOrDefault<int?>(@"
             SELECT TOP 1 id
             FROM Categoria
-            WHERE empresaID = @EmpresaId AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))",
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))",
             new { EmpresaId = empresaId, Nombre = categoriaNombre }, transaction) ?? 0;
 
         if (categoriaId == 0)
@@ -1782,8 +1812,8 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
-                        GROUP BY d.productoID", new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
+            GROUP BY d.productoID",
+            new { EmpresaId = empresaId })).ToList();
 
         var ventasPorMes = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(month, v.fecha) AS Mes,
@@ -1857,7 +1887,7 @@ public static class BD
             FROM Productos p
             LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
             LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
             ORDER BY p.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
