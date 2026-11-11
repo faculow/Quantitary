@@ -19,7 +19,7 @@ body {
     margin: 0;
     min-width: 320px;
     color: var(--ink);
-    background: #fff;
+    background: #f4f7fb;
     font-family: Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
 }
@@ -392,15 +392,15 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 
 /* Dirección visual institucional: menos efectos y más producto. */
 :root {
-    --ink: #0b2035;
-    --muted: #5f6d79;
-    --blue: #12553f;
-    --blue-dark: #0b4230;
-    --blue-soft: #edf4f1;
-    --lime: #c7aa69;
-    --surface-soft: #f5f6f4;
-    --line: #dfe4e1;
-    --shadow: 0 16px 38px rgba(11, 32, 53, .10);
+    --ink: #0f172a;
+    --muted: #64748b;
+    --blue: #1d4ed8;
+    --blue-dark: #1e40af;
+    --blue-soft: #dbeafe;
+    --lime: #93c5fd;
+    --surface-soft: #f4f7fb;
+    --line: #e2e8f0;
+    --shadow: 0 16px 38px rgba(15, 23, 42, .10);
 }
 .site-header { height: 76px; }
 .brand-symbol { width: 45px; height: 45px; border-radius: 4px; box-shadow: none; }
@@ -414,8 +414,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .hero-brand div { display: grid; gap: 3px; }
 .hero-brand strong { color: var(--ink); font-size: 1.28rem; letter-spacing: -.025em; }
 .hero-brand span { color: var(--muted); font-size: .78rem; }
-.eyebrow, .section-kicker { margin-bottom: 17px; color: #52665d; font-size: .73rem; letter-spacing: .08em; }
-.eyebrow::before { content: ""; width: 24px; height: 1px; background: #9c8a60; }
+.eyebrow, .section-kicker { margin-bottom: 17px; color: var(--muted); font-size: .73rem; letter-spacing: .08em; }
+.eyebrow::before { content: ""; width: 24px; height: 1px; background: var(--blue); }
 .eyebrow span { display: none; }
 .hero h1 { font-size: clamp(2.8rem, 4.6vw, 4.6rem); line-height: 1.02; letter-spacing: -.05em; }
 .hero h1 em { color: inherit; }
@@ -434,28 +434,28 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .section-heading h2, .ai-copy h2 { max-width: 800px; font-size: clamp(2.2rem, 3.5vw, 3.5rem); line-height: 1.12; letter-spacing: -.04em; }
 .section-heading.centered { text-align: left; }
 .section-heading > p:last-child { margin-left: 0; margin-right: 0; }
-.bento-grid { margin-top: 42px; gap: 0; border-top: 1px solid #ccd4d0; }
-.bento-card, .bento-wide { min-height: 300px; border: 0; border-bottom: 1px solid #ccd4d0; border-radius: 0; box-shadow: none; background: transparent; }
+.bento-grid { margin-top: 42px; gap: 0; border-top: 1px solid var(--line); }
+.bento-card, .bento-wide { min-height: 300px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
 .bento-card { padding: 42px 22px; }
-.bento-grid > article:nth-child(2) { border-right: 1px solid #ccd4d0; }
-.feature-number { width: auto; height: auto; margin-bottom: 22px; place-items: initial; color: #7a6a47; background: none; border-radius: 0; }
+.bento-grid > article:nth-child(2) { border-right: 1px solid var(--line); }
+.feature-number { width: auto; height: auto; margin-bottom: 22px; place-items: initial; color: var(--blue); background: none; border-radius: 0; }
 .bento-card h3 { font-size: clamp(1.45rem, 2vw, 2rem); letter-spacing: -.03em; }
 .stock-demo, .analysis-bars { border-radius: 4px; transform: none; }
 .profit-feature, .analysis-feature, .import-feature { color: var(--ink); background: transparent; }
-.import-feature .feature-number { color: #7a6a47; background: none; }
+.import-feature .feature-number { color: var(--blue); background: none; }
 .import-feature p { color: var(--muted); }
 .profit-feature { display: flex; flex-direction: column; }
-.profit-ring { position: relative; right: auto; bottom: auto; width: 150px; height: 150px; margin: 26px auto 0; flex: 0 0 auto; background: conic-gradient(var(--blue) 0 29.9%, #dfe5e2 29.9% 100%); }
+.profit-ring { position: relative; right: auto; bottom: auto; width: 150px; height: 150px; margin: 26px auto 0; flex: 0 0 auto; background: conic-gradient(var(--blue) 0 29.9%, #dbeafe 29.9% 100%); }
 .profit-ring::before { background: var(--surface-soft); }
 .analysis-bars span, .analysis-bars div:nth-child(6) span { border-radius: 2px 2px 0 0; background: var(--blue); }
 .import-feature { display: flex; flex-direction: column; }
-.file-chip { position: static; width: 100%; margin-top: 26px; border: 1px solid #d8dfdb; border-radius: 4px; }
+.file-chip { position: static; width: 100%; margin-top: 26px; border: 1px solid var(--line); border-radius: 4px; }
 .workflow { padding-top: 94px; padding-bottom: 94px; }
-.section-kicker.light { color: #c7b98f; }
+.section-kicker.light { color: #93c5fd; }
 .workflow-steps { margin-top: 44px; gap: 0; border-top: 1px solid rgba(255,255,255,.2); }
 .workflow-steps article { min-height: 230px; padding: 30px 26px; border: 0; border-right: 1px solid rgba(255,255,255,.2); border-radius: 0; background: transparent; }
 .workflow-steps article:last-child { border-right: 0; }
-.step-icon { margin: 27px 0 20px; border-radius: 4px; color: #d2bd82; background: rgba(255,255,255,.07); }
+.step-icon { margin: 27px 0 20px; border-radius: 4px; color: #93c5fd; background: rgba(255,255,255,.07); }
 .step-arrow { display: none; }
 .ai-section { padding: 100px 0; }
 .ai-copy h2 span { color: inherit; }
@@ -465,8 +465,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .chat-input button { border-radius: 4px; }
 .faq { padding-top: 94px; padding-bottom: 94px; }
 .faq-heading { text-align: left; }
-.faq-grid { width: min(980px, 100%); margin: 38px 0 0; gap: 0; border-top: 1px solid #ccd4d0; }
-.faq-grid details { padding: 0; border: 0; border-bottom: 1px solid #ccd4d0; border-radius: 0; background: transparent; }
+.faq-grid { width: min(980px, 100%); margin: 38px 0 0; gap: 0; border-top: 1px solid var(--line); }
+.faq-grid details { padding: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .faq-grid details p { max-width: 760px; }
 .final-cta { margin-top: 80px; margin-bottom: 80px; padding: 52px; border-radius: 7px; background: var(--ink); }
 .final-cta h2 { font-size: clamp(2.2rem, 3.6vw, 3.5rem); }
