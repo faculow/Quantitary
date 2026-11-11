@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace Quantitary.Services;
@@ -219,7 +220,8 @@ public sealed class ClaudeChatService : IAiChatService
                 return ChatResult.Failure("empty_response",
                     "Claude respondió, pero la respuesta no se pudo usar. Probá reformular la pregunta.");
 
-            return TryParsePlainText(rawText) ?? ParseModelOutput(rawText);
+            var parsed = TryParsePlainText(rawText) ?? ParseModelOutput(rawText);
+            return AddNavigationActions(parsed);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -245,6 +247,44 @@ public sealed class ClaudeChatService : IAiChatService
         }
 
         return ChatResult.Success(text, new List<ChatTable>(), new List<ChatChart>());
+    }
+
+    private static readonly (string Url, string Label)[] NavigationRoutes =
+    {
+        ("/Stock/Importar", "Importar productos"),
+        ("/Stock/Crear", "Agregar producto"),
+        ("/Home/IndicadoresYOportunidades", "Ver indicadores"),
+        ("/Home/AnalisisVentasGanancias", "Ver análisis"),
+        ("/Home/AnalisisProducto", "Ver análisis de productos"),
+        ("/Home/Historial", "Ver historial"),
+        ("/Ajustes/Index", "Ir a Ajustes"),
+        ("/Stock/Index", "Ir a Stock"),
+        ("/Pdv/Index", "Ir al PDV")
+    };
+
+    /// <summary>Convierte únicamente rutas públicas conocidas en botones seguros y quita el marcado crudo del texto.</summary>
+    private static ChatResult AddNavigationActions(ChatResult result)
+    {
+        if (!result.Ok || string.IsNullOrWhiteSpace(result.Reply)) return result;
+
+        var reply = result.Reply.Replace("**", string.Empty, StringComparison.Ordinal);
+        var actions = result.Actions?.ToList() ?? new List<ChatAction>();
+
+        foreach (var (url, label) in NavigationRoutes)
+        {
+            if (!reply.Contains(url, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!actions.Any(action => action.Url.Equals(url, StringComparison.OrdinalIgnoreCase)))
+                actions.Add(new ChatAction(label, url));
+
+            var escaped = Regex.Escape(url);
+            reply = Regex.Replace(reply, @"\[(?<label>[^\]]+)\]\(\s*" + escaped + @"\s*\)",
+                match => match.Groups["label"].Value, RegexOptions.IgnoreCase);
+            reply = Regex.Replace(reply, @"\s*\(\s*" + escaped + @"\s*\)", string.Empty, RegexOptions.IgnoreCase);
+            reply = Regex.Replace(reply, @"(?<!\S)" + escaped + @"(?!\S)", string.Empty, RegexOptions.IgnoreCase);
+        }
+
+        reply = Regex.Replace(reply, @"[ \t]+\r?\n", Environment.NewLine).Trim();
+        return result with { Reply = Limit(reply, MaxReplyLength), Actions = actions.Take(6).ToList() };
     }
 
     private static string ExtractText(JsonNode? root)
