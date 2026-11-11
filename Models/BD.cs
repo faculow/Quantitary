@@ -432,14 +432,20 @@ public static class BD
     {
         var rangoNormalizado = (range ?? "todos").Trim();
         var fechaInicioUsada = fechaInicio ?? ObtenerFechaInicioPorRango(rangoNormalizado);
-        var fechaFinUsada = fechaFin ?? DateTime.Now;
-        var ventas = ObtenerVentasPorRango(configuration, rangoNormalizado, empresaId, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada);
+        var fechaFinUsada = fechaFin ?? (rangoNormalizado.Equals("todos", StringComparison.OrdinalIgnoreCase) ? DateTime.Now.AddYears(10) : DateTime.Now);
+
+        if (fechaFinUsada.TimeOfDay == TimeSpan.Zero)
+        {
+            fechaFinUsada = fechaFinUsada.Date.AddDays(1).AddTicks(-1);
+        }
+        var empresaIdNormalizada = empresaId is > 0 ? empresaId : null;
+        var ventas = ObtenerVentasPorRango(configuration, rangoNormalizado, empresaIdNormalizada, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada);
 
         var resumen = new DashboardSummary
         {
-            TotalProductos = ObtenerTotalProductos(configuration, empresaId),
-            ProductosPocoStock = ObtenerProductosConStockBajo(configuration, empresaId),
-            ProductosSinStock = ObtenerProductosSinStock(configuration, empresaId),
+            TotalProductos = ObtenerTotalProductos(configuration, empresaIdNormalizada),
+            ProductosPocoStock = ObtenerProductosConStockBajo(configuration, empresaIdNormalizada),
+            ProductosSinStock = ObtenerProductosSinStock(configuration, empresaIdNormalizada),
             GananciasPorMesNetas = ventas.Sum(v => v.Precio - v.Costo),
             GananciaPromedioPorProducto = ventas.Any() ? ventas.Average(v => v.Precio - v.Costo) : 0m,
             VentasTotales = ventas.Count,
@@ -451,9 +457,9 @@ public static class BD
             GastosTotalesMes = ventas.Sum(v => v.Costo),
             VentaPromedioMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
             MesActualLabel = fechaInicioUsada.ToString("MMMM yyyy"),
-            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaId, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
-            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaId, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
-            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaId, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada)
+            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
+            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
+            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada)
         };
 
         var mesMayor = ventas
@@ -514,33 +520,69 @@ public static class BD
     {
         var rangoNormalizado = (range ?? "todos").Trim();
         var fechaInicioUsada = fechaInicio ?? ObtenerFechaInicioPorRango(rangoNormalizado);
-        var fechaFinUsada = fechaFin ?? DateTime.Now;
+        var fechaFinUsada = fechaFin ?? (rangoNormalizado.Equals("todos", StringComparison.OrdinalIgnoreCase) ? DateTime.Now.AddYears(10) : DateTime.Now);
+
+        if (fechaFinUsada.TimeOfDay == TimeSpan.Zero)
+        {
+            fechaFinUsada = fechaFinUsada.Date.AddDays(1).AddTicks(-1);
+        }
 
         using var connection = CrearConexion(configuration);
-        var sql = @"SELECT v.id AS Id,
-                          v.empresaID AS EmpresaID,
-                          v.usuarioID AS UsuarioID,
-                          v.fecha AS Fecha,
-                          v.metodoPago AS MetodoPago,
-                          d.productoID AS ProductoId,
-                          p.nombre AS NombreProducto,
-                          p.sku AS Sku,
-                          c.nombre AS Categoria,
-                          SUM(d.cantidad) AS Cantidad,
-                          SUM(d.precioVenta) AS Precio,
-                          SUM(d.costoCompra) AS Costo
-                    FROM Ventas v
-                    INNER JOIN DetalleVenta d ON d.ventaID = v.id
-                    INNER JOIN Productos p ON p.id = d.productoID
-                    LEFT JOIN Categoria c ON c.id = p.categoriaID
-                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                      AND v.fecha >= @FechaInicio
-                      AND v.fecha <= @FechaFin
-                      AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                      AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                      AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
-                    GROUP BY v.id, v.empresaID, v.usuarioID, v.fecha, v.metodoPago, d.productoID, p.nombre, p.sku, c.nombre
-                    ORDER BY v.fecha DESC";
+                var columnaMontoVenta = ExisteColumna(connection, "Ventas", "totalVenta")
+                        ? "v.totalVenta"
+                        : (ExisteColumna(connection, "Ventas", "precio") ? "v.precio" : "0");
+
+                var sql = $@"WITH VentasDetalladas AS
+                                        (
+                                                SELECT v.id AS Id,
+                                                             d.productoID AS ProductoId,
+                                                             p.nombre AS NombreProducto,
+                                                             p.sku AS Sku,
+                                                             c.nombre AS Categoria,
+                                                             v.fecha AS Fecha,
+                                                             v.metodoPago AS MetodoPago,
+                                                             SUM(d.cantidad) AS Cantidad,
+                                                             SUM(d.precioVenta) AS Precio,
+                                                             SUM(d.costoCompra) AS Costo
+                                                FROM Ventas v
+                                                INNER JOIN DetalleVenta d ON d.ventaID = v.id
+                                                INNER JOIN Productos p ON p.id = d.productoID
+                                                LEFT JOIN Categoria c ON c.id = p.categoriaID
+                                                WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                                                    AND v.fecha >= @FechaInicio
+                                                    AND v.fecha <= @FechaFin
+                                                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                                                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                                                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+                                                GROUP BY v.id, d.productoID, p.nombre, p.sku, c.nombre, v.fecha, v.metodoPago
+                                        ),
+                                        VentasSinDetalle AS
+                                        (
+                                                SELECT v.id AS Id,
+                                                             0 AS ProductoId,
+                                                             'Venta sin detalle' AS NombreProducto,
+                                                             '-' AS Sku,
+                                                             'Sin detalle' AS Categoria,
+                                                             v.fecha AS Fecha,
+                                                             v.metodoPago AS MetodoPago,
+                                                             1 AS Cantidad,
+                                                             CAST(ISNULL({columnaMontoVenta}, 0) AS decimal(18,2)) AS Precio,
+                                                             CAST(0 AS decimal(18,2)) AS Costo
+                                                FROM Ventas v
+                                                WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                                                    AND v.fecha >= @FechaInicio
+                                                    AND v.fecha <= @FechaFin
+                                                    AND @NombreProducto IS NULL
+                                                    AND @Sku IS NULL
+                                                    AND @Categoria IS NULL
+                                                    AND NOT EXISTS (SELECT 1 FROM DetalleVenta d WHERE d.ventaID = v.id)
+                                        )
+                                        SELECT Id, ProductoId, NombreProducto, Sku, Categoria, Fecha, MetodoPago, Cantidad, Precio, Costo
+                                        FROM VentasDetalladas
+                                        UNION ALL
+                                        SELECT Id, ProductoId, NombreProducto, Sku, Categoria, Fecha, MetodoPago, Cantidad, Precio, Costo
+                                        FROM VentasSinDetalle
+                                        ORDER BY Fecha DESC";
 
         return connection.Query<VentaRegistro>(sql, new
         {
@@ -746,20 +788,38 @@ public static class BD
             fin = intercambio;
         }
 
-        decimal ObtenerTotal(DateTime desde, DateTime hasta)
+                decimal ObtenerTotal(DateTime desde, DateTime hasta)
         {
             using var connection = CrearConexion(configuration);
+                        var columnaMontoVenta = ExisteColumna(connection, "Ventas", "totalVenta")
+                                ? "v.totalVenta"
+                                : (ExisteColumna(connection, "Ventas", "precio") ? "v.precio" : "0");
+
             return connection.QuerySingleOrDefault<decimal?>(
-                @"SELECT SUM(d.precioVenta)
-                  FROM DetalleVenta d
-                  INNER JOIN Ventas v ON v.id = d.ventaID
-                  INNER JOIN Productos p ON p.id = d.productoID
-                  LEFT JOIN Categoria c ON c.id = p.categoriaID
-                  WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                    AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))",
+                                $@"SELECT COALESCE(SUM(t.Monto), 0)
+                                     FROM (
+                                             SELECT SUM(d.precioVenta) AS Monto
+                                             FROM DetalleVenta d
+                                             INNER JOIN Ventas v ON v.id = d.ventaID
+                                             INNER JOIN Productos p ON p.id = d.productoID
+                                             LEFT JOIN Categoria c ON c.id = p.categoriaID
+                                             WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                                                 AND v.fecha >= @Desde AND v.fecha <= @Hasta
+                                                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                                                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                                                 AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
+
+                                             UNION ALL
+
+                                             SELECT SUM(CAST(ISNULL({columnaMontoVenta}, 0) AS decimal(18,2))) AS Monto
+                                             FROM Ventas v
+                                             WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                                                 AND v.fecha >= @Desde AND v.fecha <= @Hasta
+                                                 AND @NombreProducto IS NULL
+                                                 AND @Sku IS NULL
+                                                 AND @Categoria IS NULL
+                                                 AND NOT EXISTS (SELECT 1 FROM DetalleVenta d WHERE d.ventaID = v.id)
+                                     ) t",
                 new
                 {
                     EmpresaId = empresaId,
@@ -803,7 +863,7 @@ public static class BD
                 result.Add(new ChartPoint
                 {
                     Label = $"{semanaInicio:dd/MM} - {semanaFin:dd/MM}",
-                    Valor = ObtenerTotal(semanaInicio, semanaFin)
+                    Valor = ObtenerTotal(semanaInicio.Date, semanaFin.Date.AddDays(1).AddTicks(-1))
                 });
 
                 semanaInicio = semanaFin.AddDays(1);

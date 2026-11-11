@@ -67,6 +67,11 @@ public class HomeController : Controller
         return null;
     }
 
+    private int ObtenerEmpresaIdActual()
+    {
+        return BD.ObtenerEmpresaIdActual(_inventoryRepository.GetConfiguration(), HttpContext);
+    }
+
     public IActionResult Index()
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -75,7 +80,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
         {
             return RedirectToAction("Importar", "Stock");
@@ -104,7 +109,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
 
         ViewBag.NombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
@@ -119,7 +124,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var model = _inventoryRepository.ObtenerIndicadoresYOportunidades(empresaId);
 
         var csv = new StringBuilder();
@@ -155,7 +160,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var busquedaNormalizada = string.IsNullOrWhiteSpace(busqueda) ? null : busqueda.Trim();
 
         if (empresaId > 0 && !_inventoryRepository.TieneProductos(empresaId))
@@ -183,7 +188,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var connection = _context.Database.GetDbConnection();
         await connection.OpenAsync();
 
@@ -225,7 +230,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var inicio = fechaInicio ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var fin = fechaFin ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
 
@@ -311,7 +316,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var dashboard = _inventoryRepository.ObtenerDashboard(rango, empresaId, null, null, null, fechaInicio, fechaFin);
 
         return Json(new
@@ -329,7 +334,7 @@ public class HomeController : Controller
             return redirect;
         }
 
-        var empresaId = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
+        var empresaId = ObtenerEmpresaIdActual();
         var rangoUsado = string.IsNullOrWhiteSpace(granularidad) ? rango : granularidad;
         var dashboard = _inventoryRepository.ObtenerDashboard(rangoUsado, empresaId, null, null, null, fechaInicio, fechaFin);
         var ultimaVenta = HttpContext.Session.GetString("UltimaVentaTimestamp");
