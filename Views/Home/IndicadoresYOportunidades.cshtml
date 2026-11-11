@@ -11,62 +11,62 @@
         && !string.Equals(proximoPaso, "Sin datos", StringComparison.OrdinalIgnoreCase);
 }
 
-<div class="dashboard-indicadores compact-dashboard">
+<div class="panel indicadores-shell">
     @if (!string.IsNullOrWhiteSpace(resumenProgramado))
     {
         <div class="alert alert-info alert-compact mt-2 mb-3">@resumenProgramado</div>
     }
 
-    <div class="indicadores-header-row compact-header">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <p class="eyebrow">Indicadores</p>
-            <h1 class="page-title">Indicadores y oportunidades</h1>
+            <h2 class="mb-1">Indicadores y oportunidades</h2>
+            <p class="text-muted mb-0">Resumen operativo para decidir compras, reposición y stock mínimo.</p>
         </div>
-        <div class="d-flex gap-2 compact-actions">
+        <div class="d-flex gap-2">
             <form asp-action="ExportarResumenIndicadores" method="get">
-                <button type="submit" class="btn btn-primary btn-sm">Exportar</button>
+                <button type="submit" class="btn btn-primary">Exportar</button>
             </form>
             <form asp-action="ProgramarReporteIndicadores" method="post">
-                <button type="submit" class="btn btn-outline-primary btn-sm">Programar</button>
+                <button type="submit" class="btn btn-outline-secondary">Programar</button>
             </form>
         </div>
     </div>
 
-    <div class="row g-3 mb-3 compact-kpis">
-        <div class="col-lg-3 col-md-6">
-            <div class="kpi-tile kpi-primary">
-                <div class="kpi-label">Margen neto</div>
-                <div class="kpi-value">@Model.MargenNetoGeneral.ToString("0.##")%</div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <span class="kpi-label">Margen neto</span>
+                <strong class="kpi-value">@Model.MargenNetoGeneral.ToString("0.##")%</strong>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="kpi-tile kpi-success">
-                <div class="kpi-label">Rotación</div>
-                <div class="kpi-value small">@Model.ProductoMayorRotacion</div>
+        <div class="col-md-3">
+            <div class="kpi-card success-card">
+                <span class="kpi-label">Mayor rotación</span>
+                <strong class="kpi-value indicadores-kpi-text">@Model.ProductoMayorRotacion</strong>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="kpi-tile kpi-warning">
-                <div class="kpi-label">Interés</div>
-                <div class="kpi-value small kpi-interest-value">@Model.RelacionInteresCompra</div>
+        <div class="col-md-3">
+            <div class="kpi-card warning-card">
+                <span class="kpi-label">Relación interés/compra</span>
+                <strong class="kpi-value indicadores-kpi-text">@Model.RelacionInteresCompra</strong>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="kpi-tile kpi-info">
-                <div class="kpi-label">Categoría</div>
-                <div class="kpi-value small">@Model.CategoriaMasVentas</div>
-                <div class="kpi-sub">@(categoriaDisponible ? "Lidera las ventas" : "Aún sin datos de ventas")</div>
+        <div class="col-md-3">
+            <div class="kpi-card info-card">
+                <span class="kpi-label">Categoría con más ventas</span>
+                <strong class="kpi-value indicadores-kpi-text">@Model.CategoriaMasVentas</strong>
+                <span class="kpi-foot">@(categoriaDisponible ? "Lidera las ventas" : "Aún sin datos de ventas")</span>
             </div>
         </div>
     </div>
 
-    <div class="panel-section compact-panel mb-3">
-        <div class="section-head">
-            <h3>Qué hacer ahora</h3>
-        </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Qué hacer ahora</h5>
         <div class="row g-3">
             <div class="col-lg-6">
-                <div class="list-card compact-card">
+                <div class="list-card">
                     <h4>Reponer</h4>
                     @if (Model.ProductosReponer.Any())
                     {
@@ -84,7 +84,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="list-card compact-card">
+                <div class="list-card">
                     <h4>Comprar menos</h4>
                     @if (Model.ProductosComprarMenos.Any())
                     {
@@ -102,7 +102,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="list-card compact-card">
+                <div class="list-card">
                     <h4>Comprar más</h4>
                     @if (Model.ProductosComprarMas.Any())
                     {
@@ -120,7 +120,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="list-card compact-card">
+                <div class="list-card">
                     <h4>Mín. reposición</h4>
                     @if (Model.ProductosCambiarMinimo.Any())
                     {
@@ -138,14 +138,14 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
 
-    <div class="panel-section compact-panel mb-3">
-        <div class="section-head">
-            <h3>Productos clave</h3>
-        </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Productos clave</h5>
         <div class="table-responsive">
-            <table class="table modern-table compact-table">
+            <table class="table table-striped align-middle mb-0">
                 <thead>
                     <tr>
                         <th>Producto</th>
@@ -164,7 +164,7 @@
                             <td>@item.Nombre</td>
                             <td>@item.Rotacion.ToString("0.##")</td>
                             <td>
-                                <span class="badge @(item.AccionSugerida == "Reponer" ? "badge-danger" : item.AccionSugerida == "Comprar menos" ? "badge-warning" : "badge-success")">
+                                <span class="badge @(item.AccionSugerida == "Reponer" ? "bg-warning text-dark" : item.AccionSugerida == "Comprar menos" ? "bg-secondary" : "bg-success")">
                                     @item.AccionSugerida
                                 </span>
                             </td>
@@ -181,12 +181,12 @@
                 </tbody>
             </table>
         </div>
+        </div>
     </div>
 
-    <div class="panel-section compact-panel">
-        <div class="section-head">
-            <h3>Resumen</h3>
-        </div>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">Resumen</h5>
         <div class="status-summary compact-summary">
             <span class="status-label">Estado:</span>
             <strong>@Model.ResumenEstado</strong>
@@ -198,6 +198,7 @@
             {
                 <div><strong>Próximo paso:</strong> @proximoPaso</div>
             }
+        </div>
         </div>
     </div>
 </div>
