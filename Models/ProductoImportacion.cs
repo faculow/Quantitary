@@ -15,7 +15,8 @@ public class ProductoImportacionExcel
         "Nombre",
         "SKU",
         "Categoria",
-        "Precio",
+        "PrecioCompra",
+        "PrecioVenta",
         "Proveedor"
     };
 
@@ -30,7 +31,8 @@ public class ProductoImportacionExcel
         ["Nombre"] = ["Nombre", "nombre", "Producto", "DescripcionCorta", "Producto Nombre"],
         ["SKU"] = ["SKU", "Sku", "sku", "Codigo", "Cod", "Código", "Codigo Producto", "CodigoProducto"],
         ["Categoria"] = ["Categoria", "categoria", "Categoría", "Rubro", "Categoria Producto"],
-        ["Precio"] = ["Precio", "precio", "PrecioUnitario", "Valor", "PrecioUnitario", "Precio Unitario"],
+        ["PrecioCompra"] = ["PrecioCompra", "preciocompra", "Costo", "costo", "CostoCompra", "costoCompra", "Precio compra", "Precio de compra", "Costo unitario"],
+        ["PrecioVenta"] = ["PrecioVenta", "precioventa", "Precio", "precio", "PrecioUnitario", "Valor", "Precio unitario", "Precio de venta"],
         ["Proveedor"] = ["Proveedor", "proveedor", "Fabricante", "Marca", "Proveedor Nombre"],
         ["StockInicial"] = ["StockInicial", "stockInicial", "StockActual", "stockActual", "Stock", "CantidadInicial", "cantidadInicial", "InventarioInicial", "inventarioInicial", "Stock actual", "Cantidad inicial", "Stock Actual", "Cantidad Inicial"],
         ["StockMinimo"] = ["StockMinimo", "stockMinimo", "Minimo", "minimo", "CantidadMinima", "cantidadMinima", "InventarioMinimo", "inventarioMinimo", "Stock mínimo", "Stock Minimo", "Cantidad mínima", "Cantidad Minima", "StockMinimo"]
@@ -77,11 +79,10 @@ public static class ImportacionExcelHelper
                 Proveedor = ObtenerValor(fila, columnas, "Proveedor"),
                 Descripcion = "Importado desde Excel",
                 FechaCarga = DateTime.Now,
-                Precio = ObtenerDecimal(fila, columnas, "Precio"),
+                CostoCompra = ObtenerDecimal(fila, columnas, "PrecioCompra"),
+                PrecioVenta = ObtenerDecimal(fila, columnas, "PrecioVenta"),
                 StockActual = ObtenerEntero(fila, columnas, "StockInicial"),
                 StockMinimo = ObtenerEntero(fila, columnas, "StockMinimo"),
-                CostoCompra = 0m,
-                PrecioVenta = 0m,
                 CantidadVentas = 0
             };
 
@@ -89,7 +90,8 @@ public static class ImportacionExcelHelper
                 || string.IsNullOrWhiteSpace(producto.Nombre)
                 || string.IsNullOrWhiteSpace(producto.Categoria)
                 || string.IsNullOrWhiteSpace(producto.Proveedor)
-                || producto.Precio <= 0m)
+                || producto.CostoCompra <= 0m
+                || producto.PrecioVenta <= 0m)
             {
                 continue;
             }
@@ -223,8 +225,10 @@ public static class ImportacionExcelHelper
                     ProveedorNuevo = producto.Proveedor,
                     StockActual = existente.StockActual,
                     StockNuevo = producto.StockActual,
-                    PrecioActual = existente.Precio,
-                    PrecioNuevo = producto.Precio,
+                    PrecioCompraActual = existente.CostoCompra,
+                    PrecioCompraNuevo = producto.CostoCompra,
+                    PrecioVentaActual = existente.PrecioVenta,
+                    PrecioVentaNuevo = producto.PrecioVenta,
                     Tipo = "duplicado"
                 });
                 continue;
@@ -300,8 +304,10 @@ public class ProductoImportacionPreview
     public string ProveedorNuevo { get; set; } = string.Empty;
     public int StockActual { get; set; }
     public int StockNuevo { get; set; }
-    public decimal PrecioActual { get; set; }
-    public decimal PrecioNuevo { get; set; }
+    public decimal PrecioCompraActual { get; set; }
+    public decimal PrecioCompraNuevo { get; set; }
+    public decimal PrecioVentaActual { get; set; }
+    public decimal PrecioVentaNuevo { get; set; }
     public string Tipo { get; set; } = "duplicado";
 }
 

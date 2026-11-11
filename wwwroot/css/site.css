@@ -1589,20 +1589,20 @@ body {
 }
 
 .kpi-primary {
-    background: linear-gradient(135deg, #0f3b5b, #1f6f9d);
+    background: linear-gradient(135deg, var(--primary), #2563eb);
     color: #fff;
 }
 
 .kpi-success {
-    background: linear-gradient(135deg, #edf8f2, #dff3e8);
+    background: linear-gradient(135deg, #ecfdf3, #dcfce7);
 }
 
 .kpi-warning {
-    background: linear-gradient(135deg, #fffaf0, #fef3d6);
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
 }
 
 .kpi-info {
-    background: linear-gradient(135deg, #f4f8ff, #eaf1ff);
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
 }
 
 .kpi-label {
@@ -1626,6 +1626,13 @@ body {
 .kpi-sub {
     font-size: 0.8rem;
     opacity: 0.7;
+}
+
+.kpi-interest-value {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
 }
 
 .panel-section {

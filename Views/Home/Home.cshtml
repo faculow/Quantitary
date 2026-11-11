@@ -6,10 +6,16 @@
     var ventasPeriodo = dashboard?.VentasPorPeriodo ?? new List<Quantitary.Models.ChartPoint>();
     var participacion = dashboard?.ParticipacionVentas ?? new List<Quantitary.Models.DashboardCategoryShare>();
     var categorias = dashboard?.GananciaPorCategoria ?? new List<Quantitary.Models.ChartPoint>();
-    var mesActual = dashboard?.MesActualLabel ?? DateTime.Now.ToString("MMMM yyyy");
     var mensajeAdvertencia = ViewBag.MensajeAdvertencia as string;
     var productosPocoStock = dashboard?.ProductosPocoStock ?? 0;
     var productosSinStock = dashboard?.ProductosSinStock ?? 0;
+    var cantidadVentasResumen = dashboard?.VentasTotales ?? 0;
+    var totalVentasResumen = dashboard?.TotalVentasMes ?? 0m;
+    var gananciaNetaResumen = dashboard?.GananciaNetaMes ?? 0m;
+    var gastosFormulaResumen = $"Ventas ${totalVentasResumen:N0} - Ganancia ${gananciaNetaResumen:N0}";
+    var ventaPromedioDetalle = cantidadVentasResumen > 0
+        ? $"${totalVentasResumen:N0} ÷ {cantidadVentasResumen} ventas"
+        : "Sin ventas registradas";
     var stockPorRevisarTexto = productosPocoStock + productosSinStock == 0
         ? "Sin productos por revisar"
         : productosSinStock > 0 && productosPocoStock > 0
@@ -58,7 +64,6 @@
             <div class="kpi-card success-card">
                 <span class="kpi-label">Ganancia</span>
                 <strong class="kpi-value" id="gananciaNetaMes">$@((dashboard?.GananciaNetaMes ?? 0).ToString("N0"))</strong>
-                <small class="kpi-foot" id="mesActual">@mesActual</small>
             </div>
         </div>
     </div>
@@ -74,7 +79,6 @@
     <div class="summary-panel mb-4">
         <div class="summary-header">
             <h3>Mini resumen de Mi negocio</h3>
-            <span id="mesActualHeader">@mesActual</span>
         </div>
 
         <div class="row g-3">
@@ -82,7 +86,7 @@
                 <div class="summary-tile">
                     <span>Ventas totales</span>
                     <strong id="totalVentasMes">$@((dashboard?.TotalVentasMes ?? 0).ToString("N0"))</strong>
-                    <small>960 tickets del sistema de caja</small>
+                    <small id="ventasTotalesDetalle">@cantidadVentasResumen ventas registradas</small>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6">
@@ -96,14 +100,14 @@
                 <div class="summary-tile">
                     <span>Gastos totales</span>
                     <strong id="gastosTotalesMes">$@((dashboard?.GastosTotalesMes ?? 0).ToString("N0"))</strong>
-                    <small>$4.800.000 · $1.200.000</small>
+                    <small id="gastosTotalesDetalle">@gastosFormulaResumen</small>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6">
                 <div class="summary-tile">
                     <span>Venta promedio</span>
                     <strong id="ventaPromedioMes">$@((dashboard?.VentaPromedioMes ?? 0).ToString("N0"))</strong>
-                    <small>$4.800.000 ÷ 960 tickets</small>
+                    <small id="ventaPromedioDetalle">@ventaPromedioDetalle</small>
                 </div>
             </div>
         </div>
@@ -295,12 +299,30 @@
                 document.getElementById('totalProductos').textContent = data.totalProductos ?? 0;
                 document.getElementById('productosPocoStock').textContent = data.productosPocoStock ?? 0;
                 document.getElementById('gananciaNetaMes').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                document.getElementById('mesActual').textContent = data.mesActual ?? '';
-                document.getElementById('mesActualHeader').textContent = data.mesActual ?? '';
                 document.getElementById('totalVentasMes').textContent = `$${Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
                 document.getElementById('gananciaNetaMesResumen').textContent = `$${Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
                 document.getElementById('gastosTotalesMes').textContent = `$${Number(data.gastosTotalesMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
                 document.getElementById('ventaPromedioMes').textContent = `$${Number(data.ventaPromedioMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+                const cantidadVentas = Number(data.ventasTotales ?? 0);
+                if (document.getElementById('ventasTotalesDetalle')) {
+                    document.getElementById('ventasTotalesDetalle').textContent = `${cantidadVentas} ventas registradas`;
+                }
+
+                if (document.getElementById('gastosTotalesDetalle')) {
+                    const totalVentasTexto = Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                    const gananciaTexto = Number(data.gananciaNetaMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                    document.getElementById('gastosTotalesDetalle').textContent = `Ventas $${totalVentasTexto} - Ganancia $${gananciaTexto}`;
+                }
+
+                if (document.getElementById('ventaPromedioDetalle')) {
+                    if (cantidadVentas > 0) {
+                        const totalVentasTexto = Number(data.totalVentasMes ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                        document.getElementById('ventaPromedioDetalle').textContent = `$${totalVentasTexto} ÷ ${cantidadVentas} ventas`;
+                    } else {
+                        document.getElementById('ventaPromedioDetalle').textContent = 'Sin ventas registradas';
+                    }
+                }
             };
 
             const cargarDashboardGeneral = () => {

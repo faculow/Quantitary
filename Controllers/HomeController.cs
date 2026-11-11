@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Quantitary.Models;
@@ -199,104 +198,6 @@ public class HomeController : Controller
             inicio = fin;
             fin = intercambio;
         }
-
-        var ventasTotales = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(d.precioVenta), 0)
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
-
-        var gastosTotales = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(d.costoCompra), 0)
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
-
-        var ventaPromedio = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(AVG(d.precioVenta), 0)
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
-
-        var ganancias = await connection.QuerySingleAsync<decimal>(@"
-            SELECT COALESCE(SUM(d.ganancia), 0)
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
-
-        var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(@"
-            SELECT COALESCE(SUM(d.cantidad), 0)
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
-
-        var ventasDiarias = (await connection.QueryAsync<ChartPoint>(@"
-            SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(d.precioVenta), 0) AS Valor
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY CAST(v.fecha AS date)
-            ORDER BY CAST(v.fecha AS date)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
-
-        var formulaGanancia = ventasTotales - gastosTotales;
-        var margenNeto = ventasTotales == 0 ? 0m : (ganancias / ventasTotales) * 100m;
-
-        var ventaPorSemana = new List<ChartPoint>();
-        var semanaActual = inicio.Date;
-
-        while (semanaActual <= fin.Date)
-        {
-            var semanaFin = semanaActual.AddDays(6) > fin.Date ? fin.Date : semanaActual.AddDays(6);
-
-            var totalSemana = await connection.QuerySingleAsync<decimal>(@"
-                SELECT COALESCE(SUM(d.precioVenta), 0)
-                FROM DetalleVenta d
-                INNER JOIN Ventas v ON v.id = d.ventaID
-                INNER JOIN Productos p ON p.id = d.productoID
-                WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-                  AND v.fecha >= @SemanaInicio AND v.fecha <= @SemanaFin", new
-            {
-                EmpresaId = empresaId,
-                SemanaInicio = semanaActual.Date,
-                SemanaFin = semanaFin.Date.AddDays(1).AddTicks(-1)
-            });
-
-            ventaPorSemana.Add(new ChartPoint
-            {
-                Label = $"{semanaActual:dd/MM} - {semanaFin:dd/MM}",
-                Valor = totalSemana
-            });
-
-            semanaActual = semanaActual.AddDays(7);
-        }
-
-        var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(@"
-            SELECT c.nombre AS Label, COALESCE(SUM(d.ganancia), 0) AS Valor
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY c.nombre
-            ORDER BY Valor DESC", new
-        {
-            EmpresaId = empresaId,
-            Inicio = inicio,
-            Fin = fin
-        })).ToList();
 
         var analisis = await BD.ObtenerAnalisisVentasGananciasAsync(connection, empresaId, inicio, fin);
 

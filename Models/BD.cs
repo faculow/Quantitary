@@ -228,6 +228,32 @@ public static class BD
 
         using var connection = CrearConexion(configuration);
 
+        if (producto.Id > 0)
+        {
+            var idDuplicado = connection.ExecuteScalar<int>(@"
+                SELECT COUNT(1)
+                FROM Productos
+                WHERE id = @Id AND empresaID = @EmpresaID;",
+                new { producto.Id, producto.EmpresaID });
+
+            if (idDuplicado > 0)
+            {
+                throw new ArgumentException($"Ya existe un producto con el ID {producto.Id}. No se permite ingresar IDs duplicados.");
+            }
+        }
+
+        var skuDuplicado = connection.ExecuteScalar<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE empresaID = @EmpresaID
+              AND LOWER(LTRIM(RTRIM(sku))) = LOWER(LTRIM(RTRIM(@Sku)));",
+            new { producto.EmpresaID, producto.Sku });
+
+        if (skuDuplicado > 0)
+        {
+            throw new ArgumentException($"Ya existe un producto con el SKU '{producto.Sku}'.");
+        }
+
         var sql = @"INSERT INTO Productos (empresaID, categoriaID, proveedorID, nombre, sku, descripcion, fechaCarga, precioVenta, costoCompra, activo)
                     VALUES (@EmpresaID, @CategoriaID, @ProveedorID, @Nombre, @Sku, @Descripcion, @FechaCarga, @PrecioVenta, @CostoCompra, @Activo);
                     SELECT CAST(SCOPE_IDENTITY() as int);";
@@ -251,6 +277,46 @@ public static class BD
 
     public static bool ActualizarProducto(IConfiguration configuration, int id, Producto producto)
     {
+        if (string.IsNullOrWhiteSpace(producto.Nombre) || string.IsNullOrWhiteSpace(producto.Sku))
+        {
+            throw new ArgumentException("El nombre y el SKU son obligatorios.");
+        }
+
+        producto.Nombre = producto.Nombre.Trim();
+        producto.Sku = producto.Sku.Trim();
+        producto.Proveedor = producto.Proveedor.Trim();
+
+        if (producto.PrecioVenta <= 0)
+        {
+            throw new ArgumentException($"El producto '{producto.Nombre}' tiene un precio inválido.");
+        }
+
+        using var connection = CrearConexion(configuration);
+
+        var empresaId = connection.ExecuteScalar<int?>(@"
+            SELECT empresaID
+            FROM Productos
+            WHERE id = @Id;",
+            new { Id = id });
+
+        if (!empresaId.HasValue)
+        {
+            return false;
+        }
+
+        var skuDuplicado = connection.ExecuteScalar<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE empresaID = @EmpresaID
+              AND id <> @Id
+              AND LOWER(LTRIM(RTRIM(sku))) = LOWER(LTRIM(RTRIM(@Sku)));",
+            new { EmpresaID = empresaId.Value, Id = id, producto.Sku });
+
+        if (skuDuplicado > 0)
+        {
+            throw new ArgumentException($"No se puede guardar: ya existe otro producto con el SKU '{producto.Sku}'.");
+        }
+
         var sql = @"UPDATE Productos
                     SET nombre = @Nombre,
                         sku = @Sku,
@@ -262,7 +328,6 @@ public static class BD
                         activo = @Activo
                     WHERE id = @Id";
 
-        using var connection = CrearConexion(configuration);
         var filasAfectadas = connection.Execute(sql, new
         {
             producto.Nombre,
@@ -1503,15 +1568,18 @@ public static class BD
 
     public static async Task<AnalisisVentasGananciasData> ObtenerAnalisisVentasGananciasAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
     {
+        var inicioRango = inicio.Date;
+        var finRangoExclusivo = fin.Date.AddDays(1);
+
         var sqlBase = @"
             SELECT COALESCE(SUM(d.precioVenta), 0)
             FROM DetalleVenta d
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo";
 
-        var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+        var ventasTotales = await connection.QuerySingleAsync<decimal>(sqlBase, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo });
 
         var sqlGastos = @"
             SELECT COALESCE(SUM(d.costoCompra), 0)
@@ -1519,9 +1587,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo";
 
-        var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+          var gastosTotales = await connection.QuerySingleAsync<decimal>(sqlGastos, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo });
 
         var sqlPromedio = @"
             SELECT COALESCE(AVG(d.precioVenta), 0)
@@ -1529,9 +1597,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo";
 
-        var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+          var ventaPromedio = await connection.QuerySingleAsync<decimal>(sqlPromedio, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo });
 
         var sqlGanancias = @"
             SELECT COALESCE(SUM(d.ganancia), 0)
@@ -1539,9 +1607,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo";
 
-        var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+          var ganancias = await connection.QuerySingleAsync<decimal>(sqlGanancias, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo });
 
         var sqlCantidadVentas = @"
             SELECT COALESCE(SUM(d.cantidad), 0)
@@ -1549,9 +1617,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin";
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo";
 
-        var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin });
+          var ventasTotalesCantidad = await connection.QuerySingleAsync<int>(sqlCantidadVentas, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo });
 
         var sqlVentasDiarias = @"
             SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(d.precioVenta), 0) AS Valor
@@ -1559,11 +1627,11 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY CAST(v.fecha AS date)
             ORDER BY CAST(v.fecha AS date)";
 
-        var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                var ventasDiarias = (await connection.QueryAsync<ChartPoint>(sqlVentasDiarias, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         var ventaPorSemana = new List<ChartPoint>();
         var semanaActual = inicio.Date;
@@ -1602,11 +1670,11 @@ public static class BD
             INNER JOIN Productos p ON p.id = d.productoID
             LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY c.nombre
             ORDER BY Valor DESC";
 
-        var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(sqlGananciaPorCategoria, new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                var gananciaPorCategoria = (await connection.QueryAsync<ChartPoint>(sqlGananciaPorCategoria, new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         return new AnalisisVentasGananciasData
         {
@@ -1625,6 +1693,9 @@ public static class BD
 
     public static async Task<AnalisisProductoData> ObtenerAnalisisProductoAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
     {
+        var inicioRango = inicio.Date;
+        var finRangoExclusivo = fin.Date.AddDays(1);
+
         var productos = (await connection.QueryAsync<AnalisisProductoRow>(@"
             SELECT p.id AS Id,
                    p.nombre AS Nombre,
@@ -1651,8 +1722,8 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
-            GROUP BY d.productoID", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
+                        GROUP BY d.productoID", new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         var ventasPorMes = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(month, v.fecha) AS Mes,
@@ -1664,9 +1735,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
-            ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                        ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         var interesCompraPorMes = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(month, v.fecha) AS Mes,
@@ -1678,9 +1749,9 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY YEAR(v.fecha), MONTH(v.fecha), DATENAME(month, v.fecha)
-            ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                        ORDER BY YEAR(v.fecha), MONTH(v.fecha)", new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         var ventasSemana = (await connection.QueryAsync<dynamic>(@"
             SELECT DATENAME(weekday, v.fecha) AS Dia,
@@ -1690,7 +1761,7 @@ public static class BD
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-              AND v.fecha >= @Inicio AND v.fecha <= @Fin
+                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY DATENAME(weekday, v.fecha)
             ORDER BY CASE DATENAME(weekday, v.fecha)
                 WHEN 'Monday' THEN 1
@@ -1700,7 +1771,7 @@ public static class BD
                 WHEN 'Friday' THEN 5
                 WHEN 'Saturday' THEN 6
                 WHEN 'Sunday' THEN 7
-                ELSE 8 END", new { EmpresaId = empresaId, Inicio = inicio, Fin = fin })).ToList();
+                                ELSE 8 END", new { EmpresaId = empresaId, Inicio = inicioRango, FinExclusivo = finRangoExclusivo })).ToList();
 
         return new AnalisisProductoData
         {
@@ -2269,6 +2340,127 @@ public static class BD
                                  SET costoCompra = ISNULL(precioCompra, 0)
                                  WHERE costoCompra = 0;");
         }
+
+        connection.Execute(@"
+            DELETE d
+            FROM dbo.DetalleVenta d
+            WHERE d.ventaID IS NULL
+               OR d.productoID IS NULL;
+
+            IF OBJECT_ID('tempdb..#DuplicadosDetalleVenta') IS NOT NULL
+                DROP TABLE #DuplicadosDetalleVenta;
+
+            SELECT
+                MIN(id) AS idConservar,
+                ventaID,
+                productoID,
+                SUM(ISNULL(cantidad, 0)) AS cantidadTotal,
+                SUM(ISNULL(precioVenta, 0)) AS precioVentaTotal,
+                SUM(ISNULL(costoCompra, 0)) AS costoCompraTotal,
+                SUM(ISNULL(ganancia, 0)) AS gananciaTotal,
+                COUNT(*) AS cantidadFilas
+            INTO #DuplicadosDetalleVenta
+            FROM dbo.DetalleVenta
+            GROUP BY ventaID, productoID
+            HAVING COUNT(*) > 1;
+
+            UPDATE d
+            SET d.cantidad = x.cantidadTotal,
+                d.precioVenta = x.precioVentaTotal,
+                d.costoCompra = x.costoCompraTotal,
+                d.ganancia = x.gananciaTotal,
+                d.porcentajeGanancia = CASE
+                    WHEN x.precioVentaTotal = 0 THEN NULL
+                    ELSE ROUND((x.gananciaTotal / x.precioVentaTotal) * 100, 2)
+                END
+            FROM dbo.DetalleVenta d
+            INNER JOIN #DuplicadosDetalleVenta x ON x.idConservar = d.id;
+
+            DELETE d
+            FROM dbo.DetalleVenta d
+            INNER JOIN #DuplicadosDetalleVenta x
+                ON x.ventaID = d.ventaID
+               AND x.productoID = d.productoID
+            WHERE d.id <> x.idConservar;
+
+            DROP TABLE #DuplicadosDetalleVenta;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'UQ_DetalleVenta_Venta_Producto'
+                  AND object_id = OBJECT_ID('dbo.DetalleVenta')
+            )
+            BEGIN
+                CREATE UNIQUE NONCLUSTERED INDEX UQ_DetalleVenta_Venta_Producto
+                    ON dbo.DetalleVenta (ventaID, productoID);
+            END;
+        ");
+
+        connection.Execute(@"
+            IF OBJECT_ID(N'dbo.IAChats', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.IAChats (
+                    Id uniqueidentifier NOT NULL CONSTRAINT PK_IAChats PRIMARY KEY,
+                    UsuarioId int NOT NULL,
+                    EmpresaId int NOT NULL,
+                    Titulo nvarchar(120) NOT NULL,
+                    CreadoEn datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    ActualizadoEn datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
+                );
+            END;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'IX_IAChats_Usuario'
+                  AND object_id = OBJECT_ID('dbo.IAChats')
+            )
+            BEGIN
+                CREATE INDEX IX_IAChats_Usuario
+                    ON dbo.IAChats(UsuarioId, EmpresaId, ActualizadoEn DESC);
+            END;
+
+            IF OBJECT_ID(N'dbo.IAMensajes', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.IAMensajes (
+                    Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_IAMensajes PRIMARY KEY,
+                    ChatId uniqueidentifier NOT NULL,
+                    Rol varchar(16) NOT NULL,
+                    Texto nvarchar(4000) NOT NULL,
+                    CreadoEn datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_IAMensajes_IAChats
+                        FOREIGN KEY(ChatId) REFERENCES dbo.IAChats(Id) ON DELETE CASCADE,
+                    CONSTRAINT CK_IAMensajes_Rol
+                        CHECK (Rol IN ('user', 'assistant'))
+                );
+            END;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'IX_IAMensajes_Chat'
+                  AND object_id = OBJECT_ID('dbo.IAMensajes')
+            )
+            BEGIN
+                CREATE INDEX IX_IAMensajes_Chat
+                    ON dbo.IAMensajes(ChatId, Id);
+            END;
+
+            IF OBJECT_ID(N'dbo.IAAuditoria', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.IAAuditoria (
+                    Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_IAAuditoria PRIMARY KEY,
+                    UsuarioId int NOT NULL,
+                    EmpresaId int NOT NULL,
+                    Accion varchar(30) NOT NULL,
+                    ProductoId int NULL,
+                    Antes nvarchar(1000) NULL,
+                    Despues nvarchar(1000) NULL,
+                    Fecha datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
+                );
+            END;
+        ");
     }
 
 }

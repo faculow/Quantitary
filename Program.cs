@@ -64,7 +64,15 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-BD.GarantizarEsquemaActual(builder.Configuration);
+try
+{
+    BD.GarantizarEsquemaActual(builder.Configuration);
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "Falló la inicialización del esquema de base de datos en el arranque.");
+    throw;
+}
 
 if (!app.Environment.IsDevelopment())
 {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Quantitary.Models;
 
 namespace Quantitary.Controllers;
@@ -171,18 +172,43 @@ public class StockController : Controller
             return redirect;
         }
 
-        var actualizado = _inventoryRepository.ActualizarProducto(id, producto);
-        if (!actualizado)
+        try
         {
-            return NotFound();
-        }
+            var actualizado = _inventoryRepository.ActualizarProducto(id, producto);
+            if (!actualizado)
+            {
+                return NotFound();
+            }
 
-        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                return Json(new { success = true });
+            }
+
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ArgumentException ex)
         {
-            return Json(new { success = true });
-        }
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
 
-        return RedirectToAction(nameof(Index));
+            TempData["MensajeError"] = ex.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+        {
+            const string mensaje = "No se puede guardar el producto porque el SKU ya existe en tu empresa.";
+
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                return BadRequest(new { success = false, message = mensaje });
+            }
+
+            TempData["MensajeError"] = mensaje;
+            return RedirectToAction(nameof(Index));
+        }
     }
 
     [HttpPost]
@@ -220,7 +246,7 @@ public class StockController : Controller
             return redirect;
         }
 
-        return View();
+        return View("ImportarExcel");
     }
 
     [HttpPost]
@@ -322,7 +348,8 @@ public class StockController : Controller
                         existente.StockActual += producto.StockActual;
                         existente.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? existente.Categoria : producto.Categoria;
                         existente.Proveedor = string.IsNullOrWhiteSpace(producto.Proveedor) ? existente.Proveedor : producto.Proveedor;
-                        existente.Precio = producto.Precio > 0 ? producto.Precio : existente.Precio;
+                        existente.PrecioVenta = producto.PrecioVenta > 0 ? producto.PrecioVenta : existente.PrecioVenta;
+                        existente.CostoCompra = producto.CostoCompra > 0 ? producto.CostoCompra : existente.CostoCompra;
                         _inventoryRepository.ActualizarProducto(existente.Id, existente);
                     }
                     else
@@ -351,7 +378,8 @@ public class StockController : Controller
                         existente.Sku = producto.Sku;
                         existente.Categoria = producto.Categoria;
                         existente.Descripcion = producto.Descripcion;
-                        existente.Precio = producto.Precio;
+                        existente.PrecioVenta = producto.PrecioVenta;
+                        existente.CostoCompra = producto.CostoCompra;
                         existente.StockActual = producto.StockActual;
                         existente.StockMinimo = producto.StockMinimo;
                         existente.Proveedor = producto.Proveedor;
@@ -429,7 +457,7 @@ public class StockController : Controller
                 ViewBag.ConflictosPorNombre = importacion.ConflictosPorNombre;
                 ViewBag.ProductosNuevos = importacion.Productos;
                 ViewBag.NombreArchivo = archivo.FileName;
-                return View(nameof(Importar));
+                return View("ImportarExcel");
             }
 
             BorrarImportacionPendiente();

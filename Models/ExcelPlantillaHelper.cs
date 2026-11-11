@@ -35,7 +35,8 @@ public static class ExcelPlantillaHelper
                 "Nombre",
                 "SKU",
                 "Categoria",
-                "Precio",
+                "PrecioCompra",
+                "PrecioVenta",
                 "Proveedor",
                 "StockInicial",
                 "StockMinimo"

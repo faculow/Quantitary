@@ -1,0 +1,177 @@
+@{
+    ViewData["Title"] = "Importar productos desde Excel";
+    var conflictos = ViewBag.Conflictos as System.Collections.IEnumerable ?? Array.Empty<object>();
+    var conflictosPorNombre = ViewBag.ConflictosPorNombre as System.Collections.IEnumerable ?? Array.Empty<object>();
+    var conflictosCount = (ViewBag.Conflictos as System.Collections.ICollection)?.Count ?? 0;
+    var conflictosPorNombreCount = (ViewBag.ConflictosPorNombre as System.Collections.ICollection)?.Count ?? 0;
+}
+
+@if (conflictosCount > 0)
+{
+    <div class="import-conflict-modal show" aria-live="polite">
+        <div class="import-conflict-backdrop"></div>
+        <div class="import-conflict-dialog">
+            <div class="import-conflict-card panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="mb-0">Productos duplicados por SKU</h3>
+                    <a asp-action="Index" class="btn btn-close-modal btn-sm btn-outline-secondary" aria-label="Cerrar">Cerrar</a>
+                </div>
+
+                <div class="alert alert-warning mb-3">
+                    Se encontraron <strong>@conflictosCount</strong> SKU ya cargados. Elegí cómo querés resolverlo.
+                </div>
+
+                <div class="table-responsive mb-3">
+                    <table class="table table-bordered table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Actual</th>
+                                <th>Nuevo</th>
+                                <th>Stock actual</th>
+                                <th>Stock nuevo</th>
+                                <th>Precio compra actual</th>
+                                <th>Precio compra nuevo</th>
+                                <th>Precio venta actual</th>
+                                <th>Precio venta nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (dynamic conflicto in conflictos)
+                            {
+                                <tr>
+                                    <td><strong>@conflicto.Sku</strong></td>
+                                    <td>@conflicto.NombreActual</td>
+                                    <td>@conflicto.NombreNuevo</td>
+                                    <td>@conflicto.StockActual</td>
+                                    <td>@conflicto.StockNuevo</td>
+                                    <td>@conflicto.PrecioCompraActual.ToString("C2")</td>
+                                    <td>@conflicto.PrecioCompraNuevo.ToString("C2")</td>
+                                    <td>@conflicto.PrecioVentaActual.ToString("C2")</td>
+                                    <td>@conflicto.PrecioVentaNuevo.ToString("C2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <form asp-action="ImportarConfirmado" method="post" class="mt-2">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="modo" value="reemplazar" id="modoImportacion" />
+
+                    <div class="d-flex flex-wrap gap-2 justify-content-end">
+                        <button type="submit" class="btn btn-danger" data-modo="cancelar">Cancelar carga</button>
+                        <button type="submit" class="btn btn-warning" data-modo="reemplazar">Reemplazar datos</button>
+                        <button type="submit" class="btn btn-success" data-modo="sumar">Sumar stock</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+else if (conflictosPorNombreCount > 0)
+{
+    <div class="import-conflict-modal show" aria-live="polite">
+        <div class="import-conflict-backdrop"></div>
+        <div class="import-conflict-dialog">
+            <div class="import-conflict-card panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="mb-0">Productos con nombre repetido</h3>
+                    <a asp-action="Index" class="btn btn-close-modal btn-sm btn-outline-secondary" aria-label="Cerrar">Cerrar</a>
+                </div>
+
+                <div class="alert alert-warning mb-3">
+                    Hay productos ya cargados con el mismo nombre. Revisá los coincidencias y renombrá los que quieras importar con un nombre distinto.
+                </div>
+
+                <div class="table-responsive mb-3">
+                    <table class="table table-bordered table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Nombre importado</th>
+                                <th>Coincidencias actuales</th>
+                                <th>Nuevo nombre</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (dynamic conflicto in conflictosPorNombre)
+                            {
+                                <tr>
+                                    <td><strong>@conflicto.Sku</strong></td>
+                                    <td>@conflicto.NombreImportado</td>
+                                    <td>
+                                        @foreach (dynamic item in conflicto.ProductosCoincidentes)
+                                        {
+                                            <div class="small">@item.Nombre (@item.Sku)</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control" name="nuevosNombres" value="@conflicto.NombreSugerido" />
+                                        <input type="hidden" name="skusRenombradas" value="@conflicto.Sku" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <form asp-action="ImportarConfirmado" method="post" class="mt-2">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="modo" value="renombrar" id="modoImportacionNombre" />
+
+                    <div class="d-flex flex-wrap gap-2 justify-content-end">
+                        <button type="submit" class="btn btn-danger" data-modo="cancelar">Cancelar carga</button>
+                        <button type="submit" class="btn btn-primary" data-modo="renombrar">Renombrar e importar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="panel">
+        <h2>Importar catálogo desde Excel</h2>
+
+        <div class="alert alert-info">
+            <strong>Formato esperado:</strong> el archivo debe tener en la primera fila los encabezados:<br />
+            Nombre, SKU, Categoria, PrecioCompra, PrecioVenta, Proveedor
+        </div>
+
+        <div class="mb-3">
+            <a asp-controller="Stock" asp-action="DescargarPlantillaProductos" class="btn btn-primary">
+                Descargar Excel vacío
+            </a>
+        </div>
+
+        <form asp-action="Importar" method="post" enctype="multipart/form-data" class="row g-3">
+            @Html.AntiForgeryToken()
+            <div class="col-md-8">
+                <label class="form-label">Archivo Excel</label>
+                <input type="file" name="archivo" class="form-control" accept=".xlsx,.xls" required />
+            </div>
+
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-success w-100">Importar</button>
+            </div>
+        </form>
+
+        <div class="mt-4">
+            <a asp-action="Index" class="btn btn-secondary">Volver a stock</a>
+        </div>
+    </div>
+}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('[data-modo]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const input = document.getElementById('modoImportacion') || document.getElementById('modoImportacionNombre');
+                if (input) {
+                    input.value = button.getAttribute('data-modo');
+                }
+            });
+        });
+    });
+</script>

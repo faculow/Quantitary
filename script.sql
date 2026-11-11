@@ -192,8 +192,67 @@ BEGIN
         CONSTRAINT [PK_DetalleVenta] PRIMARY KEY CLUSTERED ([id] ASC),
         CONSTRAINT [CK_DetalleVenta_Cantidad_Positive] CHECK ([cantidad] > 0),
         CONSTRAINT [CK_DetalleVenta_Precio_Positive] CHECK ([precioVenta] >= 0),
-        CONSTRAINT [CK_DetalleVenta_Costo_Positive] CHECK ([costoCompra] >= 0)
+        CONSTRAINT [CK_DetalleVenta_Costo_Positive] CHECK ([costoCompra] >= 0),
+        CONSTRAINT [UQ_DetalleVenta_Venta_Producto] UNIQUE NONCLUSTERED ([ventaID], [productoID])
     ) ON [PRIMARY];
+END;
+GO
+
+-- Ajuste para bases ya existentes: consolidar duplicados y crear unicidad por venta+producto
+DELETE d
+FROM dbo.DetalleVenta d
+WHERE d.ventaID IS NULL
+   OR d.productoID IS NULL;
+GO
+
+IF OBJECT_ID('tempdb..#DuplicadosDetalleVenta') IS NOT NULL
+    DROP TABLE #DuplicadosDetalleVenta;
+
+SELECT
+    MIN(id) AS idConservar,
+    ventaID,
+    productoID,
+    SUM(ISNULL(cantidad, 0)) AS cantidadTotal,
+    SUM(ISNULL(precioVenta, 0)) AS precioVentaTotal,
+    SUM(ISNULL(costoCompra, 0)) AS costoCompraTotal,
+    SUM(ISNULL(ganancia, 0)) AS gananciaTotal,
+    COUNT(*) AS cantidadFilas
+INTO #DuplicadosDetalleVenta
+FROM dbo.DetalleVenta
+GROUP BY ventaID, productoID
+HAVING COUNT(*) > 1;
+
+UPDATE d
+SET d.cantidad = x.cantidadTotal,
+    d.precioVenta = x.precioVentaTotal,
+    d.costoCompra = x.costoCompraTotal,
+    d.ganancia = x.gananciaTotal,
+    d.porcentajeGanancia = CASE
+        WHEN x.precioVentaTotal = 0 THEN NULL
+        ELSE ROUND((x.gananciaTotal / x.precioVentaTotal) * 100, 2)
+    END
+FROM dbo.DetalleVenta d
+INNER JOIN #DuplicadosDetalleVenta x ON x.idConservar = d.id;
+
+DELETE d
+FROM dbo.DetalleVenta d
+INNER JOIN #DuplicadosDetalleVenta x
+    ON x.ventaID = d.ventaID
+   AND x.productoID = d.productoID
+WHERE d.id <> x.idConservar;
+
+DROP TABLE #DuplicadosDetalleVenta;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'UQ_DetalleVenta_Venta_Producto'
+      AND object_id = OBJECT_ID('dbo.DetalleVenta')
+)
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX UQ_DetalleVenta_Venta_Producto
+        ON dbo.DetalleVenta (ventaID, productoID);
 END;
 GO
 
@@ -254,96 +313,162 @@ GO
 -- FKs: integridad referencial explícita
 -- ============================================================
 
+-- Reemplazo forzado de FKs conflictivas por rutas múltiples de cascade
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Categoria')
+    ALTER TABLE [dbo].[Productos] DROP CONSTRAINT [FK_Productos_Categoria];
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Proveedor')
+    ALTER TABLE [dbo].[Productos] DROP CONSTRAINT [FK_Productos_Proveedor];
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Ventas_Usuarios')
+    ALTER TABLE [dbo].[Ventas] DROP CONSTRAINT [FK_Ventas_Usuarios];
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_DetalleVenta_Productos')
+    ALTER TABLE [dbo].[DetalleVenta] DROP CONSTRAINT [FK_DetalleVenta_Productos];
+GO
+
 -- Empresa relacionada
-ALTER TABLE [dbo].[Categoria] WITH CHECK ADD CONSTRAINT [FK_Categoria_Empresa]
-    FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Categoria_Empresa')
+BEGIN
+    ALTER TABLE [dbo].[Categoria] WITH CHECK ADD CONSTRAINT [FK_Categoria_Empresa]
+        FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Categoria] CHECK CONSTRAINT [FK_Categoria_Empresa];
-GO
-
-ALTER TABLE [dbo].[Proveedores] WITH CHECK ADD CONSTRAINT [FK_Proveedores_Empresa]
-    FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
-GO
-ALTER TABLE [dbo].[Proveedores] CHECK CONSTRAINT [FK_Proveedores_Empresa];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Categoria_Empresa')
+    ALTER TABLE [dbo].[Categoria] CHECK CONSTRAINT [FK_Categoria_Empresa];
 GO
 
-ALTER TABLE [dbo].[Rol] WITH CHECK ADD CONSTRAINT [FK_Rol_Permisos]
-    FOREIGN KEY([permisoID]) REFERENCES [dbo].[Permisos] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Proveedores_Empresa')
+BEGIN
+    ALTER TABLE [dbo].[Proveedores] WITH CHECK ADD CONSTRAINT [FK_Proveedores_Empresa]
+        FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Rol] CHECK CONSTRAINT [FK_Rol_Permisos];
-GO
-
-ALTER TABLE [dbo].[Usuarios] WITH CHECK ADD CONSTRAINT [FK_Usuarios_Empresa]
-    FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
-GO
-ALTER TABLE [dbo].[Usuarios] CHECK CONSTRAINT [FK_Usuarios_Empresa];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Proveedores_Empresa')
+    ALTER TABLE [dbo].[Proveedores] CHECK CONSTRAINT [FK_Proveedores_Empresa];
 GO
 
-ALTER TABLE [dbo].[Usuarios] WITH CHECK ADD CONSTRAINT [FK_Usuarios_Rol]
-    FOREIGN KEY([rolID]) REFERENCES [dbo].[Rol] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Rol_Permisos')
+BEGIN
+    ALTER TABLE [dbo].[Rol] WITH CHECK ADD CONSTRAINT [FK_Rol_Permisos]
+        FOREIGN KEY([permisoID]) REFERENCES [dbo].[Permisos] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Usuarios] CHECK CONSTRAINT [FK_Usuarios_Rol];
-GO
-
-ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Empresa]
-    FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
-GO
-ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Empresa];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Rol_Permisos')
+    ALTER TABLE [dbo].[Rol] CHECK CONSTRAINT [FK_Rol_Permisos];
 GO
 
-ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Categoria]
-    FOREIGN KEY([categoriaID]) REFERENCES [dbo].[Categoria] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Usuarios_Empresa')
+BEGIN
+    ALTER TABLE [dbo].[Usuarios] WITH CHECK ADD CONSTRAINT [FK_Usuarios_Empresa]
+        FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Categoria];
-GO
-
-ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Proveedor]
-    FOREIGN KEY([proveedorID]) REFERENCES [dbo].[Proveedores] ([id])
-    ON UPDATE CASCADE ON DELETE SET NULL;
-GO
-ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Proveedor];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Usuarios_Empresa')
+    ALTER TABLE [dbo].[Usuarios] CHECK CONSTRAINT [FK_Usuarios_Empresa];
 GO
 
-ALTER TABLE [dbo].[Stock] WITH CHECK ADD CONSTRAINT [FK_Stock_Productos]
-    FOREIGN KEY([productoID]) REFERENCES [dbo].[Productos] ([id])
-    ON UPDATE CASCADE ON DELETE CASCADE;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Usuarios_Rol')
+BEGIN
+    ALTER TABLE [dbo].[Usuarios] WITH CHECK ADD CONSTRAINT [FK_Usuarios_Rol]
+        FOREIGN KEY([rolID]) REFERENCES [dbo].[Rol] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Stock] CHECK CONSTRAINT [FK_Stock_Productos];
-GO
-
-ALTER TABLE [dbo].[Ventas] WITH CHECK ADD CONSTRAINT [FK_Ventas_Empresa]
-    FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
-GO
-ALTER TABLE [dbo].[Ventas] CHECK CONSTRAINT [FK_Ventas_Empresa];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Usuarios_Rol')
+    ALTER TABLE [dbo].[Usuarios] CHECK CONSTRAINT [FK_Usuarios_Rol];
 GO
 
-ALTER TABLE [dbo].[Ventas] WITH CHECK ADD CONSTRAINT [FK_Ventas_Usuarios]
-    FOREIGN KEY([usuarioID]) REFERENCES [dbo].[Usuarios] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Empresa')
+BEGIN
+    ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Empresa]
+        FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[Ventas] CHECK CONSTRAINT [FK_Ventas_Usuarios];
-GO
-
-ALTER TABLE [dbo].[DetalleVenta] WITH CHECK ADD CONSTRAINT [FK_DetalleVenta_Ventas]
-    FOREIGN KEY([ventaID]) REFERENCES [dbo].[Ventas] ([id])
-    ON UPDATE CASCADE ON DELETE CASCADE;
-GO
-ALTER TABLE [dbo].[DetalleVenta] CHECK CONSTRAINT [FK_DetalleVenta_Ventas];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Empresa')
+    ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Empresa];
 GO
 
-ALTER TABLE [dbo].[DetalleVenta] WITH CHECK ADD CONSTRAINT [FK_DetalleVenta_Productos]
-    FOREIGN KEY([productoID]) REFERENCES [dbo].[Productos] ([id])
-    ON UPDATE CASCADE ON DELETE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Categoria')
+BEGIN
+    ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Categoria]
+        FOREIGN KEY([categoriaID]) REFERENCES [dbo].[Categoria] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
 GO
-ALTER TABLE [dbo].[DetalleVenta] CHECK CONSTRAINT [FK_DetalleVenta_Productos];
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Categoria')
+    ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Categoria];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Proveedor')
+BEGIN
+    ALTER TABLE [dbo].[Productos] WITH CHECK ADD CONSTRAINT [FK_Productos_Proveedor]
+        FOREIGN KEY([proveedorID]) REFERENCES [dbo].[Proveedores] ([id])
+        ON UPDATE NO ACTION ON DELETE SET NULL;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Productos_Proveedor')
+    ALTER TABLE [dbo].[Productos] CHECK CONSTRAINT [FK_Productos_Proveedor];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Stock_Productos')
+BEGIN
+    ALTER TABLE [dbo].[Stock] WITH CHECK ADD CONSTRAINT [FK_Stock_Productos]
+        FOREIGN KEY([productoID]) REFERENCES [dbo].[Productos] ([id])
+        ON UPDATE NO ACTION ON DELETE CASCADE;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Stock_Productos')
+    ALTER TABLE [dbo].[Stock] CHECK CONSTRAINT [FK_Stock_Productos];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Ventas_Empresa')
+BEGIN
+    ALTER TABLE [dbo].[Ventas] WITH CHECK ADD CONSTRAINT [FK_Ventas_Empresa]
+        FOREIGN KEY([empresaID]) REFERENCES [dbo].[Empresa] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Ventas_Empresa')
+    ALTER TABLE [dbo].[Ventas] CHECK CONSTRAINT [FK_Ventas_Empresa];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Ventas_Usuarios')
+BEGIN
+    ALTER TABLE [dbo].[Ventas] WITH CHECK ADD CONSTRAINT [FK_Ventas_Usuarios]
+        FOREIGN KEY([usuarioID]) REFERENCES [dbo].[Usuarios] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Ventas_Usuarios')
+    ALTER TABLE [dbo].[Ventas] CHECK CONSTRAINT [FK_Ventas_Usuarios];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_DetalleVenta_Ventas')
+BEGIN
+    ALTER TABLE [dbo].[DetalleVenta] WITH CHECK ADD CONSTRAINT [FK_DetalleVenta_Ventas]
+        FOREIGN KEY([ventaID]) REFERENCES [dbo].[Ventas] ([id])
+        ON UPDATE NO ACTION ON DELETE CASCADE;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_DetalleVenta_Ventas')
+    ALTER TABLE [dbo].[DetalleVenta] CHECK CONSTRAINT [FK_DetalleVenta_Ventas];
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_DetalleVenta_Productos')
+BEGIN
+    ALTER TABLE [dbo].[DetalleVenta] WITH CHECK ADD CONSTRAINT [FK_DetalleVenta_Productos]
+        FOREIGN KEY([productoID]) REFERENCES [dbo].[Productos] ([id])
+        ON UPDATE NO ACTION ON DELETE NO ACTION;
+END;
+GO
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_DetalleVenta_Productos')
+    ALTER TABLE [dbo].[DetalleVenta] CHECK CONSTRAINT [FK_DetalleVenta_Productos];
 GO
 
 -- ============================================================

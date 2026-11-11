@@ -2,6 +2,13 @@
 @{
     ViewData["Title"] = "Indicadores y oportunidades";
     var resumenProgramado = TempData["ReporteProgramado"] as string;
+    var categoriaDisponible = !string.IsNullOrWhiteSpace(Model.CategoriaMasVentas) && !string.Equals(Model.CategoriaMasVentas, "Sin datos", StringComparison.OrdinalIgnoreCase);
+    var proximoPaso = !string.IsNullOrWhiteSpace(Model.MensajePersonalizadoProximoPaso)
+        ? Model.MensajePersonalizadoProximoPaso
+        : Model.ExplicacionesIndicadores.FirstOrDefault();
+    var mostrarProximoPaso = Model.TotalProductos > 0
+        && !string.IsNullOrWhiteSpace(proximoPaso)
+        && !string.Equals(proximoPaso, "Sin datos", StringComparison.OrdinalIgnoreCase);
 }
 
 <div class="dashboard-indicadores compact-dashboard">
@@ -41,13 +48,14 @@
         <div class="col-lg-3 col-md-6">
             <div class="kpi-tile kpi-warning">
                 <div class="kpi-label">Interés</div>
-                <div class="kpi-value">@Model.RelacionInteresCompra</div>
+                <div class="kpi-value small kpi-interest-value">@Model.RelacionInteresCompra</div>
             </div>
         </div>
         <div class="col-lg-3 col-md-6">
             <div class="kpi-tile kpi-info">
                 <div class="kpi-label">Categoría</div>
                 <div class="kpi-value small">@Model.CategoriaMasVentas</div>
+                <div class="kpi-sub">@(categoriaDisponible ? "Lidera las ventas" : "Aún sin datos de ventas")</div>
             </div>
         </div>
     </div>
@@ -186,7 +194,10 @@
         <div class="mini-help">
             <div><strong>Más vendido:</strong> @Model.ProductoMayorRotacion</div>
             <div><strong>Más ventas:</strong> @Model.CategoriaMasVentas</div>
-            <div><strong>Próximo paso:</strong> @Model.MensajePersonalizadoProximoPaso</div>
+            @if (mostrarProximoPaso)
+            {
+                <div><strong>Próximo paso:</strong> @proximoPaso</div>
+            }
         </div>
     </div>
 </div>
