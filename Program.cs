@@ -66,7 +66,7 @@ var app = builder.Build();
 
 try
 {
-    BD.GarantizarEsquemaActual(builder.Configuration);
+    //BD.GarantizarEsquemaActual(builder.Configuration);
 }
 catch (Exception ex)
 {

@@ -90,7 +90,7 @@ public class HomeController : Controller
         var nombreEmpresa = HttpContext.Session.GetString("NombreEmpresa") ?? "Mi empresa";
         ViewBag.NombreUsuario = nombre;
         ViewBag.NombreEmpresa = nombreEmpresa;
-        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("todos", empresaId);
+        ViewBag.Dashboard = _inventoryRepository.ObtenerDashboard("mes", empresaId);
         ViewBag.UltimaVentaTimestamp = HttpContext.Session.GetString("UltimaVentaTimestamp");
         return View("Home");
     }

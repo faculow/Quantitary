@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>false</UseAppHost>
     <UserSecretsId>quantitary-ia-integracion-2026</UserSecretsId>
   </PropertyGroup>
 
@@ -15,5 +16,16 @@
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
   </ItemGroup>
+
+  <Target Name="ReleaseLockedQuantitaryBinary" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="taskkill /F /IM Quantitary.exe /T" IgnoreExitCode="true" ContinueOnError="true" />
+    <Delete Files="$(OutputPath)Quantitary.exe;$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\apphost.exe" ContinueOnError="true" />
+  </Target>
+
+  <Target Name="ForceDisableAppHost" BeforeTargets="_GetAppHostCreationConfiguration">
+    <PropertyGroup>
+      <UseAppHost>false</UseAppHost>
+    </PropertyGroup>
+  </Target>
 
 </Project>

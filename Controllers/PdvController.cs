@@ -225,33 +225,50 @@ public class PdvController : Controller
 
         using var connection = BD.CrearConexion(_configuration);
         connection.Open();
+        using var transaction = connection.BeginTransaction();
 
-        foreach (var item in carrito)
+        try
         {
-            var producto = _productoRepository.BuscarPorId(item.ProductoId);
-            if (producto == null)
+            foreach (var item in carrito)
             {
-                TempData["PdvError"] = $"El producto {item.Nombre} ya no existe.";
-                return RedirectToAction(nameof(Index));
+                var producto = _productoRepository.BuscarPorId(item.ProductoId);
+                if (producto == null)
+                {
+                    TempData["PdvError"] = $"El producto {item.Nombre} ya no existe.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                if (producto.StockActual < item.Cantidad)
+                {
+                    TempData["PdvError"] = $"No hay suficiente stock de {producto.Nombre}.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                var precioVentaTotal = item.PrecioUnitario * item.Cantidad;
+                var precioCompraTotal = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad;
+                var porcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m;
+
+                var ventaId = BD.RegistroVentaAsync(connection, producto.Id, producto.Nombre, metodo, item.Cantidad, precioVentaTotal, precioCompraTotal, usuarioId.Value, empresaId, transaction).GetAwaiter().GetResult();
+
+                var filasDetalle = BD.InsertarDetalleVentaAsync(connection, ventaId, producto.Id, item.Cantidad, precioVentaTotal, precioCompraTotal, porcentajeGanancia, precioVentaTotal - precioCompraTotal, transaction).GetAwaiter().GetResult();
+
+                if (filasDetalle <= 0)
+                {
+                    throw new InvalidOperationException($"No se pudo guardar el detalle de la venta para {producto.Nombre}.");
+                }
+
+                producto.StockActual -= item.Cantidad;
+                producto.CantidadVentas += item.Cantidad;
+                _productoRepository.ActualizarProducto(producto.Id, producto);
             }
 
-            if (producto.StockActual < item.Cantidad)
-            {
-                TempData["PdvError"] = $"No hay suficiente stock de {producto.Nombre}.";
-                return RedirectToAction(nameof(Index));
-            }
-
-            var precioVentaTotal = item.PrecioUnitario * item.Cantidad;
-            var precioCompraTotal = (producto.CostoCompra > 0 ? producto.CostoCompra : producto.Precio) * item.Cantidad;
-            var porcentajeGanancia = producto.CostoCompra > 0 ? ((item.PrecioUnitario - producto.CostoCompra) / producto.CostoCompra) * 100m : 0m;
-
-            var ventaId = BD.RegistroVentaAsync(connection, producto.Id, producto.Nombre, metodo, item.Cantidad, precioVentaTotal, precioCompraTotal, usuarioId.Value, empresaId).Result;
-
-            BD.InsertarDetalleVentaAsync(connection, ventaId, producto.Id, item.Cantidad, precioVentaTotal, precioCompraTotal, porcentajeGanancia, precioVentaTotal - precioCompraTotal).Wait();
-
-            producto.StockActual -= item.Cantidad;
-            producto.CantidadVentas += item.Cantidad;
-            _productoRepository.ActualizarProducto(producto.Id, producto);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            TempData["PdvError"] = "No se pudo completar la venta. Inténtalo nuevamente.";
+            return RedirectToAction(nameof(Index));
         }
 
         HttpContext.Session.SetString("UltimaVentaTimestamp", DateTime.Now.ToString("O"));

@@ -460,13 +460,7 @@ public static class BD
     public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var rangoNormalizado = (range ?? "todos").Trim();
-        var fechaInicioUsada = fechaInicio ?? ObtenerFechaInicioPorRango(rangoNormalizado);
-        var fechaFinUsada = fechaFin ?? (rangoNormalizado.Equals("todos", StringComparison.OrdinalIgnoreCase) ? DateTime.Now.AddYears(10) : DateTime.Now);
-
-        if (fechaFinUsada.TimeOfDay == TimeSpan.Zero)
-        {
-            fechaFinUsada = fechaFinUsada.Date.AddDays(1).AddTicks(-1);
-        }
+        var (fechaInicioUsada, fechaFinUsada) = NormalizarRangoFechas(rangoNormalizado, fechaInicio, fechaFin);
         var empresaIdNormalizada = empresaId is > 0 ? empresaId : null;
         var ventas = ObtenerVentasPorRango(configuration, rangoNormalizado, empresaIdNormalizada, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada);
 
@@ -533,95 +527,105 @@ public static class BD
     private static DateTime ObtenerFechaInicioPorRango(string range)
     {
         var rangoNormalizado = (range ?? "todos").Trim();
+        var ahora = DateTime.Now;
 
         return rangoNormalizado.ToLowerInvariant() switch
         {
-            "dia" => DateTime.Now.AddDays(-1),
-            "semana" => DateTime.Now.AddDays(-7),
-            "mes" => DateTime.Now.AddMonths(-1),
-            "anio" or "año" => DateTime.Now.AddYears(-1),
-            "todos" => DateTime.Now.AddYears(-10),
-            _ => DateTime.Now.AddYears(-10)
+            "dia" => ahora.Date,
+            "semana" => ahora.Date.AddDays(-((int)ahora.DayOfWeek == 0 ? 6 : (int)ahora.DayOfWeek - 1)),
+            "mes" => new DateTime(ahora.Year, ahora.Month, 1),
+            "anio" or "año" => new DateTime(ahora.Year, 1, 1),
+            "todos" => ahora.AddYears(-10),
+            _ => ahora.AddYears(-10)
         };
+    }
+
+    private static (DateTime Inicio, DateTime Fin) NormalizarRangoFechas(string range, DateTime? fechaInicio, DateTime? fechaFin)
+    {
+        var finDiaActual = DateTime.Today.AddDays(1).AddTicks(-1);
+        var inicio = (fechaInicio ?? ObtenerFechaInicioPorRango(range)).Date;
+        var finBase = fechaFin ?? finDiaActual;
+
+        if (finBase > finDiaActual)
+        {
+            finBase = finDiaActual;
+        }
+
+        var fin = finBase.TimeOfDay == TimeSpan.Zero
+            ? finBase.Date.AddDays(1).AddTicks(-1)
+            : finBase;
+
+        if (fin > finDiaActual)
+        {
+            fin = finDiaActual;
+        }
+
+        if (fin < inicio)
+        {
+            var intercambio = inicio;
+            inicio = fin.Date;
+            fin = intercambio;
+
+            if (fin.TimeOfDay == TimeSpan.Zero)
+            {
+                fin = fin.Date.AddDays(1).AddTicks(-1);
+            }
+
+            if (fin > finDiaActual)
+            {
+                fin = finDiaActual;
+            }
+        }
+
+        return (inicio, fin);
     }
 
     private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var rangoNormalizado = (range ?? "todos").Trim();
-        var fechaInicioUsada = fechaInicio ?? ObtenerFechaInicioPorRango(rangoNormalizado);
-        var fechaFinUsada = fechaFin ?? (rangoNormalizado.Equals("todos", StringComparison.OrdinalIgnoreCase) ? DateTime.Now.AddYears(10) : DateTime.Now);
+        var (fechaInicioUsada, fechaFinUsada) = NormalizarRangoFechas(rangoNormalizado, fechaInicio, fechaFin);
+        var nombreProductoNormalizado = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim();
+        var skuNormalizado = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim();
+        var categoriaNormalizada = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim();
 
-        if (fechaFinUsada.TimeOfDay == TimeSpan.Zero)
-        {
-            fechaFinUsada = fechaFinUsada.Date.AddDays(1).AddTicks(-1);
-        }
+        var fechaFinExclusiva = fechaFinUsada.AddTicks(1);
 
         using var connection = CrearConexion(configuration);
-                var columnaMontoVenta = ExisteColumna(connection, "Ventas", "totalVenta")
-                        ? "v.totalVenta"
-                        : (ExisteColumna(connection, "Ventas", "precio") ? "v.precio" : "0");
-
-                var sql = $@"WITH VentasDetalladas AS
-                                        (
-                                                SELECT v.id AS Id,
-                                                             d.productoID AS ProductoId,
-                                                             p.nombre AS NombreProducto,
-                                                             p.sku AS Sku,
-                                                             c.nombre AS Categoria,
-                                                             v.fecha AS Fecha,
-                                                             v.metodoPago AS MetodoPago,
-                                                             SUM(d.cantidad) AS Cantidad,
-                                                             SUM(d.precioVenta) AS Precio,
-                                                             SUM(d.costoCompra) AS Costo
-                                                FROM Ventas v
-                                                INNER JOIN DetalleVenta d ON d.ventaID = v.id
-                                                INNER JOIN Productos p ON p.id = d.productoID
-                                                LEFT JOIN Categoria c ON c.id = p.categoriaID
-                                                WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                                                    AND v.fecha >= @FechaInicio
-                                                    AND v.fecha <= @FechaFin
-                                                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                                                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                                                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
-                                                GROUP BY v.id, d.productoID, p.nombre, p.sku, c.nombre, v.fecha, v.metodoPago
-                                        ),
-                                        VentasSinDetalle AS
-                                        (
-                                                SELECT v.id AS Id,
-                                                             0 AS ProductoId,
-                                                             'Venta sin detalle' AS NombreProducto,
-                                                             '-' AS Sku,
-                                                             'Sin detalle' AS Categoria,
-                                                             v.fecha AS Fecha,
-                                                             v.metodoPago AS MetodoPago,
-                                                             1 AS Cantidad,
-                                                             CAST(ISNULL({columnaMontoVenta}, 0) AS decimal(18,2)) AS Precio,
-                                                             CAST(0 AS decimal(18,2)) AS Costo
-                                                FROM Ventas v
-                                                WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                                                    AND v.fecha >= @FechaInicio
-                                                    AND v.fecha <= @FechaFin
-                                                    AND @NombreProducto IS NULL
-                                                    AND @Sku IS NULL
-                                                    AND @Categoria IS NULL
-                                                    AND NOT EXISTS (SELECT 1 FROM DetalleVenta d WHERE d.ventaID = v.id)
-                                        )
-                                        SELECT Id, ProductoId, NombreProducto, Sku, Categoria, Fecha, MetodoPago, Cantidad, Precio, Costo
-                                        FROM VentasDetalladas
-                                        UNION ALL
-                                        SELECT Id, ProductoId, NombreProducto, Sku, Categoria, Fecha, MetodoPago, Cantidad, Precio, Costo
-                                        FROM VentasSinDetalle
-                                        ORDER BY Fecha DESC";
+        const string sql = @"
+SELECT
+    v.id AS Id,
+    d.productoID AS ProductoId,
+    p.nombre AS NombreProducto,
+    p.sku AS Sku,
+    c.nombre AS Categoria,
+    v.fecha AS Fecha,
+    v.metodoPago AS MetodoPago,
+    d.cantidad AS Cantidad,
+    d.precioVenta AS Precio,
+    d.costoCompra AS Costo
+FROM dbo.Ventas v
+INNER JOIN dbo.DetalleVenta d ON d.ventaID = v.id
+INNER JOIN dbo.Productos p ON p.id = d.productoID
+LEFT JOIN dbo.Categoria c ON c.id = p.categoriaID
+WHERE v.fecha >= @FechaInicio
+  AND v.fecha <  @FechaFinExclusiva
+  AND (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+  AND (@NombreProducto IS NULL OR p.nombre LIKE @NombreProductoLike)
+  AND (@Sku IS NULL OR p.sku = @Sku)
+  AND (@Categoria IS NULL OR c.nombre = @Categoria)
+ORDER BY v.fecha DESC
+OPTION (RECOMPILE);";
 
         return connection.Query<VentaRegistro>(sql, new
         {
             EmpresaId = empresaId,
             FechaInicio = fechaInicioUsada,
-            FechaFin = fechaFinUsada,
-            NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-            Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-        }).ToList();
+            FechaFinExclusiva = fechaFinExclusiva,
+            NombreProducto = nombreProductoNormalizado,
+            NombreProductoLike = nombreProductoNormalizado == null ? null : $"%{nombreProductoNormalizado}%",
+            Sku = skuNormalizado,
+            Categoria = categoriaNormalizada
+        }, commandTimeout: 120).ToList();
     }
 
     public static bool Registrarse(Usuario usuario, IConfiguration configuration)
@@ -728,14 +732,6 @@ public static class BD
             connection.Execute(
                 "UPDATE Usuarios SET empresaID = @EmpresaId WHERE id = @UsuarioId AND empresaID <> @EmpresaId",
                 new { UsuarioId = usuario.Id, EmpresaId = empresaIdForzado });
-
-            connection.Execute(
-                @"UPDATE v
-                  SET empresaID = @EmpresaId
-                  FROM Ventas v
-                  WHERE v.usuarioID = @UsuarioId
-                    AND (v.empresaID IS NULL OR v.empresaID <> @EmpresaId)",
-                new { UsuarioId = usuario.Id, EmpresaId = empresaIdForzado });
         }
 
         var empresa = connection.QuerySingleOrDefault<Empresa>(
@@ -807,8 +803,9 @@ public static class BD
     private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
         var rangoNormalizado = (range ?? "todos").Trim();
-        var inicio = (fechaInicio ?? fecha).Date;
-        var fin = (fechaFin ?? DateTime.Now).Date;
+        var (inicioRango, finRango) = NormalizarRangoFechas(rangoNormalizado, fechaInicio ?? fecha, fechaFin);
+        var inicio = inicioRango.Date;
+        var fin = finRango.Date;
 
         if (fin < inicio)
         {
@@ -820,35 +817,17 @@ public static class BD
                 decimal ObtenerTotal(DateTime desde, DateTime hasta)
         {
             using var connection = CrearConexion(configuration);
-                        var columnaMontoVenta = ExisteColumna(connection, "Ventas", "totalVenta")
-                                ? "v.totalVenta"
-                                : (ExisteColumna(connection, "Ventas", "precio") ? "v.precio" : "0");
-
             return connection.QuerySingleOrDefault<decimal?>(
-                                $@"SELECT COALESCE(SUM(t.Monto), 0)
-                                     FROM (
-                                             SELECT SUM(d.precioVenta) AS Monto
-                                             FROM DetalleVenta d
-                                             INNER JOIN Ventas v ON v.id = d.ventaID
-                                             INNER JOIN Productos p ON p.id = d.productoID
-                                             LEFT JOIN Categoria c ON c.id = p.categoriaID
-                                             WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                                                 AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                                                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                                                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                                                 AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
-
-                                             UNION ALL
-
-                                             SELECT SUM(CAST(ISNULL({columnaMontoVenta}, 0) AS decimal(18,2))) AS Monto
-                                             FROM Ventas v
-                                             WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
-                                                 AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                                                 AND @NombreProducto IS NULL
-                                                 AND @Sku IS NULL
-                                                 AND @Categoria IS NULL
-                                                 AND NOT EXISTS (SELECT 1 FROM DetalleVenta d WHERE d.ventaID = v.id)
-                                     ) t",
+                @"SELECT COALESCE(SUM(d.precioVenta), 0)
+                  FROM DetalleVenta d
+                  INNER JOIN Ventas v ON v.id = d.ventaID
+                  INNER JOIN Productos p ON p.id = d.productoID
+                  LEFT JOIN Categoria c ON c.id = p.categoriaID
+                                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                    AND v.fecha >= @Desde AND v.fecha <= @Hasta
+                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
+                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
+                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))",
                 new
                 {
                     EmpresaId = empresaId,
@@ -970,8 +949,7 @@ public static class BD
 
     private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
-        var inicio = fechaInicio ?? fecha;
-        var fin = fechaFin ?? DateTime.Now;
+        var (inicio, fin) = NormalizarRangoFechas(range, fechaInicio ?? fecha, fechaFin);
 
         using var connection = CrearConexion(configuration);
         var rows = connection.Query<(string Nombre, decimal Valor)>(
@@ -980,7 +958,7 @@ public static class BD
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-              WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -1006,8 +984,7 @@ public static class BD
 
     private static List<DashboardCategoryShare> ObtenerParticipacionVentas(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
     {
-        var inicio = fechaInicio ?? fecha;
-        var fin = fechaFin ?? DateTime.Now;
+        var (inicio, fin) = NormalizarRangoFechas(range, fechaInicio ?? fecha, fechaFin);
 
         using var connection = CrearConexion(configuration);
         var rows = connection.Query<(string Nombre, decimal Valor)>(
@@ -1016,7 +993,7 @@ public static class BD
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-              WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -1946,7 +1923,7 @@ public static class BD
             new { Mail = mail, Nombre = nombre, Usuario = usuarioActual });
     }
 
-    public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId)
+    public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId, IDbTransaction? transaction = null)
     {
         var parametros = new
         {
@@ -1970,16 +1947,16 @@ public static class BD
                     (productoId, nombreProducto, empresaID, usuarioID, fecha, metodoPago, cantidad, precio, costo, totalVenta, observacion)
                 VALUES
                     (@ProductoId, @NombreProducto, @EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @TotalVenta, @Observacion);
-                SELECT CAST(SCOPE_IDENTITY() as int);", parametros);
+                SELECT CAST(SCOPE_IDENTITY() as int);", parametros, transaction);
         }
 
         return await connection.ExecuteScalarAsync<int>(@"
             INSERT INTO Ventas (empresaID, usuarioID, fecha, metodoPago, totalVenta, observacion)
             VALUES (@EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @TotalVenta, @Observacion);
-            SELECT CAST(SCOPE_IDENTITY() as int);", parametros);
+            SELECT CAST(SCOPE_IDENTITY() as int);", parametros, transaction);
     }
 
-    public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia)
+    public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia, IDbTransaction? transaction = null)
     {
         var parametros = new
         {
@@ -1998,12 +1975,12 @@ public static class BD
                 INSERT INTO DetalleVenta
                     (ventaID, productoID, cantidad, precioVenta, precioCompra, costoCompra, porcentajeGanancia, ganancia)
                 VALUES
-                    (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros);
+                    (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros, transaction);
         }
 
         return await connection.ExecuteAsync(@"
             INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
-            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros);
+            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros, transaction);
     }
 
     public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
@@ -2432,49 +2409,6 @@ public static class BD
         }
 
         connection.Execute(@"
-            DELETE d
-            FROM dbo.DetalleVenta d
-            WHERE d.ventaID IS NULL
-               OR d.productoID IS NULL;
-
-            IF OBJECT_ID('tempdb..#DuplicadosDetalleVenta') IS NOT NULL
-                DROP TABLE #DuplicadosDetalleVenta;
-
-            SELECT
-                MIN(id) AS idConservar,
-                ventaID,
-                productoID,
-                SUM(ISNULL(cantidad, 0)) AS cantidadTotal,
-                SUM(ISNULL(precioVenta, 0)) AS precioVentaTotal,
-                SUM(ISNULL(costoCompra, 0)) AS costoCompraTotal,
-                SUM(ISNULL(ganancia, 0)) AS gananciaTotal,
-                COUNT(*) AS cantidadFilas
-            INTO #DuplicadosDetalleVenta
-            FROM dbo.DetalleVenta
-            GROUP BY ventaID, productoID
-            HAVING COUNT(*) > 1;
-
-            UPDATE d
-            SET d.cantidad = x.cantidadTotal,
-                d.precioVenta = x.precioVentaTotal,
-                d.costoCompra = x.costoCompraTotal,
-                d.ganancia = x.gananciaTotal,
-                d.porcentajeGanancia = CASE
-                    WHEN x.precioVentaTotal = 0 THEN NULL
-                    ELSE ROUND((x.gananciaTotal / x.precioVentaTotal) * 100, 2)
-                END
-            FROM dbo.DetalleVenta d
-            INNER JOIN #DuplicadosDetalleVenta x ON x.idConservar = d.id;
-
-            DELETE d
-            FROM dbo.DetalleVenta d
-            INNER JOIN #DuplicadosDetalleVenta x
-                ON x.ventaID = d.ventaID
-               AND x.productoID = d.productoID
-            WHERE d.id <> x.idConservar;
-
-            DROP TABLE #DuplicadosDetalleVenta;
-
             IF NOT EXISTS (
                 SELECT 1
                 FROM sys.indexes
@@ -2482,6 +2416,49 @@ public static class BD
                   AND object_id = OBJECT_ID('dbo.DetalleVenta')
             )
             BEGIN
+                DELETE d
+                FROM dbo.DetalleVenta d
+                WHERE d.ventaID IS NULL
+                   OR d.productoID IS NULL;
+
+                IF OBJECT_ID('tempdb..#DuplicadosDetalleVenta') IS NOT NULL
+                    DROP TABLE #DuplicadosDetalleVenta;
+
+                SELECT
+                    MIN(id) AS idConservar,
+                    ventaID,
+                    productoID,
+                    SUM(ISNULL(cantidad, 0)) AS cantidadTotal,
+                    SUM(ISNULL(precioVenta, 0)) AS precioVentaTotal,
+                    SUM(ISNULL(costoCompra, 0)) AS costoCompraTotal,
+                    SUM(ISNULL(ganancia, 0)) AS gananciaTotal,
+                    COUNT(*) AS cantidadFilas
+                INTO #DuplicadosDetalleVenta
+                FROM dbo.DetalleVenta
+                GROUP BY ventaID, productoID
+                HAVING COUNT(*) > 1;
+
+                UPDATE d
+                SET d.cantidad = x.cantidadTotal,
+                    d.precioVenta = x.precioVentaTotal,
+                    d.costoCompra = x.costoCompraTotal,
+                    d.ganancia = x.gananciaTotal,
+                    d.porcentajeGanancia = CASE
+                        WHEN x.precioVentaTotal = 0 THEN NULL
+                        ELSE ROUND((x.gananciaTotal / x.precioVentaTotal) * 100, 2)
+                    END
+                FROM dbo.DetalleVenta d
+                INNER JOIN #DuplicadosDetalleVenta x ON x.idConservar = d.id;
+
+                DELETE d
+                FROM dbo.DetalleVenta d
+                INNER JOIN #DuplicadosDetalleVenta x
+                    ON x.ventaID = d.ventaID
+                   AND x.productoID = d.productoID
+                WHERE d.id <> x.idConservar;
+
+                DROP TABLE #DuplicadosDetalleVenta;
+
                 CREATE UNIQUE NONCLUSTERED INDEX UQ_DetalleVenta_Venta_Producto
                     ON dbo.DetalleVenta (ventaID, productoID);
             END;
@@ -2549,6 +2526,44 @@ public static class BD
                     Despues nvarchar(1000) NULL,
                     Fecha datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
                 );
+            END;
+        ");
+
+        connection.Execute(@"
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'IX_Ventas_Fecha_Id'
+                  AND object_id = OBJECT_ID('dbo.Ventas')
+            )
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_Ventas_Fecha_Id
+                    ON dbo.Ventas (fecha, id)
+                    INCLUDE (metodoPago);
+            END;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'IX_DetalleVenta_VentaId_ProductoId'
+                  AND object_id = OBJECT_ID('dbo.DetalleVenta')
+            )
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_DetalleVenta_VentaId_ProductoId
+                    ON dbo.DetalleVenta (ventaID, productoID)
+                    INCLUDE (cantidad, precioVenta, costoCompra);
+            END;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = 'IX_Productos_Empresa_Id'
+                  AND object_id = OBJECT_ID('dbo.Productos')
+            )
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_Productos_Empresa_Id
+                    ON dbo.Productos (empresaID, id)
+                    INCLUDE (nombre, sku, categoriaID);
             END;
         ");
     }
