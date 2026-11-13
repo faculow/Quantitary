@@ -188,6 +188,7 @@
   // y se pierde al recargar la página).
   var turns = [];            // intercambios completos: [{role, text}, ...]
   var lastStockComparisonChart = null;
+  var lastProductReference = null;
   var hasSentMessage = false;
   var busy = false;
   var sessionId = 0;         // cambia con "Nuevo chat" para descartar respuestas viejas
@@ -1033,10 +1034,12 @@
     var asksHow = /^(como|donde|puedo|podes|se puede|que pasa|que necesito|cual es)/.test(normalizedQuestion);
     var skuMatch = text.match(/sku\s*[:#-]?\s*([a-z0-9._-]+)/i);
     var initialSku = skuMatch ? skuMatch[1] : '';
+    var deletionVerb = /\b(elimina(?:r|me|lo|la)?|borra(?:r|me|lo|la)?|saca(?:r|me|lo|la)?|quita(?:r|me|lo|la)?)\b/.test(intentText);
+    var deletionProduct = /\b(producto|articulo|item|sku|catalogo)\b/.test(intentText);
+    var deletionSearch = deletionSearchFromText(text);
     var requestsCreation = /\b(crea(?:r|me)?|agrega(?:r|me)?|carga(?:r|me)?|registra(?:r|me)?|alta|nuevo)\b/.test(intentText) &&
       /\b(producto|articulo|item)\b/.test(intentText) && !/\b(no|sin)\s+(crear|agregar|cargar|registrar)\b/.test(intentText);
-    var requestsDeletion = /\b(elimina(?:r|me)?|borra(?:r|me)?|saca(?:r|me)?|quita(?:r|me)?)\b/.test(intentText) &&
-      /\b(producto|articulo|item|sku|catalogo)\b/.test(intentText);
+    var requestsDeletion = deletionVerb && (deletionProduct || deletionSearch !== '' || lastProductReference !== null);
     if (!image && !isRetry && !asksHow && requestsCreation) {
       addMessage('user', text);
       addMessage('assistant', 'Sí, podés crearlo desde acá. Completá los datos básicos y revisalos antes de guardarlo.');
@@ -1045,8 +1048,11 @@
     }
     if (!image && !isRetry && !asksHow && requestsDeletion) {
       addMessage('user',text);
-      addMessage('assistant','Abrí la eliminación segura. Identificá el producto por SKU y revisá las dos confirmaciones antes de eliminarlo.');
-      manageProduct('eliminar', '', initialSku);
+      if (!initialSku && !deletionSearch && lastProductReference) initialSku = lastProductReference.sku;
+      addMessage('assistant', initialSku
+        ? 'Abrí la eliminación segura con el producto que ya identificamos. Podés cambiar el SKU antes de continuar.'
+        : 'Abrí la eliminación segura. Buscá el producto por nombre o escribí su SKU y revisá las dos confirmaciones.');
+      manageProduct('eliminar', deletionSearch, initialSku);
       return;
     }
     if (!image && !isRetry && !asksHow && /\b(cre[aá]|agreg[aá]|nuevo producto|modific[aá]|cambi[aá]|sub[ií]|baj[aá]|aument[aá])\b/i.test(text) && /producto|sku|precio|stock/i.test(text)) {
@@ -1128,8 +1134,12 @@
             statusEl.textContent = 'Escribiendo…';
             await addAssistantMessageProgressively(result.reply);
           }
+          var replyProduct = rememberProductReference(result.reply);
           renderBlocks(result.tables, result.charts);
           renderActions(result.actions);
+          if (responsePreparedDeleteForm(result.reply)) {
+            manageProduct('eliminar', '', replyProduct ? replyProduct.sku : '');
+          }
           loadHistory().catch(function () {});
         } else {
           showError(result.message);
@@ -1173,6 +1183,7 @@
     sessionId++;
     turns = [];
     lastStockComparisonChart = null;
+    lastProductReference = null;
     hasSentMessage = false;
     pendingRequest = null;
     clearAttachment();
@@ -1250,6 +1261,7 @@
       var role = r.role === 'user' ? 'user' : 'assistant';
       addMessage(role, r.text || '');
       if (role === 'assistant') {
+        rememberProductReference(r.text || '');
         renderBlocks(
           Array.isArray(r.tables) ? r.tables : [],
           Array.isArray(r.charts) ? r.charts : []
@@ -1306,8 +1318,33 @@
     label.appendChild(field); parent.appendChild(label);
     return field;
   }
+
+  function deletionSearchFromText(text) {
+    var value = String(text || '').trim();
+    value = value.replace(/^\s*(?:por favor\s+)?(?:(?:quiero|necesito|podes|podrias|puedes)\s+)?(?:elimina(?:r|me|lo|la)?|borra(?:r|me|lo|la)?|saca(?:r|me|lo|la)?|quita(?:r|me|lo|la)?)\b\s*/i, '');
+    value = value.replace(/^\s*(?:(?:el|la|este|esta|un|una)\s+)?(?:producto|art[ií]culo|[ií]tem)\b\s*/i, '');
+    value = value.replace(/\bpor favor\b[.!?]*\s*$/i, '').trim();
+    if (/^(?:lo|la|este|esta|ese|esa)?$/i.test(value)) return '';
+    return value.slice(0, 150);
+  }
+
+  function rememberProductReference(text) {
+    var source = String(text || '');
+    var matches = Array.from(source.matchAll(/(?:\(\s*SKU\s+|\bSKU\s*[:#]\s*)([A-Za-z0-9._-]+)\s*\)?/gi));
+    if (!matches.length) return null;
+    lastProductReference = { sku: matches[matches.length - 1][1] };
+    return lastProductReference;
+  }
+
+  function responsePreparedDeleteForm(text) {
+    var value = normalizedChartText(String(text || ''));
+    return /formulario/.test(value) && /elimin|borr/.test(value);
+  }
+
   function manageProduct(initialType, initialName, initialSku) {
     removeSuggestions();
+    messagesEl.querySelectorAll('.ia-product-form').forEach(function (current) { current.remove(); });
+    api('/api/ia/productos/cancelar', 'POST').catch(function () {});
     var dedicatedCreate = initialType === 'crear';
     var dedicatedDelete = initialType === 'eliminar';
     var form = createEl('form', 'ia-product-form');
@@ -1324,8 +1361,15 @@
     select.value = initialType || 'crear';
     select.hidden = dedicatedCreate || dedicatedDelete;
     form.appendChild(select);
-    var nombre = formRow(form, 'Nombre', 'nombre', 'text', initialName || '');
+    var nombre = formRow(form, dedicatedDelete ? 'Producto (nombre o SKU)' : 'Nombre', 'nombre', 'text', initialName || '');
     var sku = formRow(form, 'SKU exacto', 'sku', 'text', initialSku || '');
+    var productMatches = createEl('select');
+    productMatches.hidden = true;
+    var productMatchHelp = createEl('p', 'form-intro', dedicatedDelete
+      ? 'Buscá por nombre para completar el SKU automáticamente. Igual podés editarlo antes de revisar.'
+      : '');
+    productMatchHelp.hidden = !dedicatedDelete;
+    form.append(productMatches, productMatchHelp);
     var categoria = formRow(form, 'Categoría (opcional)', 'categoria', 'text');
     var precio = formRow(form, dedicatedCreate ? 'Precio de venta' : 'Precio nuevo / inicial', 'precio', 'number');
     var stock = formRow(form, dedicatedCreate ? 'Stock inicial (opcional)' : 'Stock nuevo / inicial', 'stock', 'number');
@@ -1352,7 +1396,10 @@
 
     function updateFields() {
       var creating = select.value === 'crear';
-      nombre.parentElement.hidden = !creating;
+      var deleting = select.value === 'eliminar';
+      nombre.parentElement.hidden = !(creating || deleting);
+      productMatchHelp.hidden = !deleting;
+      if (!deleting) productMatches.hidden = true;
       advancedToggle.hidden = !creating;
       advanced.hidden = !creating;
       precio.parentElement.hidden = select.value === 'stock' || select.value === 'eliminar';
@@ -1363,6 +1410,63 @@
       stock.required = select.value === 'stock';
     }
     select.addEventListener('change', updateFields); updateFields();
+
+    var searchTimer = null;
+    var searchVersion = 0;
+    function chooseProduct(item) {
+      nombre.value = item.nombre || '';
+      sku.value = item.sku || '';
+      productMatches.hidden = true;
+      productMatchHelp.textContent = 'Encontrado: ' + nombre.value + ' · SKU ' + sku.value + '. Podés cambiar el SKU antes de continuar.';
+    }
+    async function searchProduct(query) {
+      var term = String(query || '').trim();
+      if (!dedicatedDelete || term.length < 2) return;
+      var version = ++searchVersion;
+      productMatchHelp.textContent = 'Buscando el producto…';
+      try {
+        var response = await api('/api/ia/productos/buscar?q=' + encodeURIComponent(term));
+        if (version !== searchVersion) return;
+        var products = Array.isArray(response.productos) ? response.productos : [];
+        productMatches.textContent = '';
+        if (products.length === 1) {
+          chooseProduct(products[0]);
+          return;
+        }
+        if (!products.length) {
+          productMatches.hidden = true;
+          productMatchHelp.textContent = 'No encontré una coincidencia única. Probá con otro nombre o escribí el SKU manualmente.';
+          return;
+        }
+        var placeholder = createEl('option', '', 'Elegí uno de los productos encontrados');
+        placeholder.value = '';
+        productMatches.appendChild(placeholder);
+        products.forEach(function (item, index) {
+          var option = createEl('option', '', item.nombre + ' · SKU ' + item.sku);
+          option.value = String(index);
+          productMatches.appendChild(option);
+        });
+        productMatches.hidden = false;
+        productMatchHelp.textContent = 'Encontré varias coincidencias. Elegí el producto correcto para completar el SKU.';
+        productMatches.onchange = function () {
+          var index = Number(productMatches.value);
+          if (Number.isInteger(index) && products[index]) chooseProduct(products[index]);
+        };
+      } catch (error) {
+        if (version !== searchVersion) return;
+        productMatches.hidden = true;
+        productMatchHelp.textContent = error.message || 'No pude buscar el producto. Podés escribir el SKU manualmente.';
+      }
+    }
+    nombre.addEventListener('input', function () {
+      if (!dedicatedDelete) return;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { searchProduct(nombre.value); }, 350);
+    });
+    sku.addEventListener('change', function () {
+      if (dedicatedDelete && sku.value.trim().length >= 2) searchProduct(sku.value);
+    });
+    if (dedicatedDelete && (initialSku || initialName)) searchProduct(initialSku || initialName);
     var actions = createEl('div', 'form-actions');
     var close = createEl('button', 'secondary', 'Cancelar'); close.type='button';
     var button = createEl('button', '', dedicatedCreate ? 'Revisar producto' : dedicatedDelete ? 'Revisar eliminación' : 'Revisar operación'); button.type='submit';

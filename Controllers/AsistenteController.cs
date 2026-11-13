@@ -168,6 +168,14 @@ public sealed class AsistenteController : Controller
         catch (UnauthorizedAccessException) { return Forbid(); }
     }
 
+    [HttpGet("/api/ia/productos/buscar")]
+    public async Task<IActionResult> BuscarProducto([FromQuery] string? q)
+    {
+        var s = Sesion(); if (s is null) return Unauthorized();
+        try { return Ok(new { productos = await _producto.BuscarProductos(s.Value.Usuario, s.Value.Empresa, q) }); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+    }
+
     public sealed record ConfirmacionRequest(string? Token);
     private sealed record Pendiente(string Token, IAProductoSql.Solicitud Solicitud, int Usuario, int Empresa, int Paso, DateTime Vence, string Vista);
 
