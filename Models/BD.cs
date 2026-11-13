@@ -1319,7 +1319,7 @@ OPTION (RECOMPILE);";
     {
         using var connection = CrearConexion(configuration);
         return (await connection.QueryAsync<IAMensaje>(@"
-            SELECT m.Rol, m.Texto AS Text
+            SELECT m.Rol, m.Texto AS Text, m.ContenidoJson
             FROM IAMensajes m
             INNER JOIN IAChats c ON c.Id = m.ChatId
             WHERE m.ChatId = @ChatId
@@ -1329,7 +1329,7 @@ OPTION (RECOMPILE);";
             new { ChatId = chat, Usuario = usuario, Empresa = empresa })).ToList();
     }
 
-    public static async Task GuardarIntercambioAsync(IConfiguration configuration, Guid chat, int usuario, int empresa, string pregunta, string respuesta, string? tituloSugerido)
+    public static async Task GuardarIntercambioAsync(IConfiguration configuration, Guid chat, int usuario, int empresa, string pregunta, string respuesta, string? tituloSugerido, string? contenidoJson)
     {
         using var connection = CrearConexion(configuration);
         var tituloNormalizado = string.IsNullOrWhiteSpace(tituloSugerido) ? null : tituloSugerido.Trim();
@@ -1338,8 +1338,8 @@ OPTION (RECOMPILE);";
             INSERT INTO IAMensajes (ChatId, Rol, Texto)
             VALUES (@ChatId, 'user', @Pregunta);
 
-            INSERT INTO IAMensajes (ChatId, Rol, Texto)
-            VALUES (@ChatId, 'assistant', @Respuesta);
+            INSERT INTO IAMensajes (ChatId, Rol, Texto, ContenidoJson)
+            VALUES (@ChatId, 'assistant', @Respuesta, @ContenidoJson);
 
             UPDATE IAChats
             SET ActualizadoEn = SYSUTCDATETIME(),
@@ -1359,6 +1359,7 @@ OPTION (RECOMPILE);";
                 Empresa = empresa,
                 Pregunta = pregunta,
                 Respuesta = respuesta,
+                ContenidoJson = contenidoJson,
                 TituloSugerido = tituloNormalizado
             });
     }
@@ -1631,6 +1632,7 @@ OPTION (RECOMPILE);";
     {
         public string? Rol { get; set; }
         public string? Text { get; set; }
+        public string? ContenidoJson { get; set; }
     }
 
     public static async Task<AnalisisVentasGananciasData> ObtenerAnalisisVentasGananciasAsync(IDbConnection connection, int empresaId, DateTime inicio, DateTime fin)
@@ -2495,12 +2497,19 @@ OPTION (RECOMPILE);";
                     ChatId uniqueidentifier NOT NULL,
                     Rol varchar(16) NOT NULL,
                     Texto nvarchar(4000) NOT NULL,
+                    ContenidoJson nvarchar(max) NULL,
                     CreadoEn datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
                     CONSTRAINT FK_IAMensajes_IAChats
                         FOREIGN KEY(ChatId) REFERENCES dbo.IAChats(Id) ON DELETE CASCADE,
                     CONSTRAINT CK_IAMensajes_Rol
                         CHECK (Rol IN ('user', 'assistant'))
                 );
+            END;
+
+            IF COL_LENGTH(N'dbo.IAMensajes', N'ContenidoJson') IS NULL
+            BEGIN
+                ALTER TABLE dbo.IAMensajes
+                    ADD ContenidoJson nvarchar(max) NULL;
             END;
 
             IF NOT EXISTS (

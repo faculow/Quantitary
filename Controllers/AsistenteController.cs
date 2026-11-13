@@ -56,7 +56,7 @@ public sealed class AsistenteController : Controller
             var local = await _local.Resolver(usuarioId.Value, empresaId.Value, request);
             if (local is not null)
             {
-                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, message, local.Reply!, local.ChatTitle);
+                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, message, local);
                 return Ok(local);
             }
 
@@ -68,7 +68,7 @@ public sealed class AsistenteController : Controller
             if (resultado.Ok && resultado.Reply is not null)
             {
                 var preguntaGuardada = safeImage is null ? message : $"{message} [Imagen adjunta: {safeImage.FileName}]";
-                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, preguntaGuardada, resultado.Reply, resultado.ChatTitle);
+                await _historial.GuardarIntercambio(chatId, usuarioId.Value, empresaId.Value, preguntaGuardada, resultado);
             }
             return StatusCode(resultado.Error?.Code switch
             {

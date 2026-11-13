@@ -18,8 +18,16 @@ public static class AiChatLimits
     public const int MaxImageEdge = 1600;
 }
 
-/// <summary>Un turno del historial. Role: "user" o "assistant".</summary>
-public sealed record ChatTurn(string? Role, string? Text);
+/// <summary>
+/// Un turno del historial. Los bloques enriquecidos son opcionales para que
+/// los mensajes anteriores, que solo guardaban texto, sigan siendo compatibles.
+/// </summary>
+public sealed record ChatTurn(
+    string? Role,
+    string? Text,
+    List<ChatTable>? Tables = null,
+    List<ChatChart>? Charts = null,
+    List<ChatAction>? Actions = null);
 
 /// <summary>Solicitud que envía el navegador a POST /api/chat.</summary>
 public sealed record ChatImage(string? MediaType, string? Base64Data, string? FileName, int Width, int Height);

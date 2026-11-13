@@ -1096,7 +1096,7 @@
 
         typingRow.remove();
         if (result.ok) {
-          // En el historial se guarda el texto; la imagen no se conserva ni se vuelve a facturar.
+          // El servidor conserva texto, tablas, gráficos y acciones. La imagen no se vuelve a enviar ni facturar.
           turns.push({ role: 'user', text: text || '[Imagen adjunta]' }, { role: 'assistant', text: result.reply });
           pendingRequest = null;
           if (result.reply) {
@@ -1224,6 +1224,13 @@
     rows.forEach(function (r) {
       var role = r.role === 'user' ? 'user' : 'assistant';
       addMessage(role, r.text || '');
+      if (role === 'assistant') {
+        renderBlocks(
+          Array.isArray(r.tables) ? r.tables : [],
+          Array.isArray(r.charts) ? r.charts : []
+        );
+        renderActions(Array.isArray(r.actions) ? r.actions : []);
+      }
       turns.push({ role: role, text: r.text || '' });
     });
     hasSentMessage = rows.length > 0;
