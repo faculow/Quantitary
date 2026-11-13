@@ -4,6 +4,9 @@
     var conflictosPorNombre = ViewBag.ConflictosPorNombre as System.Collections.IEnumerable ?? Array.Empty<object>();
     var conflictosCount = (ViewBag.Conflictos as System.Collections.ICollection)?.Count ?? 0;
     var conflictosPorNombreCount = (ViewBag.ConflictosPorNombre as System.Collections.ICollection)?.Count ?? 0;
+    var esUsuarioDemo = ViewBag.EsUsuarioDemo is bool valorDemo && valorDemo;
+    var cantidadProductosDemo = ViewBag.CantidadProductosDemo is int cantidadDemo ? cantidadDemo : 0;
+    var claseCatalogoDemo = cantidadProductosDemo > 0 ? "alert-success" : "alert-warning";
 }
 
 @if (conflictosCount > 0)
@@ -134,20 +137,36 @@ else
     <div class="panel">
         <h2>Importar catálogo desde Excel</h2>
 
+        @if (esUsuarioDemo)
+        {
+            <div class="alert @claseCatalogoDemo d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <strong>Catálogo demo integrado</strong><br />
+                    @if (cantidadProductosDemo > 0)
+                    {
+                        <span>Esta cuenta ya tiene @cantidadProductosDemo productos cargados con stock, alertas y ventas históricas.</span>
+                    }
+                    else
+                    {
+                        <span>No se encontraron los productos demo. Ejecutá el script.sql actualizado para cargarlos.</span>
+                    }
+                </div>
+                @if (cantidadProductosDemo > 0)
+                {
+                    <a asp-action="Index" class="btn btn-success">Ver productos demo</a>
+                }
+            </div>
+        }
+
         <div class="alert alert-info">
             <strong>Formato esperado:</strong> el archivo debe tener en la primera fila los encabezados:<br />
             Nombre, SKU, Categoria, PrecioCompra, PrecioVenta, Proveedor.<br />
             <span class="small">También puede incluir StockInicial y StockMinimo.</span>
         </div>
 
-        <div class="mb-3 d-flex flex-wrap gap-2">
+        <div class="mb-3">
             <a asp-controller="Stock" asp-action="DescargarPlantillaProductos" class="btn btn-primary">
                 Descargar Excel vacío
-            </a>
-            <a href="@Url.Content("~/archivos/Productos_Demo_Expo.xlsx")"
-               class="btn btn-outline-primary"
-               download="Productos_Demo_Expo.xlsx">
-                Descargar Excel demo
             </a>
         </div>
 

@@ -66,6 +66,23 @@ public class StockController : Controller
         return null;
     }
 
+    private void PrepararEstadoCatalogoDemo()
+    {
+        var nombreUsuario = HttpContext.Session.GetString("NombreUsuario");
+        if (!string.Equals(nombreUsuario, "Usuario Demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var empresaId = BD.ObtenerEmpresaIdActual(_inventoryRepository.GetConfiguration(), HttpContext);
+        var cantidadProductos = empresaId > 0
+            ? _inventoryRepository.ObtenerProductos(null, null, empresaId).Count
+            : 0;
+
+        ViewBag.EsUsuarioDemo = true;
+        ViewBag.CantidadProductosDemo = cantidadProductos;
+    }
+
     [HttpGet]
     public IActionResult DescargarPlantillaProductos()
     {
@@ -246,6 +263,7 @@ public class StockController : Controller
             return redirect;
         }
 
+        PrepararEstadoCatalogoDemo();
         return View("ImportarExcel");
     }
 
@@ -457,6 +475,7 @@ public class StockController : Controller
                 ViewBag.ConflictosPorNombre = importacion.ConflictosPorNombre;
                 ViewBag.ProductosNuevos = importacion.Productos;
                 ViewBag.NombreArchivo = archivo.FileName;
+                PrepararEstadoCatalogoDemo();
                 return View("ImportarExcel");
             }
 
