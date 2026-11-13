@@ -9,6 +9,257 @@ namespace Quantitary.Models;
 
 public static class BD
 {
+    public static int ObtenerEmpresaIdActual(IConfiguration configuration, HttpContext httpContext)
+    {
+        var empresaId = httpContext.Session.GetInt32("EmpresaID");
+        if (empresaId.HasValue && empresaId.Value > 0)
+        {
+            return empresaId.Value;
+        }
+
+        var usuarioId = httpContext.Session.GetInt32("UsuarioID");
+        if (!usuarioId.HasValue || usuarioId.Value <= 0)
+        {
+            return 0;
+        }
+
+        using var connection = CrearConexion(configuration);
+        var empresa = connection.QuerySingleOrDefault<int?>(@"
+            SELECT empresaID
+            FROM Usuarios
+            WHERE id = @UsuarioId;",
+            new { UsuarioId = usuarioId.Value });
+
+        if (empresa.HasValue && empresa.Value > 0)
+        {
+            httpContext.Session.SetInt32("EmpresaID", empresa.Value);
+        }
+
+        return empresa ?? 0;
+    }
+
+    public static int? ObtenerUsuarioLogueadoID(HttpContext httpContext)
+    {
+        return httpContext.Session.GetInt32("UsuarioID");
+    }
+
+    public static bool IniciarSesion(string mail, string contrasena, HttpContext httpContext, IConfiguration configuration)
+    {
+        var correo = (mail ?? string.Empty).Trim();
+        var clave = contrasena ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(correo) || string.IsNullOrWhiteSpace(clave))
+        {
+            return false;
+        }
+
+        using var connection = CrearConexion(configuration);
+        var usuario = connection.QuerySingleOrDefault<UsuarioSesion>(@"
+            SELECT TOP 1 u.id AS Id,
+                         u.nombreUsuario AS NombreUsuario,
+                         u.empresaID AS EmpresaId,
+                         e.nombre AS NombreEmpresa
+            FROM Usuarios u
+            INNER JOIN Empresa e ON e.id = u.empresaID
+            WHERE LOWER(LTRIM(RTRIM(u.mail))) = LOWER(LTRIM(RTRIM(@Mail)))
+              AND u.contrasena = @Contrasena;",
+            new { Mail = correo, Contrasena = clave });
+
+        if (usuario == null)
+        {
+            return false;
+        }
+
+        httpContext.Session.SetInt32("UsuarioID", usuario.Id);
+        httpContext.Session.SetInt32("EmpresaID", usuario.EmpresaId);
+        httpContext.Session.SetString("NombreUsuario", usuario.NombreUsuario ?? string.Empty);
+        httpContext.Session.SetString("NombreEmpresa", usuario.NombreEmpresa ?? string.Empty);
+
+        return true;
+    }
+
+    private sealed class UsuarioSesion
+    {
+        public int Id { get; set; }
+        public string NombreUsuario { get; set; } = string.Empty;
+        public int EmpresaId { get; set; }
+        public string NombreEmpresa { get; set; } = string.Empty;
+    }
+
+    public static bool Registrarse(Usuario usuario, IConfiguration configuration)
+    {
+        if (usuario == null)
+        {
+            return false;
+        }
+
+        var mail = (usuario.Mail ?? string.Empty).Trim();
+        var nombreUsuario = (usuario.NombreUsuario ?? string.Empty).Trim();
+        var nombreEmpresa = (usuario.NombreEmpresa ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(mail)
+            || string.IsNullOrWhiteSpace(nombreUsuario)
+            || string.IsNullOrWhiteSpace(nombreEmpresa)
+            || string.IsNullOrWhiteSpace(usuario.Contrasena))
+        {
+            return false;
+        }
+
+        using var connection = CrearConexion(configuration);
+
+        var empresaExiste = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Empresa
+            WHERE LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)));",
+            new { Nombre = nombreEmpresa });
+
+        int empresaId;
+        if (empresaExiste.HasValue)
+        {
+            empresaId = empresaExiste.Value;
+        }
+        else
+        {
+            empresaId = connection.QuerySingle<int>(@"
+                INSERT INTO Empresa (nombre)
+                VALUES (@Nombre);
+                SELECT CAST(SCOPE_IDENTITY() AS int);",
+                new { Nombre = nombreEmpresa });
+        }
+
+        var yaExisteMail = connection.ExecuteScalar<int>(@"
+            SELECT COUNT(1)
+            FROM Usuarios
+            WHERE LOWER(LTRIM(RTRIM(mail))) = LOWER(LTRIM(RTRIM(@Mail)));",
+            new { Mail = mail });
+
+        if (yaExisteMail > 0)
+        {
+            return false;
+        }
+
+        var rolId = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Rol
+            WHERE empresaID = @EmpresaId
+            ORDER BY id;",
+            new { EmpresaId = empresaId });
+
+        if (!rolId.HasValue)
+        {
+            var permisosId = connection.QuerySingle<int>(@"
+                INSERT INTO Permisos (registrarVentas, verHistorialVentas, anularVentas, verProductos, crearProductos, editarProductos, eliminarProductos, verStock, verDashboard, gestionarUsuarios, verGanacia)
+                VALUES (1,1,1,1,1,1,1,1,1,1,1);
+                SELECT CAST(SCOPE_IDENTITY() AS int);");
+
+            rolId = connection.QuerySingle<int>(@"
+                INSERT INTO Rol (empresaID, nombre, permisoID)
+                VALUES (@EmpresaId, @Nombre, @PermisoId);
+                SELECT CAST(SCOPE_IDENTITY() AS int);",
+                new { EmpresaId = empresaId, Nombre = "Administrador", PermisoId = permisosId });
+        }
+
+        connection.Execute(@"
+            INSERT INTO Usuarios (nombreUsuario, contrasena, mail, numeroTelefono, empresaID, rolID)
+            VALUES (@NombreUsuario, @Contrasena, @Mail, @Telefono, @EmpresaId, @RolId);",
+            new
+            {
+                NombreUsuario = nombreUsuario,
+                Contrasena = usuario.Contrasena,
+                Mail = mail,
+                Telefono = usuario.NumeroTelefono,
+                EmpresaId = empresaId,
+                RolId = rolId.Value
+            });
+
+        return true;
+    }
+
+    public static void CerrarSesion(HttpContext httpContext)
+    {
+        httpContext.Session.Clear();
+    }
+
+    public static bool TieneProductos(IConfiguration configuration, int empresaId)
+    {
+        using var connection = CrearConexion(configuration);
+        return connection.ExecuteScalar<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE empresaID = @EmpresaId;",
+            new { EmpresaId = empresaId }) > 0;
+    }
+
+    public static bool EliminarProducto(IConfiguration configuration, int id)
+    {
+        using var connection = CrearConexion(configuration);
+        connection.Execute("DELETE FROM Stock WHERE productoID = @Id", new { Id = id });
+        var filas = connection.Execute("DELETE FROM Productos WHERE id = @Id", new { Id = id });
+        return filas > 0;
+    }
+
+    public static bool AgregarStock(IConfiguration configuration, int id, int cantidad, decimal precioUnitario)
+    {
+        using var connection = CrearConexion(configuration);
+        var existe = connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Stock WHERE productoID = @Id", new { Id = id });
+
+        if (existe.HasValue)
+        {
+            return connection.Execute(@"
+                UPDATE Stock
+                SET cantidad = cantidad + @Cantidad,
+                    actualizadoEn = @ActualizadoEn
+                WHERE productoID = @Id;",
+                new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
+        }
+
+        return connection.Execute(@"
+            INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+            VALUES (@Id, @Cantidad, 0, 1, @ActualizadoEn);",
+            new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
+    }
+
+    public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
+    {
+        using var connection = CrearConexion(configuration);
+
+        var totalProductos = connection.ExecuteScalar<int>(@"
+            SELECT COUNT(1)
+            FROM Productos
+            WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId);",
+            new { EmpresaId = empresaId == 0 ? null : empresaId });
+
+        var totalStock = connection.ExecuteScalar<int?>(@"
+            SELECT ISNULL(SUM(s.cantidad), 0)
+            FROM Stock s
+            INNER JOIN Productos p ON p.id = s.productoID
+            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId);",
+            new { EmpresaId = empresaId == 0 ? null : empresaId }) ?? 0;
+
+        return new DashboardSummary
+        {
+            TotalProductos = totalProductos,
+            ProductosPocoStock = 0,
+            ProductosSinStock = 0,
+            GananciasPorMesNetas = 0m,
+            GananciaPromedioPorProducto = 0m,
+            VentasTotales = 0,
+            MesMayorVentas = string.Empty,
+            VentaPromedioMes = 0m,
+            GastosTotalesMes = 0m,
+            GananciaNetaMes = 0m,
+            TotalVentasMes = 0m,
+            VentaPromedioPorMes = 0m,
+            BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" },
+            VentasPorPeriodo = new List<ChartPoint>(),
+            GananciaPorCategoria = new List<ChartPoint>(),
+            ParticipacionVentas = new List<DashboardCategoryShare>(),
+            PodioProductosMasVendidos = new List<ProductoRanking>(),
+            PodioProductosMasGanancia = new List<ProductoRanking>(),
+            UltimosProductosVendidos = new List<VentaRegistro>()
+        };
+    }
+
     private static string NormalizarMail(string? mail)
     {
         return (mail ?? string.Empty).Trim();
@@ -242,7 +493,7 @@ public static class BD
 
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
-        producto.Proveedor = producto.Proveedor.Trim();
+        producto.Proveedor = string.IsNullOrWhiteSpace(producto.Proveedor) ? string.Empty : producto.Proveedor.Trim();
         producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
 
         if (producto.PrecioVenta <= 0)
@@ -253,6 +504,7 @@ public static class BD
         using var connection = CrearConexion(configuration);
 
         producto.CategoriaID = ObtenerOCrearCategoriaId(connection, producto.EmpresaID, producto.Categoria);
+        producto.ProveedorID = ObtenerOCrearProveedorId(connection, producto.EmpresaID, producto.Proveedor);
 
         if (producto.Id > 0)
         {
@@ -310,8 +562,8 @@ public static class BD
 
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
-        producto.Proveedor = producto.Proveedor.Trim();
         producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
+        producto.Proveedor = string.IsNullOrWhiteSpace(producto.Proveedor) ? string.Empty : producto.Proveedor.Trim();
 
         if (producto.PrecioVenta <= 0)
         {
@@ -331,7 +583,20 @@ public static class BD
             return false;
         }
 
+        var proveedorActual = connection.QuerySingleOrDefault<string>(@"
+            SELECT pe.nombre
+            FROM Productos p
+            LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+            WHERE p.id = @Id;",
+            new { Id = id });
+
+        if (string.IsNullOrWhiteSpace(producto.Proveedor) && !string.IsNullOrWhiteSpace(proveedorActual))
+        {
+            producto.Proveedor = proveedorActual.Trim();
+        }
+
         producto.CategoriaID = ObtenerOCrearCategoriaId(connection, empresaId.Value, producto.Categoria);
+        producto.ProveedorID = ObtenerOCrearProveedorId(connection, empresaId.Value, producto.Proveedor);
 
         var skuDuplicado = connection.ExecuteScalar<int>(@"
             SELECT COUNT(1)
@@ -386,633 +651,201 @@ public static class BD
         return filasAfectadas > 0;
     }
 
-    public static bool EliminarProducto(IConfiguration configuration, int id)
+    private static int? ObtenerOCrearProveedorId(IDbConnection connection, int empresaId, string? proveedorNombre, IDbTransaction? transaction = null)
+    {
+        var nombre = string.IsNullOrWhiteSpace(proveedorNombre) ? null : proveedorNombre.Trim();
+
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            return null;
+        }
+
+        var proveedorId = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Proveedores
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction) ?? 0;
+
+        if (proveedorId > 0)
+        {
+            return proveedorId;
+        }
+
+        return connection.QuerySingle<int>(@"
+            INSERT INTO Proveedores (empresaID, nombre)
+            VALUES (@EmpresaId, @Nombre);
+            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction);
+    }
+
+    public static List<string> ObtenerProveedores(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        using var transaction = connection.BeginTransaction();
 
-        connection.Execute("DELETE FROM Stock WHERE productoID = @Id", new { Id = id }, transaction);
-        var filas = connection.Execute("DELETE FROM Productos WHERE id = @Id", new { Id = id }, transaction);
-
-        transaction.Commit();
-        return filas > 0;
+        var sql = @"SELECT DISTINCT pe.nombre AS proveedor
+                    FROM Productos p
+                    INNER JOIN Proveedores pe ON pe.id = p.proveedorID
+                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                      AND LTRIM(RTRIM(pe.nombre)) <> ''
+                    ORDER BY pe.nombre";
+        return connection.Query<string>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
-    public static bool AgregarStock(IConfiguration configuration, int id, int cantidad, decimal precioUnitario)
+    public static List<string> ObtenerProveedoresPorProducto(IConfiguration configuration, int productoId)
     {
         using var connection = CrearConexion(configuration);
-        var existe = connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Stock WHERE productoID = @Id", new { Id = id });
 
-        if (existe.HasValue)
-        {
-            return connection.Execute(@"UPDATE Stock
-                                        SET cantidad = cantidad + @Cantidad,
-                                            actualizadoEn = @ActualizadoEn
-                                        WHERE productoID = @Id",
-                new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
-        }
-
-        return connection.Execute(@"INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
-                                    VALUES (@Id, @Cantidad, 0, 1, @ActualizadoEn)",
-            new { Id = id, Cantidad = cantidad, ActualizadoEn = DateTime.Now }) > 0;
+        var sql = @"SELECT DISTINCT pe.nombre AS proveedor
+                    FROM Productos p
+                    INNER JOIN Proveedores pe ON pe.id = p.proveedorID
+                    WHERE p.id = @ProductoId
+                      AND LTRIM(RTRIM(pe.nombre)) <> ''
+                    ORDER BY pe.nombre";
+        return connection.Query<string>(sql, new { ProductoId = productoId }).ToList();
     }
 
-    public static int ObtenerTotalProductos(IConfiguration configuration, int? empresaId = null)
+    public static List<Categoria> ObtenerCategoriasCompleto(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        return connection.ExecuteScalar<int>(
-            "SELECT COUNT(*) FROM Productos WHERE (@EmpresaId IS NULL OR empresaID = @EmpresaId)",
-            new { EmpresaId = empresaId == 0 ? null : empresaId });
+
+        var sql = @"SELECT c.id, c.nombre, COUNT(p.id) AS cantidadProductos
+                    FROM Categoria c
+                    LEFT JOIN Productos p ON p.categoriaID = c.id AND p.activo = 1
+                    WHERE (@EmpresaId IS NULL OR c.empresaID = @EmpresaId)
+                    GROUP BY c.id, c.nombre
+                    ORDER BY c.nombre";
+        return connection.Query<Categoria>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
-    public static int ObtenerProductosConStockBajo(IConfiguration configuration, int? empresaId = null)
+    public static List<Proveedor> ObtenerProveedoresCompleto(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        return connection.ExecuteScalar<int>(
-            @"SELECT COUNT(*)
-              FROM Productos p
-              LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-                AND (ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) OR ISNULL(s.cantidad, 0) = 0)",
-            new { EmpresaId = empresaId == 0 ? null : empresaId });
+
+        var sql = @"SELECT pe.id, pe.nombre, COUNT(p.id) AS cantidadProductos
+                    FROM Proveedores pe
+                    LEFT JOIN Productos p ON p.proveedorID = pe.id AND p.activo = 1
+                    WHERE (@EmpresaId IS NULL OR pe.empresaID = @EmpresaId)
+                    GROUP BY pe.id, pe.nombre
+                    ORDER BY pe.nombre";
+        return connection.Query<Proveedor>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
-    public static int ObtenerProductosSinStock(IConfiguration configuration, int? empresaId = null)
+    public static List<StockRegistro> ObtenerStock(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        return connection.ExecuteScalar<int>(
-            @"SELECT COUNT(*)
-              FROM Productos p
-              LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-              WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-                AND ISNULL(s.cantidad, 0) <= 0",
-            new { EmpresaId = empresaId == 0 ? null : empresaId });
+
+        var sql = @"SELECT p.id AS ProductoId, p.nombre AS NombreProducto, p.sku AS Sku,
+                           ISNULL(s.cantidad, 0) AS StockActual, ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
+                           c.nombre AS Categoria, pe.nombre AS Proveedor
+                    FROM Productos p
+                    LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
+                    LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
+                    ORDER BY p.nombre";
+        return connection.Query<StockRegistro>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
-    public static bool TieneProductos(IConfiguration configuration, int empresaId)
+    public static List<VentaRegistro> ObtenerVentas(IConfiguration configuration, int? empresaId = null)
     {
         using var connection = CrearConexion(configuration);
-        return connection.ExecuteScalar<int>(
-            "SELECT COUNT(*) FROM Productos WHERE empresaID = @EmpresaId",
-            new { EmpresaId = empresaId }) > 0;
+
+        var sql = @"SELECT v.id AS VentaId, v.fecha AS Fecha, v.metodoPago AS MetodoPago, v.totalVenta AS TotalVenta,
+                           d.productoID AS ProductoId, d.cantidad AS Cantidad, d.precioVenta AS PrecioUnitario,
+                           p.nombre AS NombreProducto, p.sku AS Sku, c.nombre AS Categoria, pe.nombre AS Proveedor
+                    FROM Ventas v
+                    INNER JOIN DetalleVenta d ON d.ventaID = v.id
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
+                    LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                    ORDER BY v.fecha DESC";
+        return connection.Query<VentaRegistro>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
     }
 
-    public static DashboardSummary ObtenerDashboard(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
+    public static List<VentaRegistro> ObtenerVentasPorRangoFechas(IConfiguration configuration, DateTime fechaInicio, DateTime fechaFin, int? empresaId = null)
     {
-        var rangoNormalizado = (range ?? "todos").Trim();
-        var (fechaInicioUsada, fechaFinUsada) = NormalizarRangoFechas(rangoNormalizado, fechaInicio, fechaFin);
-        var empresaIdNormalizada = empresaId is > 0 ? empresaId : null;
-        var ventas = ObtenerVentasPorRango(configuration, rangoNormalizado, empresaIdNormalizada, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada);
-
-        var resumen = new DashboardSummary
-        {
-            TotalProductos = ObtenerTotalProductos(configuration, empresaIdNormalizada),
-            ProductosPocoStock = ObtenerProductosConStockBajo(configuration, empresaIdNormalizada),
-            ProductosSinStock = ObtenerProductosSinStock(configuration, empresaIdNormalizada),
-            GananciasPorMesNetas = ventas.Sum(v => v.Precio - v.Costo),
-            GananciaPromedioPorProducto = ventas.Any() ? ventas.Average(v => v.Precio - v.Costo) : 0m,
-            VentasTotales = ventas.Count,
-            VentaPromedioPorMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
-            UltimosProductosVendidos = ventas.OrderByDescending(v => v.Fecha).Take(5).ToList(),
-            BasesDeDatos = new List<string> { "Productos", "Ventas", "Proveedores", "Dashboard" },
-            TotalVentasMes = ventas.Sum(v => v.Precio),
-            GananciaNetaMes = ventas.Sum(v => v.Precio - v.Costo),
-            GastosTotalesMes = ventas.Sum(v => v.Costo),
-            VentaPromedioMes = ventas.Any() ? ventas.Average(v => v.Precio) : 0m,
-            MesActualLabel = fechaInicioUsada.ToString("MMMM yyyy"),
-            VentasPorPeriodo = ObtenerVentasPorPeriodo(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
-            GananciaPorCategoria = ObtenerGananciaPorCategoria(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada),
-            ParticipacionVentas = ObtenerParticipacionVentas(configuration, empresaIdNormalizada, fechaInicioUsada, rangoNormalizado, nombreProducto, sku, categoria, fechaInicioUsada, fechaFinUsada)
-        };
-
-        var mesMayor = ventas
-            .GroupBy(v => new { v.Fecha.Year, v.Fecha.Month })
-            .Select(g => new { Mes = new DateTime(g.Key.Year, g.Key.Month, 1), Total = g.Sum(x => x.Precio) })
-            .OrderByDescending(x => x.Total)
-            .FirstOrDefault();
-
-        resumen.MesMayorVentas = mesMayor == null ? "Sin ventas" : mesMayor.Mes.ToString("MMMM yyyy");
-
-        resumen.PodioProductosMasVendidos = ventas
-            .GroupBy(v => v.NombreProducto)
-            .Select(g => new ProductoRanking
-            {
-                Nombre = g.Key,
-                Cantidad = g.Sum(v => v.Cantidad),
-                Total = g.Sum(v => v.Precio)
-            })
-            .OrderByDescending(x => x.Cantidad)
-            .Take(3)
-            .ToList();
-
-        resumen.PodioProductosMasGanancia = ventas
-            .GroupBy(v => v.NombreProducto)
-            .Select(g => new ProductoRanking
-            {
-                Nombre = g.Key,
-                Cantidad = g.Sum(v => v.Cantidad),
-                Total = g.Sum(v => v.Precio - v.Costo)
-            })
-            .OrderByDescending(x => x.Total)
-            .Take(3)
-            .ToList();
-
-        resumen.UltimosProductosVendidos = ventas
-            .OrderByDescending(v => v.Fecha)
-            .ToList();
-
-        return resumen;
-    }
-
-    private static DateTime ObtenerFechaInicioPorRango(string range)
-    {
-        var rangoNormalizado = (range ?? "todos").Trim();
-        var ahora = DateTime.Now;
-
-        return rangoNormalizado.ToLowerInvariant() switch
-        {
-            "dia" => ahora.Date,
-            "semana" => ahora.Date.AddDays(-((int)ahora.DayOfWeek == 0 ? 6 : (int)ahora.DayOfWeek - 1)),
-            "mes" => new DateTime(ahora.Year, ahora.Month, 1),
-            "anio" or "año" => new DateTime(ahora.Year, 1, 1),
-            "todos" => ahora.AddYears(-10),
-            _ => ahora.AddYears(-10)
-        };
-    }
-
-    private static (DateTime Inicio, DateTime Fin) NormalizarRangoFechas(string range, DateTime? fechaInicio, DateTime? fechaFin)
-    {
-        var finDiaActual = DateTime.Today.AddDays(1).AddTicks(-1);
-        var inicio = (fechaInicio ?? ObtenerFechaInicioPorRango(range)).Date;
-        var finBase = fechaFin ?? finDiaActual;
-
-        if (finBase > finDiaActual)
-        {
-            finBase = finDiaActual;
-        }
-
-        var fin = finBase.TimeOfDay == TimeSpan.Zero
-            ? finBase.Date.AddDays(1).AddTicks(-1)
-            : finBase;
-
-        if (fin > finDiaActual)
-        {
-            fin = finDiaActual;
-        }
-
-        if (fin < inicio)
-        {
-            var intercambio = inicio;
-            inicio = fin.Date;
-            fin = intercambio;
-
-            if (fin.TimeOfDay == TimeSpan.Zero)
-            {
-                fin = fin.Date.AddDays(1).AddTicks(-1);
-            }
-
-            if (fin > finDiaActual)
-            {
-                fin = finDiaActual;
-            }
-        }
-
-        return (inicio, fin);
-    }
-
-    private static List<VentaRegistro> ObtenerVentasPorRango(IConfiguration configuration, string range, int? empresaId = null, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
-    {
-        var rangoNormalizado = (range ?? "todos").Trim();
-        var (fechaInicioUsada, fechaFinUsada) = NormalizarRangoFechas(rangoNormalizado, fechaInicio, fechaFin);
-        var nombreProductoNormalizado = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim();
-        var skuNormalizado = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim();
-        var categoriaNormalizada = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim();
-
-        var fechaFinExclusiva = fechaFinUsada.AddTicks(1);
-
         using var connection = CrearConexion(configuration);
-        const string sql = @"
-SELECT
-    v.id AS Id,
-    d.productoID AS ProductoId,
-    p.nombre AS NombreProducto,
-    p.sku AS Sku,
-    c.nombre AS Categoria,
-    v.fecha AS Fecha,
-    v.metodoPago AS MetodoPago,
-    d.cantidad AS Cantidad,
-    d.precioVenta AS Precio,
-    d.costoCompra AS Costo
-FROM dbo.Ventas v
-INNER JOIN dbo.DetalleVenta d ON d.ventaID = v.id
-INNER JOIN dbo.Productos p ON p.id = d.productoID
-LEFT JOIN dbo.Categoria c ON c.id = p.categoriaID
-WHERE v.fecha >= @FechaInicio
-  AND v.fecha <  @FechaFinExclusiva
-  AND (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-  AND (@NombreProducto IS NULL OR p.nombre LIKE @NombreProductoLike)
-  AND (@Sku IS NULL OR p.sku = @Sku)
-  AND (@Categoria IS NULL OR c.nombre = @Categoria)
-ORDER BY v.fecha DESC
-OPTION (RECOMPILE);";
 
-        return connection.Query<VentaRegistro>(sql, new
-        {
-            EmpresaId = empresaId,
-            FechaInicio = fechaInicioUsada,
-            FechaFinExclusiva = fechaFinExclusiva,
-            NombreProducto = nombreProductoNormalizado,
-            NombreProductoLike = nombreProductoNormalizado == null ? null : $"%{nombreProductoNormalizado}%",
-            Sku = skuNormalizado,
-            Categoria = categoriaNormalizada
-        }, commandTimeout: 120).ToList();
+        var sql = @"SELECT v.id AS VentaId, v.fecha AS Fecha, v.metodoPago AS MetodoPago, v.totalVenta AS TotalVenta,
+                           d.productoID AS ProductoId, d.cantidad AS Cantidad, d.precioVenta AS PrecioUnitario,
+                           p.nombre AS NombreProducto, p.sku AS Sku, c.nombre AS Categoria, pe.nombre AS Proveedor
+                    FROM Ventas v
+                    INNER JOIN DetalleVenta d ON d.ventaID = v.id
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
+                    LEFT JOIN Proveedores pe ON pe.id = p.proveedorID
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio AND v.fecha <= @FechaFin
+                    ORDER BY v.fecha DESC";
+        return connection.Query<VentaRegistro>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId, FechaInicio = fechaInicio, FechaFin = fechaFin }).ToList();
     }
 
-    public static bool Registrarse(Usuario usuario, IConfiguration configuration)
+    public static List<ChartPoint> ObtenerVentasDiarias(IConfiguration configuration, DateTime fechaInicio, DateTime fechaFin, int? empresaId = null)
     {
-        var mailNormalizado = NormalizarMail(usuario.Mail);
-
-        if (string.IsNullOrWhiteSpace(usuario.NombreUsuario)
-            || string.IsNullOrWhiteSpace(mailNormalizado)
-            || string.IsNullOrWhiteSpace(usuario.Contrasena))
-        {
-            return false;
-        }
-
         using var connection = CrearConexion(configuration);
-        connection.Open();
 
-        int? empresaId = usuario.EmpresaID > 0 ? usuario.EmpresaID : null;
-        int? rolId = usuario.RolID > 0 ? usuario.RolID : null;
-
-        if (empresaId == null)
-        {
-            var nombreEmpresa = !string.IsNullOrWhiteSpace(usuario.NombreEmpresa)
-                ? usuario.NombreEmpresa.Trim()
-                : $"Empresa de {usuario.NombreUsuario.Trim()}";
-
-            var empresaInsertada = connection.ExecuteScalar<int>(
-                "INSERT INTO Empresa (nombre) VALUES (@Nombre); SELECT CAST(SCOPE_IDENTITY() as int);",
-                new { Nombre = nombreEmpresa });
-            empresaId = empresaInsertada;
-        }
-
-        if (rolId == null)
-        {
-            rolId = connection.QuerySingleOrDefault<int?>("SELECT TOP 1 id FROM Rol ORDER BY id");
-        }
-
-        if (empresaId == null || rolId == null)
-        {
-            return false;
-        }
-
-        var existe = connection.QuerySingleOrDefault<int>(
-            "SELECT 1 FROM Usuarios WHERE LOWER(LTRIM(RTRIM(mail))) = @Mail",
-            new { Mail = mailNormalizado.ToLowerInvariant() });
-
-        if (existe == 1)
-        {
-            return false;
-        }
-
-        var query = @"
-            INSERT INTO Usuarios (nombreUsuario, contrasena, mail, numeroTelefono, empresaID, rolID)
-            VALUES (@NombreUsuario, @Contrasena, @Mail, @NumeroTelefono, @EmpresaID, @RolID)";
-
-        connection.Execute(query, new
-        {
-            NombreUsuario = usuario.NombreUsuario.Trim(),
-            Contrasena = usuario.Contrasena,
-            Mail = mailNormalizado,
-            NumeroTelefono = usuario.NumeroTelefono,
-            EmpresaID = empresaId.Value,
-            RolID = rolId.Value
-        });
-
-        usuario.EmpresaID = empresaId.Value;
-        usuario.RolID = rolId.Value;
-
-        return true;
+        var sql = @"SELECT CAST(v.fecha AS date) AS Label, COALESCE(SUM(d.precioVenta), 0) AS Valor
+                    FROM DetalleVenta d
+                    INNER JOIN Ventas v ON v.id = d.ventaID
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio AND v.fecha <= @FechaFin
+                    GROUP BY CAST(v.fecha AS date)
+                    ORDER BY CAST(v.fecha AS date)";
+        return connection.Query<ChartPoint>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId, FechaInicio = fechaInicio, FechaFin = fechaFin }).ToList();
     }
 
-    public static bool IniciarSesion(string mail, string contrasena, HttpContext httpContext, IConfiguration configuration)
+    public static List<ChartPoint> ObtenerVentasPorSemana(IConfiguration configuration, DateTime fechaInicio, DateTime fechaFin, int? empresaId = null)
     {
-        var mailNormalizado = NormalizarMail(mail);
-
         using var connection = CrearConexion(configuration);
-        connection.Open();
 
-        var usuario = connection.QuerySingleOrDefault<Usuario>(
-            "SELECT TOP 1 * FROM Usuarios WHERE LOWER(LTRIM(RTRIM(mail))) = @Mail AND contrasena = @Contrasena",
-            new { Mail = mailNormalizado.ToLowerInvariant(), Contrasena = contrasena });
-
-        if (usuario == null)
-        {
-            return false;
-        }
-
-        var empresaIdForzado = mailNormalizado.Equals("admin@quantitary.com", StringComparison.OrdinalIgnoreCase) ? 1 : usuario.EmpresaID;
-        if (empresaIdForzado <= 0)
-        {
-            empresaIdForzado = connection.QuerySingleOrDefault<int?>(
-                "SELECT empresaID FROM Usuarios WHERE id = @UsuarioId",
-                new { UsuarioId = usuario.Id }) ?? 0;
-        }
-
-        if (empresaIdForzado <= 0)
-        {
-            empresaIdForzado = connection.QuerySingleOrDefault<int?>(
-                "SELECT TOP 1 id FROM Empresa ORDER BY id") ?? 0;
-        }
-
-        if (empresaIdForzado > 0)
-        {
-            usuario.EmpresaID = empresaIdForzado;
-            connection.Execute(
-                "UPDATE Usuarios SET empresaID = @EmpresaId WHERE id = @UsuarioId AND empresaID <> @EmpresaId",
-                new { UsuarioId = usuario.Id, EmpresaId = empresaIdForzado });
-        }
-
-        var empresa = connection.QuerySingleOrDefault<Empresa>(
-            "SELECT e.* FROM Empresa e INNER JOIN Usuarios u ON u.empresaID = e.id WHERE u.id = @UsuarioId",
-            new { UsuarioId = usuario.Id });
-
-        httpContext.Session.SetInt32("UsuarioID", usuario.Id);
-        httpContext.Session.SetString("NombreUsuario", usuario.NombreUsuario);
-        httpContext.Session.SetString("NombreEmpresa", empresa?.Nombre ?? $"Empresa de {usuario.NombreUsuario}");
-        httpContext.Session.SetInt32("EmpresaID", usuario.EmpresaID);
-        httpContext.Session.SetInt32("RolID", usuario.RolID);
-
-        return true;
+        var sql = @"SELECT DATEPART(ISO_WEEK, v.fecha) AS Semana, YEAR(v.fecha) AS Anio, COALESCE(SUM(d.precioVenta), 0) AS Valor
+                    FROM DetalleVenta d
+                    INNER JOIN Ventas v ON v.id = d.ventaID
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    WHERE (@EmpresaId IS NULL OR v.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio AND v.fecha <= @FechaFin
+                    GROUP BY DATEPART(ISO_WEEK, v.fecha), YEAR(v.fecha)
+                    ORDER BY YEAR(v.fecha), DATEPART(ISO_WEEK, v.fecha)";
+        return connection.Query<ChartPoint>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId, FechaInicio = fechaInicio, FechaFin = fechaFin }).ToList();
     }
 
-    public static void CerrarSesion(HttpContext httpContext)
+    public static List<ChartPoint> ObtenerGananciasPorCategoria(IConfiguration configuration, DateTime fechaInicio, DateTime fechaFin, int? empresaId = null)
     {
-        httpContext.Session.Clear();
-    }
-
-    public static int? ObtenerUsuarioLogueadoID(HttpContext httpContext)
-    {
-        return httpContext.Session.GetInt32("UsuarioID");
-    }
-
-    public static string? ObtenerNombreUsuario(HttpContext httpContext)
-    {
-        return httpContext.Session.GetString("NombreUsuario");
-    }
-
-    public static int ObtenerEmpresaIdActual(IConfiguration configuration, HttpContext httpContext)
-    {
-        var empresaId = httpContext.Session.GetInt32("EmpresaID");
-        if (empresaId is > 0)
-        {
-            return empresaId.Value;
-        }
-
-        var usuarioId = httpContext.Session.GetInt32("UsuarioID");
-        if (usuarioId is > 0)
-        {
-            using var connection = CrearConexion(configuration);
-            var empresa = connection.QuerySingleOrDefault<int?>(
-                "SELECT empresaID FROM Usuarios WHERE id = @UsuarioId",
-                new { UsuarioId = usuarioId.Value });
-
-            if (empresa is > 0)
-            {
-                httpContext.Session.SetInt32("EmpresaID", empresa.Value);
-                return empresa.Value;
-            }
-        }
-
-        using (var connection = CrearConexion(configuration))
-        {
-            var empresaDefault = connection.QuerySingleOrDefault<int?>(
-                "SELECT TOP 1 id FROM Empresa ORDER BY id");
-
-            if (empresaDefault is > 0)
-            {
-                httpContext.Session.SetInt32("EmpresaID", empresaDefault.Value);
-                return empresaDefault.Value;
-            }
-        }
-
-        return 1;
-    }
-
-    private static List<ChartPoint> ObtenerVentasPorPeriodo(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
-    {
-        var rangoNormalizado = (range ?? "todos").Trim();
-        var (inicioRango, finRango) = NormalizarRangoFechas(rangoNormalizado, fechaInicio ?? fecha, fechaFin);
-        var inicio = inicioRango.Date;
-        var fin = finRango.Date;
-
-        if (fin < inicio)
-        {
-            var intercambio = inicio;
-            inicio = fin;
-            fin = intercambio;
-        }
-
-                decimal ObtenerTotal(DateTime desde, DateTime hasta)
-        {
-            using var connection = CrearConexion(configuration);
-            return connection.QuerySingleOrDefault<decimal?>(
-                @"SELECT COALESCE(SUM(d.precioVenta), 0)
-                  FROM DetalleVenta d
-                  INNER JOIN Ventas v ON v.id = d.ventaID
-                  INNER JOIN Productos p ON p.id = d.productoID
-                  LEFT JOIN Categoria c ON c.id = p.categoriaID
-                                    WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-                    AND v.fecha >= @Desde AND v.fecha <= @Hasta
-                    AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                    AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                    AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))",
-                new
-                {
-                    EmpresaId = empresaId,
-                    Desde = desde,
-                    Hasta = hasta,
-                    NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                    Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                    Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-                }) ?? 0m;
-        }
-
-        if (rangoNormalizado.Equals("dia", StringComparison.OrdinalIgnoreCase))
-        {
-            var result = new List<ChartPoint>();
-            var diaActual = inicio;
-
-            while (diaActual <= fin)
-            {
-                var desde = diaActual.Date;
-                var hasta = diaActual.Date.AddDays(1).AddTicks(-1);
-                result.Add(new ChartPoint
-                {
-                    Label = desde.ToString("dd/MM/yyyy"),
-                    Valor = ObtenerTotal(desde, hasta)
-                });
-
-                diaActual = diaActual.AddDays(1);
-            }
-
-            return result;
-        }
-
-        if (rangoNormalizado.Equals("semana", StringComparison.OrdinalIgnoreCase))
-        {
-            var result = new List<ChartPoint>();
-            var semanaInicio = inicio;
-
-            while (semanaInicio <= fin)
-            {
-                var semanaFin = semanaInicio.AddDays(6) > fin ? fin : semanaInicio.AddDays(6);
-                result.Add(new ChartPoint
-                {
-                    Label = $"{semanaInicio:dd/MM} - {semanaFin:dd/MM}",
-                    Valor = ObtenerTotal(semanaInicio.Date, semanaFin.Date.AddDays(1).AddTicks(-1))
-                });
-
-                semanaInicio = semanaFin.AddDays(1);
-            }
-
-            return result;
-        }
-
-        if (rangoNormalizado.Equals("mes", StringComparison.OrdinalIgnoreCase))
-        {
-            var result = new List<ChartPoint>();
-            var mesActual = new DateTime(inicio.Year, inicio.Month, 1);
-            var mesFin = new DateTime(fin.Year, fin.Month, 1);
-            var cultura = new CultureInfo("es-ES");
-
-            while (mesActual <= mesFin)
-            {
-                var mesDesde = new DateTime(mesActual.Year, mesActual.Month, 1);
-                var mesHasta = new DateTime(mesActual.Year, mesActual.Month, DateTime.DaysInMonth(mesActual.Year, mesActual.Month), 23, 59, 59, 999);
-
-                result.Add(new ChartPoint
-                {
-                    Label = mesDesde.ToString("MMM", cultura),
-                    Valor = ObtenerTotal(mesDesde, mesHasta)
-                });
-
-                mesActual = mesActual.AddMonths(1);
-            }
-
-            return result;
-        }
-
-        if (rangoNormalizado.Equals("anio", StringComparison.OrdinalIgnoreCase) || rangoNormalizado.Equals("año", StringComparison.OrdinalIgnoreCase))
-        {
-            var result = new List<ChartPoint>();
-            var anioActual = inicio.Year;
-            var anioFinal = fin.Year;
-
-            while (anioActual <= anioFinal)
-            {
-                var desde = new DateTime(anioActual, 1, 1);
-                var hasta = new DateTime(anioActual, 12, 31, 23, 59, 59, 999);
-                result.Add(new ChartPoint
-                {
-                    Label = anioActual.ToString(CultureInfo.InvariantCulture),
-                    Valor = ObtenerTotal(desde, hasta)
-                });
-
-                anioActual++;
-            }
-
-            return result;
-        }
-
-        var resultFallback = new List<ChartPoint>();
-        var mesActualFallback = new DateTime(inicio.Year, inicio.Month, 1);
-        var mesFinFallback = new DateTime(fin.Year, fin.Month, 1);
-        var culturaFallback = new CultureInfo("es-ES");
-
-        while (mesActualFallback <= mesFinFallback)
-        {
-            var mesDesde = new DateTime(mesActualFallback.Year, mesActualFallback.Month, 1);
-            var mesHasta = new DateTime(mesActualFallback.Year, mesActualFallback.Month, DateTime.DaysInMonth(mesActualFallback.Year, mesActualFallback.Month), 23, 59, 59, 999);
-            resultFallback.Add(new ChartPoint
-            {
-                Label = mesDesde.ToString("MMM", culturaFallback),
-                Valor = ObtenerTotal(mesDesde, mesHasta)
-            });
-
-            mesActualFallback = mesActualFallback.AddMonths(1);
-        }
-
-        return resultFallback;
-    }
-
-    private static List<ChartPoint> ObtenerGananciaPorCategoria(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
-    {
-        var (inicio, fin) = NormalizarRangoFechas(range, fechaInicio ?? fecha, fechaFin);
-
         using var connection = CrearConexion(configuration);
-        var rows = connection.Query<(string Nombre, decimal Valor)>(
-            @"SELECT c.nombre AS Nombre, SUM(d.ganancia) AS Valor
-              FROM DetalleVenta d
-              INNER JOIN Ventas v ON v.id = d.ventaID
-              INNER JOIN Productos p ON p.id = d.productoID
-              LEFT JOIN Categoria c ON c.id = p.categoriaID
-                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-                AND v.fecha >= @Inicio AND v.fecha <= @Fin
-                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
-              GROUP BY c.nombre
-              ORDER BY Valor DESC",
-            new
-            {
-                EmpresaId = empresaId,
-                Inicio = inicio,
-                Fin = fin,
-                NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-            }).ToList();
 
-        return rows.Select(r => new ChartPoint
-        {
-            Label = r.Nombre,
-            Valor = r.Valor
-        }).ToList();
+        var sql = @"SELECT c.nombre AS Label, COALESCE(SUM(d.ganancia), 0) AS Valor
+                    FROM DetalleVenta d
+                    INNER JOIN Ventas v ON v.id = d.ventaID
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
+                    WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio AND v.fecha <= @FechaFin
+                    GROUP BY c.nombre
+                    ORDER BY Valor DESC";
+        return connection.Query<ChartPoint>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId, FechaInicio = fechaInicio, FechaFin = fechaFin }).ToList();
     }
 
-    private static List<DashboardCategoryShare> ObtenerParticipacionVentas(IConfiguration configuration, int? empresaId, DateTime fecha, string range, string? nombreProducto = null, string? sku = null, string? categoria = null, DateTime? fechaInicio = null, DateTime? fechaFin = null)
+    public static List<ChartPoint> ObtenerParticipacionVentas(IConfiguration configuration, DateTime fechaInicio, DateTime fechaFin, int? empresaId = null)
     {
-        var (inicio, fin) = NormalizarRangoFechas(range, fechaInicio ?? fecha, fechaFin);
-
         using var connection = CrearConexion(configuration);
-        var rows = connection.Query<(string Nombre, decimal Valor)>(
-            @"SELECT c.nombre AS Nombre, SUM(d.precioVenta) AS Valor
-              FROM DetalleVenta d
-              INNER JOIN Ventas v ON v.id = d.ventaID
-              INNER JOIN Productos p ON p.id = d.productoID
-              LEFT JOIN Categoria c ON c.id = p.categoriaID
-                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-                AND v.fecha >= @Inicio AND v.fecha <= @Fin
-                AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
-                AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
-                AND (@Categoria IS NULL OR LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(@Categoria))))
-              GROUP BY c.nombre
-              ORDER BY Valor DESC",
-            new
-            {
-                EmpresaId = empresaId,
-                Inicio = inicio,
-                Fin = fin,
-                NombreProducto = string.IsNullOrWhiteSpace(nombreProducto) ? null : nombreProducto.Trim(),
-                Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
-                Categoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim()
-            }).ToList();
+
+        var sql = @"SELECT c.nombre AS Nombre, SUM(d.precioVenta) AS Valor
+                    FROM DetalleVenta d
+                    INNER JOIN Ventas v ON v.id = d.ventaID
+                    INNER JOIN Productos p ON p.id = d.productoID
+                    LEFT JOIN Categoria c ON c.id = p.categoriaID
+                    WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
+                      AND v.fecha >= @FechaInicio AND v.fecha <= @FechaFin
+                    GROUP BY c.nombre
+                    ORDER BY Valor DESC";
+        var rows = connection.Query<(string Nombre, decimal Valor)>(sql, new { EmpresaId = empresaId == 0 ? null : empresaId, FechaInicio = fechaInicio, FechaFin = fechaFin }).ToList();
 
         if (rows.Count == 0)
         {
-            return new List<DashboardCategoryShare>();
+            return new List<ChartPoint>();
         }
 
         var total = rows.Sum(r => r.Valor);
@@ -1021,9 +854,9 @@ OPTION (RECOMPILE);";
         {
             var porcentaje = total > 0 ? Math.Round((r.Valor / total) * 100m, 0, MidpointRounding.AwayFromZero) : 0m;
 
-            return new DashboardCategoryShare
+            return new ChartPoint
             {
-                Nombre = r.Nombre,
+                Label = r.Nombre,
                 Valor = porcentaje
             };
         }).ToList();
@@ -1163,6 +996,143 @@ OPTION (RECOMPILE);";
             WHERE p.empresaID = @EmpresaId
             ORDER BY
                 CASE WHEN @IncluirStockBajo = 1 AND (ISNULL(s.cantidad, 0) <= ISNULL(s.cantidadMinimoAlerta, 0) OR ISNULL(s.cantidad, 0) = 0) THEN 0 ELSE 1 END,
+
+    public static async Task<PerfilAjustesDatos?> ObtenerDatosAjustesAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.QuerySingleOrDefaultAsync<PerfilAjustesDatos>(@"
+            SELECT
+                u.nombreUsuario AS NombreUsuario,
+                u.mail AS Mail,
+                u.numeroTelefono AS NumeroTelefono,
+                e.nombre AS NombreEmpresa,
+                CAST(CASE WHEN ISNULL(p.gestionarUsuarios, 0) = 1 THEN 1 ELSE 0 END AS bit) AS PuedeEditarEmpresa
+            FROM Usuarios u
+            INNER JOIN Empresa e ON e.id = u.empresaID
+            LEFT JOIN Rol r ON r.id = u.rolID
+            LEFT JOIN Permisos p ON p.id = r.permisoID
+            WHERE u.id = @Usuario
+              AND u.empresaID = @Empresa;",
+            new { Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<DatosRepetidos> ObtenerDatosRepetidosAsync(IDbConnection connection, string mail, string nombre, int usuarioActual)
+    {
+        var correoNormalizado = (mail ?? string.Empty).Trim().ToLowerInvariant();
+        var nombreNormalizado = (nombre ?? string.Empty).Trim();
+
+        return await connection.QuerySingleAsync<DatosRepetidos>(@"
+            SELECT
+                SUM(CASE WHEN LOWER(LTRIM(RTRIM(mail))) = @Mail THEN 1 ELSE 0 END) AS Mail,
+                SUM(CASE WHEN LOWER(LTRIM(RTRIM(nombreUsuario))) = LOWER(@Nombre) THEN 1 ELSE 0 END) AS Nombre
+            FROM Usuarios
+            WHERE id <> @Usuario;",
+            new { Mail = correoNormalizado, Nombre = nombreNormalizado, Usuario = usuarioActual });
+    }
+
+    public static async Task<int> GuardarPerfilAsync(IDbConnection connection, string nombre, string mail, string? telefono, int usuario, int empresa)
+    {
+        var nombreNormalizado = (nombre ?? string.Empty).Trim();
+        var correoNormalizado = (mail ?? string.Empty).Trim().ToLowerInvariant();
+
+        return await connection.ExecuteAsync(@"
+            UPDATE Usuarios
+            SET nombreUsuario = @Nombre,
+                mail = @Mail,
+                numeroTelefono = @Telefono
+            WHERE id = @Usuario
+              AND empresaID = @Empresa;",
+            new
+            {
+                Nombre = nombreNormalizado,
+                Mail = correoNormalizado,
+                Telefono = string.IsNullOrWhiteSpace(telefono) ? null : telefono.Trim(),
+                Usuario = usuario,
+                Empresa = empresa
+            });
+    }
+
+    public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM Usuarios u
+                INNER JOIN Rol r ON r.id = u.rolID
+                INNER JOIN Permisos p ON p.id = r.permisoID
+                WHERE u.id = @Usuario
+                  AND u.empresaID = @Empresa
+                  AND ISNULL(p.gestionarUsuarios, 0) = 1
+            ) THEN 1 ELSE 0 END;",
+            new { Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<int> GuardarEmpresaAsync(IDbConnection connection, string nombre, int empresa)
+    {
+        var nombreNormalizado = (nombre ?? string.Empty).Trim();
+        return await connection.ExecuteAsync(@"
+            UPDATE Empresa
+            SET nombre = @Nombre
+            WHERE id = @Empresa;",
+            new { Nombre = nombreNormalizado, Empresa = empresa });
+    }
+
+    public static async Task<string?> ObtenerContrasenaActualAsync(IDbConnection connection, int usuario, int empresa)
+    {
+        return await connection.QuerySingleOrDefaultAsync<string>(@"
+            SELECT contrasena
+            FROM Usuarios
+            WHERE id = @Usuario
+              AND empresaID = @Empresa;",
+            new { Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<int> CambiarContrasenaAsync(IDbConnection connection, string nueva, int usuario, int empresa)
+    {
+        return await connection.ExecuteAsync(@"
+            UPDATE Usuarios
+            SET contrasena = @Nueva
+            WHERE id = @Usuario
+              AND empresaID = @Empresa;",
+            new { Nueva = nueva, Usuario = usuario, Empresa = empresa });
+    }
+
+    public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId, IDbTransaction? transaction = null)
+    {
+        var observacion = $"{(nombreProducto ?? string.Empty).Trim()} x {cantidad}";
+
+        return await connection.QuerySingleAsync<int>(@"
+            INSERT INTO Ventas (empresaID, usuarioID, fecha, metodoPago, totalVenta, observacion)
+            VALUES (@EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @TotalVenta, @Observacion);
+            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            new
+            {
+                EmpresaId = empresaId,
+                UsuarioId = usuarioId,
+                Fecha = DateTime.Now,
+                MetodoPago = string.IsNullOrWhiteSpace(metodoPago) ? "Efectivo" : metodoPago.Trim(),
+                TotalVenta = precioVentaTotal,
+                Observacion = observacion
+            },
+            transaction);
+    }
+
+    public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia, IDbTransaction? transaction = null)
+    {
+        return await connection.ExecuteAsync(@"
+            INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
+            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia);",
+            new
+            {
+                VentaId = ventaId,
+                ProductoId = productoId,
+                Cantidad = cantidad,
+                PrecioVenta = precioVentaTotal,
+                CostoCompra = precioCompraTotal,
+                PorcentajeGanancia = porcentajeGanancia,
+                Ganancia = ganancia
+            },
+            transaction);
+    }
                 ISNULL(s.cantidad, 0) ASC,
                 p.nombre ASC";
 
@@ -1696,7 +1666,7 @@ OPTION (RECOMPILE);";
             INNER JOIN Ventas v ON v.id = d.ventaID
             INNER JOIN Productos p ON p.id = d.productoID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY CAST(v.fecha AS date)
             ORDER BY CAST(v.fecha AS date)";
 
@@ -1739,7 +1709,7 @@ OPTION (RECOMPILE);";
             INNER JOIN Productos p ON p.id = d.productoID
             LEFT JOIN Categoria c ON c.id = p.categoriaID
             WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
-                            AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
+              AND v.fecha >= @Inicio AND v.fecha < @FinExclusivo
             GROUP BY c.nombre
             ORDER BY Valor DESC";
 
@@ -1850,189 +1820,6 @@ OPTION (RECOMPILE);";
             InteresCompraPorMes = interesCompraPorMes,
             VentasSemana = ventasSemana
         };
-    }
-
-    public static async Task<IndicadoresYOportunidadesConsultaData> ObtenerIndicadoresYOportunidadesConsultaAsync(IDbConnection connection, int? empresaId = null)
-    {
-        var productos = connection.Query<ProductoIndicadorBase>(@"
-            SELECT p.id AS Id,
-                   p.nombre AS Nombre,
-                   c.nombre AS Categoria,
-                   p.precioVenta AS Precio,
-                   ISNULL(s.cantidad, 0) AS StockActual,
-                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
-                   p.costoCompra AS CostoCompra,
-                   p.empresaID AS EmpresaId
-            FROM Productos p
-            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-            LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-            ORDER BY p.nombre",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
-
-        var ventasPorProducto = connection.Query<ProductoVentaAggregate>(@"
-            SELECT d.productoID AS ProductoId,
-                   SUM(d.cantidad) AS CantidadVendida,
-                   SUM(d.precioVenta) AS VentasTotales,
-                   SUM(d.costoCompra) AS CostoTotal
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-            GROUP BY d.productoID",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
-
-        var ventasPorCategoria = connection.Query<ProductoCategoriaAggregate>(@"
-            SELECT c.nombre AS Categoria,
-                   SUM(d.precioVenta) AS VentasTotales
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
-            GROUP BY c.nombre",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
-
-        return new IndicadoresYOportunidadesConsultaData
-        {
-            Productos = productos,
-            VentasPorProducto = ventasPorProducto,
-            VentasPorCategoria = ventasPorCategoria
-        };
-    }
-
-    public static async Task<PerfilAjustesDatos?> ObtenerDatosAjustesAsync(IDbConnection connection, int usuario, int empresa)
-    {
-        return await connection.QuerySingleOrDefaultAsync<PerfilAjustesDatos>(@"
-            SELECT u.nombreUsuario, u.mail, u.numeroTelefono, e.nombre AS NombreEmpresa,
-                   CAST(CASE WHEN ISNULL(p.gestionarUsuarios, 0) = 1 THEN 1 ELSE 0 END AS bit) AS PuedeEditarEmpresa
-            FROM Usuarios u
-            INNER JOIN Empresa e ON e.id = u.empresaID
-            LEFT JOIN Rol r ON r.id = u.rolID
-            LEFT JOIN Permisos p ON p.id = r.permisoID
-            WHERE u.id = @Usuario AND u.empresaID = @Empresa",
-            new { Usuario = usuario, Empresa = empresa });
-    }
-
-    public static async Task<DatosRepetidos> ObtenerDatosRepetidosAsync(IDbConnection connection, string mail, string nombre, int usuarioActual)
-    {
-        return await connection.QuerySingleAsync<DatosRepetidos>(@"
-            SELECT
-                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(mail))) = @Mail THEN 1 END) AS Mail,
-                  COUNT(CASE WHEN LOWER(LTRIM(RTRIM(nombreUsuario))) = LOWER(@Nombre) THEN 1 END) AS Nombre
-              FROM Usuarios
-              WHERE id <> @Usuario",
-            new { Mail = mail, Nombre = nombre, Usuario = usuarioActual });
-    }
-
-    public static async Task<int> RegistroVentaAsync(IDbConnection connection, int productoId, string nombreProducto, string metodoPago, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, int usuarioId, int empresaId, IDbTransaction? transaction = null)
-    {
-        var parametros = new
-        {
-            ProductoId = productoId,
-            NombreProducto = nombreProducto,
-            EmpresaId = empresaId,
-            UsuarioId = usuarioId,
-            Fecha = DateTime.Now,
-            MetodoPago = metodoPago,
-            Cantidad = cantidad,
-            Precio = precioVentaTotal,
-            Costo = precioCompraTotal,
-            TotalVenta = precioVentaTotal,
-            Observacion = $"Venta de {cantidad} unidades de {nombreProducto}"
-        };
-
-        if (ExisteColumna(connection, "Ventas", "productoId"))
-        {
-            return await connection.ExecuteScalarAsync<int>(@"
-                INSERT INTO Ventas
-                    (productoId, nombreProducto, empresaID, usuarioID, fecha, metodoPago, cantidad, precio, costo, totalVenta, observacion)
-                VALUES
-                    (@ProductoId, @NombreProducto, @EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @Cantidad, @Precio, @Costo, @TotalVenta, @Observacion);
-                SELECT CAST(SCOPE_IDENTITY() as int);", parametros, transaction);
-        }
-
-        return await connection.ExecuteScalarAsync<int>(@"
-            INSERT INTO Ventas (empresaID, usuarioID, fecha, metodoPago, totalVenta, observacion)
-            VALUES (@EmpresaId, @UsuarioId, @Fecha, @MetodoPago, @TotalVenta, @Observacion);
-            SELECT CAST(SCOPE_IDENTITY() as int);", parametros, transaction);
-    }
-
-    public static async Task<int> InsertarDetalleVentaAsync(IDbConnection connection, int ventaId, int productoId, int cantidad, decimal precioVentaTotal, decimal precioCompraTotal, decimal porcentajeGanancia, decimal ganancia, IDbTransaction? transaction = null)
-    {
-        var parametros = new
-        {
-            VentaId = ventaId,
-            ProductoId = productoId,
-            Cantidad = cantidad,
-            PrecioVenta = precioVentaTotal,
-            CostoCompra = precioCompraTotal,
-            PorcentajeGanancia = porcentajeGanancia,
-            Ganancia = ganancia
-        };
-
-        if (ExisteColumna(connection, "DetalleVenta", "precioCompra"))
-        {
-            return await connection.ExecuteAsync(@"
-                INSERT INTO DetalleVenta
-                    (ventaID, productoID, cantidad, precioVenta, precioCompra, costoCompra, porcentajeGanancia, ganancia)
-                VALUES
-                    (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros, transaction);
-        }
-
-        return await connection.ExecuteAsync(@"
-            INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
-            VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros, transaction);
-    }
-
-    public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
-    {
-        return await connection.ExecuteScalarAsync<int>(@"
-            SELECT COUNT(1)
-            FROM Usuarios u
-            INNER JOIN Rol r ON r.id = u.rolID
-            INNER JOIN Permisos p ON p.id = r.permisoID
-            WHERE u.id = @usuario AND u.empresaID = @empresa AND p.gestionarUsuarios = 1",
-            new { usuario, empresa });
-    }
-
-    public static async Task<string?> ObtenerContrasenaActualAsync(IDbConnection connection, int usuario, int empresa)
-    {
-        return await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT contrasena FROM Usuarios WHERE id = @Usuario AND empresaID = @Empresa",
-           
-
-            new { Usuario = usuario, Empresa = empresa });
-    }
-
-    public static async Task<int> GuardarPerfilAsync(IDbConnection connection, string nombre, string mail, string? telefono, int usuario, int empresa)
-    {
-        return await connection.ExecuteAsync(
-            @"UPDATE Usuarios
-              SET nombreUsuario = @Nombre, mail = @Mail, numeroTelefono = @Telefono
-              WHERE id = @Usuario AND empresaID = @Empresa",
-            new
-            {
-                Nombre = nombre,
-                Mail = mail,
-                Telefono = string.IsNullOrWhiteSpace(telefono) ? null : telefono.Trim(),
-                Usuario = usuario,
-                Empresa = empresa
-            });
-    }
-
-    public static async Task<int> GuardarEmpresaAsync(IDbConnection connection, string nombre, int empresa)
-    {
-        return await connection.ExecuteAsync(
-            "UPDATE Empresa SET nombre = @Nombre WHERE id = @Empresa",
-            new { Nombre = nombre, Empresa = empresa });
-    }
-
-    public static async Task<int> CambiarContrasenaAsync(IDbConnection connection, string nueva, int usuario, int empresa)
-    {
-        return await connection.ExecuteAsync(
-            "UPDATE Usuarios SET contrasena = @Nueva WHERE id = @Usuario AND empresaID = @Empresa",
-            new { Nueva = nueva, Usuario = usuario, Empresa = empresa });
     }
 
     public sealed class AnalisisVentasGananciasData

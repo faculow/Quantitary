@@ -2953,6 +2953,7 @@ p {
 * Se pueden usar clases, pero sin abusar de ellas.  
 * Es clave respetar la jerarquía y especificidad de CSS.  
 * Seguir un patrón ordenado en el desarrollo del proyecto.
+* En ningun tipo de variable usar var, definir un tipo coherente de dato
 
 # **26\. Ubicacion de las querys**
 * Todas las querys deben estar ubicadas en la clase BD.cs, nunca en ningun otro lugar
