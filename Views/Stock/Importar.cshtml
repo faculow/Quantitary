@@ -136,12 +136,18 @@ else
 
         <div class="alert alert-info">
             <strong>Formato esperado:</strong> el archivo debe tener en la primera fila los encabezados:<br />
-            Nombre, SKU, Categoria, PrecioCompra, PrecioVenta, Proveedor
+            Nombre, SKU, Categoria, PrecioCompra, PrecioVenta, Proveedor.<br />
+            <span class="small">También puede incluir StockInicial y StockMinimo.</span>
         </div>
 
-        <div class="mb-3">
+        <div class="mb-3 d-flex flex-wrap gap-2">
             <a asp-controller="Stock" asp-action="DescargarPlantillaProductos" class="btn btn-primary">
                 Descargar Excel vacío
+            </a>
+            <a href="@Url.Content("~/archivos/Productos_Demo_Expo.xlsx")"
+               class="btn btn-outline-primary"
+               download="Productos_Demo_Expo.xlsx">
+                Descargar Excel demo
             </a>
         </div>
 
