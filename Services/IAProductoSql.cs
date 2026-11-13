@@ -12,6 +12,40 @@ public sealed class IAProductoSql
         decimal? Precio, int? Stock, int? StockMinimo, decimal? Costo, string? Proveedor,
         string? Descripcion);
     public sealed class Item { public int Id {get;set;} public string Nombre {get;set;}=""; public string Sku {get;set;}=""; public decimal Precio {get;set;} public int Stock {get;set;} }
+
+    public async Task<List<Item>> BuscarProductos(int u, int e, string? consulta)
+    {
+        var termino = (consulta ?? "").Trim();
+        if (termino.Length is < 2 or > 150) return new List<Item>();
+        if (!await BD.IAPermitidoAsync(_config, u, e, "eliminar")) throw new UnauthorizedAccessException();
+
+        var comparador = System.Globalization.CultureInfo.GetCultureInfo("es-AR").CompareInfo;
+        var opciones = System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.IgnoreNonSpace;
+        bool Coincide(string valor) => comparador.IndexOf(valor ?? "", termino, opciones) >= 0;
+        int Prioridad(Producto producto)
+        {
+            if (comparador.Compare(producto.Sku, termino, opciones) == 0) return 0;
+            if (comparador.Compare(producto.Nombre, termino, opciones) == 0) return 1;
+            if (comparador.IsPrefix(producto.Nombre, termino, opciones)) return 2;
+            if (comparador.IsPrefix(producto.Sku, termino, opciones)) return 3;
+            return 4;
+        }
+
+        return BD.ObtenerProductos(_config, empresaId: e)
+            .Where(p => p.Activo && (Coincide(p.Nombre) || Coincide(p.Sku)))
+            .OrderBy(Prioridad)
+            .ThenBy(p => p.Nombre)
+            .Take(8)
+            .Select(p => new Item
+            {
+                Id = p.Id,
+                Nombre = p.Nombre,
+                Sku = p.Sku,
+                Precio = p.PrecioVenta,
+                Stock = p.StockActual
+            })
+            .ToList();
+    }
     private async Task<bool> Permitido(SqlConnection db,int u,int e,string tipo,SqlTransaction? tx=null)
         => await BD.IAPermitidoAsync(_config,u,e,tipo);
     public async Task<object> VistaPrevia(int u,int e,Solicitud solicitud)
