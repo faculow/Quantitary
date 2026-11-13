@@ -948,9 +948,8 @@
 
   attachBtn.addEventListener('click', function () { if (!busy) imageInput.click(); });
   document.getElementById('removeAttachment').addEventListener('click', clearAttachment);
-  imageInput.addEventListener('change', async function () {
-    var file = imageInput.files && imageInput.files[0];
-    if (!file) return;
+  async function selectImageFile(file) {
+    if (!file || busy) return;
     attachBtn.disabled = true;
     try {
       selectedImage = await prepareImage(file);
@@ -963,6 +962,30 @@
       clearAttachment();
       addMessage('assistant', error.message || 'No se pudo preparar la imagen.');
     } finally { attachBtn.disabled = false; }
+  }
+
+  imageInput.addEventListener('change', function () {
+    var file = imageInput.files && imageInput.files[0];
+    if (file) selectImageFile(file);
+  });
+
+  input.addEventListener('paste', function (event) {
+    if (busy || !event.clipboardData || !event.clipboardData.items) return;
+    var imageItem = Array.from(event.clipboardData.items).find(function (item) {
+      return item.kind === 'file' && ['image/jpeg', 'image/png', 'image/webp'].includes(item.type);
+    });
+    if (!imageItem) return;
+    var pasted = imageItem.getAsFile();
+    if (!pasted) return;
+    event.preventDefault();
+    var extension = pasted.type === 'image/png' ? 'png' : pasted.type === 'image/webp' ? 'webp' : 'jpg';
+    var fileName = pasted.name && pasted.name !== 'image.png'
+      ? pasted.name
+      : 'captura-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
+    var file = pasted.name === fileName
+      ? pasted
+      : new File([pasted], fileName, { type: pasted.type, lastModified: Date.now() });
+    selectImageFile(file);
   });
 
   function updateSendState() {
@@ -1006,19 +1029,21 @@
       scrollToEnd();
       return;
     }
-    var normalizedQuestion = text.replace(/^[¿¡\s]+/, '');
-    var asksHow = /^(c[oó]mo|d[oó]nde|puedo|se puede|qu[eé] pasa|qu[eé] necesito|cu[aá]l es)/i.test(normalizedQuestion);
+    var normalizedQuestion = intentText.replace(/^[\s]+/, '');
+    var asksHow = /^(como|donde|puedo|podes|se puede|que pasa|que necesito|cual es)/.test(normalizedQuestion);
     var skuMatch = text.match(/sku\s*[:#-]?\s*([a-z0-9._-]+)/i);
     var initialSku = skuMatch ? skuMatch[1] : '';
-    var requestsCreation = /\b(crea|crear|creame|creo|agrega|agregar|agregame|carga|cargar|registra|registrar|alta|nuevo)\b/.test(intentText) &&
+    var requestsCreation = /\b(crea(?:r|me)?|agrega(?:r|me)?|carga(?:r|me)?|registra(?:r|me)?|alta|nuevo)\b/.test(intentText) &&
       /\b(producto|articulo|item)\b/.test(intentText) && !/\b(no|sin)\s+(crear|agregar|cargar|registrar)\b/.test(intentText);
-    if (!image && !isRetry && requestsCreation) {
+    var requestsDeletion = /\b(elimina(?:r|me)?|borra(?:r|me)?|saca(?:r|me)?|quita(?:r|me)?)\b/.test(intentText) &&
+      /\b(producto|articulo|item|sku|catalogo)\b/.test(intentText);
+    if (!image && !isRetry && !asksHow && requestsCreation) {
       addMessage('user', text);
       addMessage('assistant', 'Sí, podés crearlo desde acá. Completá los datos básicos y revisalos antes de guardarlo.');
       manageProduct('crear', '', initialSku);
       return;
     }
-    if (!image && !isRetry && !asksHow && /\b(elimin|borr|sac[aá]|quit[aá])\b/i.test(text) && /producto|sku|cat[aá]logo/i.test(text)) {
+    if (!image && !isRetry && !asksHow && requestsDeletion) {
       addMessage('user',text);
       addMessage('assistant','Abrí la eliminación segura. Identificá el producto por SKU y revisá las dos confirmaciones antes de eliminarlo.');
       manageProduct('eliminar', '', initialSku);
@@ -1284,17 +1309,20 @@
   function manageProduct(initialType, initialName, initialSku) {
     removeSuggestions();
     var dedicatedCreate = initialType === 'crear';
+    var dedicatedDelete = initialType === 'eliminar';
     var form = createEl('form', 'ia-product-form');
-    form.appendChild(createEl('strong', '', dedicatedCreate ? 'Nuevo producto' : 'Administrar producto'));
+    form.appendChild(createEl('strong', '', dedicatedCreate ? 'Nuevo producto' : dedicatedDelete ? 'Eliminar producto' : 'Administrar producto'));
     form.appendChild(createEl('p', 'form-intro', dedicatedCreate
       ? 'Completá nombre, SKU y precio. Después vas a poder revisar todo antes de crear el producto.'
+      : dedicatedDelete
+        ? 'Escribí el SKU exacto. Vas a ver el producto y deberás confirmarlo dos veces antes de eliminarlo.'
       : 'El cambio se valida en el servidor antes de guardarse.'));
     var select = createEl('select');
     [['crear','Crear producto'],['precio','Modificar precio'],['stock','Modificar stock'],['eliminar','Eliminar producto']].forEach(function (pair) {
       var opt = createEl('option', '', pair[1]); opt.value = pair[0]; select.appendChild(opt);
     });
     select.value = initialType || 'crear';
-    select.hidden = dedicatedCreate;
+    select.hidden = dedicatedCreate || dedicatedDelete;
     form.appendChild(select);
     var nombre = formRow(form, 'Nombre', 'nombre', 'text', initialName || '');
     var sku = formRow(form, 'SKU exacto', 'sku', 'text', initialSku || '');
@@ -1329,25 +1357,31 @@
       advanced.hidden = !creating;
       precio.parentElement.hidden = select.value === 'stock' || select.value === 'eliminar';
       stock.parentElement.hidden = select.value === 'precio' || select.value === 'eliminar';
+      nombre.required = creating;
+      sku.required = true;
+      precio.required = creating || select.value === 'precio';
+      stock.required = select.value === 'stock';
     }
     select.addEventListener('change', updateFields); updateFields();
     var actions = createEl('div', 'form-actions');
     var close = createEl('button', 'secondary', 'Cancelar'); close.type='button';
-    var button = createEl('button', '', dedicatedCreate ? 'Revisar producto' : 'Revisar operación'); button.type='submit';
+    var button = createEl('button', '', dedicatedCreate ? 'Revisar producto' : dedicatedDelete ? 'Revisar eliminación' : 'Revisar operación'); button.type='submit';
     actions.append(close, button); form.appendChild(actions);
     close.addEventListener('click', function () { form.remove(); });
     form.addEventListener('submit', async function (event) {
       event.preventDefault();
-      var data = {tipo: select.value, sku: sku.value.trim(), nombre: nombre.value.trim(), categoria: categoria.value.trim(),
+      var operationType = select.value;
+      var data = {tipo: operationType, sku: sku.value.trim(), nombre: nombre.value.trim(), categoria: categoria.value.trim(),
         precio: precio.value === '' ? null : Number(precio.value), stock: stock.value === '' ? null : Number(stock.value),
         stockMinimo: minimo.value === '' ? null : Number(minimo.value), costo: costo.value === '' ? null : Number(costo.value),
         proveedor: proveedor.value.trim(), descripcion: descripcion.value.trim()};
       button.disabled = true;
       try {
         var result = await api('/api/ia/productos/preparar', 'POST', data);
+        form.hidden = true;
         var preview = createEl('div', 'ia-product-form');
-        preview.appendChild(createEl('strong','', select.value === 'crear' ? 'Revisá el producto' : 'Confirmación 1 de 2'));
-        preview.appendChild(createEl('p','form-intro', select.value === 'crear'
+        preview.appendChild(createEl('strong','', operationType === 'crear' ? 'Revisá el producto' : 'Confirmación 1 de 2'));
+        preview.appendChild(createEl('p','form-intro', operationType === 'crear'
           ? 'Si está todo bien, confirmá para crearlo.'
           : 'Revisá cuidadosamente los datos antes de continuar.'));
         var grid = createEl('div','preview-grid');
@@ -1360,14 +1394,14 @@
         preview.appendChild(grid);
         var previewActions = createEl('div','form-actions');
         var cancel = createEl('button','secondary','Cancelar'); cancel.type='button';
-        var confirm = createEl('button', select.value === 'eliminar' ? 'danger' : '', select.value === 'crear' ? 'Crear producto' : 'Confirmar datos'); confirm.type='button';
+        var confirm = createEl('button', operationType === 'eliminar' ? 'danger' : '', operationType === 'crear' ? 'Crear producto' : 'Confirmar datos'); confirm.type='button';
         previewActions.append(cancel,confirm);preview.appendChild(previewActions);messagesEl.appendChild(preview);scrollToEnd();
-        cancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();button.disabled=false;});
+        cancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();form.hidden=false;button.disabled=false;});
         confirm.addEventListener('click', async function () {
           confirm.disabled = true;
           try {
             var stage = await api('/api/ia/productos/confirmar','POST',{token:result.token});
-            if (select.value === 'crear') {
+            if (operationType === 'crear') {
               var created = await api('/api/ia/productos/confirmar','POST',{token:result.token});
               addMessage('assistant', created.mensaje + ' Para la próxima, también podés cargarlo desde Stock; ahí es más fácil si querés completar todos los datos.');
               renderActions([{label:'Agregar otro desde Stock',url:'/Stock/Crear'}]);
@@ -1379,9 +1413,9 @@
             preview.appendChild(createEl('p','form-intro',stage.mensaje));
             var finalActions = createEl('div','form-actions');
             var finalCancel = createEl('button','secondary','Cancelar');finalCancel.type='button';
-            var final = createEl('button',select.value === 'eliminar' ? 'danger' : '', select.value === 'eliminar' ? 'Eliminar definitivamente' : 'Confirmar definitivamente');
+            var final = createEl('button',operationType === 'eliminar' ? 'danger' : '', operationType === 'eliminar' ? 'Eliminar definitivamente' : 'Confirmar definitivamente');
             final.type='button';finalActions.append(finalCancel,final);preview.appendChild(finalActions);
-            finalCancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();button.disabled=false;});
+            finalCancel.addEventListener('click', async function () {await api('/api/ia/productos/cancelar','POST');preview.remove();form.hidden=false;button.disabled=false;});
             final.addEventListener('click', async function () {
               final.disabled=true;
               try {var done=await api('/api/ia/productos/confirmar','POST',{token:result.token});addMessage('assistant',done.mensaje);preview.remove();form.remove();}
@@ -1389,7 +1423,7 @@
             });
           }catch(e){addMessage('assistant',e.message);confirm.disabled=false;}
         });
-      } catch(e){addMessage('assistant',e.message);}finally{button.disabled=false;}
+      } catch(e){addMessage('assistant',e.message);button.disabled=false;}
     });
     messagesEl.appendChild(form); scrollToEnd();
   }
