@@ -258,60 +258,383 @@ BEGIN
 END;
 GO
 
--- Ajuste para bases ya existentes: consolidar duplicados y crear unicidad por venta+producto
-DELETE d
-FROM dbo.DetalleVenta d
-WHERE d.ventaID IS NULL
-   OR d.productoID IS NULL;
+-- ============================================================
+-- COMPATIBILIDAD CON BASES ANTERIORES
+-- ============================================================
+-- Las tablas pueden existir con el modelo viejo. Se agregan únicamente
+-- las columnas faltantes y se conservan los registros actuales.
+
+IF COL_LENGTH(N'dbo.Categoria', N'empresaID') IS NULL
+    ALTER TABLE dbo.Categoria ADD empresaID int NULL;
+IF COL_LENGTH(N'dbo.Categoria', N'nombre') IS NULL
+    ALTER TABLE dbo.Categoria ADD nombre varchar(100) NULL;
+
+IF COL_LENGTH(N'dbo.Proveedores', N'empresaID') IS NULL
+    ALTER TABLE dbo.Proveedores ADD empresaID int NULL;
+IF COL_LENGTH(N'dbo.Proveedores', N'nombre') IS NULL
+    ALTER TABLE dbo.Proveedores ADD nombre varchar(150) NULL;
+IF COL_LENGTH(N'dbo.Proveedores', N'telefono') IS NULL
+    ALTER TABLE dbo.Proveedores ADD telefono varchar(30) NULL;
+IF COL_LENGTH(N'dbo.Proveedores', N'mail') IS NULL
+    ALTER TABLE dbo.Proveedores ADD mail varchar(150) NULL;
+IF COL_LENGTH(N'dbo.Proveedores', N'costoEnvio') IS NULL
+    ALTER TABLE dbo.Proveedores ADD costoEnvio decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.Proveedores', N'detalles') IS NULL
+    ALTER TABLE dbo.Proveedores ADD detalles varchar(max) NULL;
+
+IF COL_LENGTH(N'dbo.Productos', N'empresaID') IS NULL
+    ALTER TABLE dbo.Productos ADD empresaID int NULL;
+IF COL_LENGTH(N'dbo.Productos', N'categoriaID') IS NULL
+    ALTER TABLE dbo.Productos ADD categoriaID int NULL;
+IF COL_LENGTH(N'dbo.Productos', N'proveedorID') IS NULL
+    ALTER TABLE dbo.Productos ADD proveedorID int NULL;
+IF COL_LENGTH(N'dbo.Productos', N'nombre') IS NULL
+    ALTER TABLE dbo.Productos ADD nombre varchar(150) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'sku') IS NULL
+    ALTER TABLE dbo.Productos ADD sku varchar(100) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'descripcion') IS NULL
+    ALTER TABLE dbo.Productos ADD descripcion varchar(500) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'fechaCarga') IS NULL
+    ALTER TABLE dbo.Productos ADD fechaCarga datetime2(0) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'precioVenta') IS NULL
+    ALTER TABLE dbo.Productos ADD precioVenta decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'costoCompra') IS NULL
+    ALTER TABLE dbo.Productos ADD costoCompra decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.Productos', N'activo') IS NULL
+    ALTER TABLE dbo.Productos ADD activo bit NULL;
+
+IF COL_LENGTH(N'dbo.Stock', N'productoID') IS NULL
+    ALTER TABLE dbo.Stock ADD productoID int NULL;
+IF COL_LENGTH(N'dbo.Stock', N'cantidad') IS NULL
+    ALTER TABLE dbo.Stock ADD cantidad int NULL;
+IF COL_LENGTH(N'dbo.Stock', N'cantidadMinimoAlerta') IS NULL
+    ALTER TABLE dbo.Stock ADD cantidadMinimoAlerta int NULL;
+IF COL_LENGTH(N'dbo.Stock', N'activo') IS NULL
+    ALTER TABLE dbo.Stock ADD activo bit NULL;
+IF COL_LENGTH(N'dbo.Stock', N'actualizadoEn') IS NULL
+    ALTER TABLE dbo.Stock ADD actualizadoEn datetime2(0) NULL;
+
+IF COL_LENGTH(N'dbo.Ventas', N'empresaID') IS NULL
+    ALTER TABLE dbo.Ventas ADD empresaID int NULL;
+IF COL_LENGTH(N'dbo.Ventas', N'usuarioID') IS NULL
+    ALTER TABLE dbo.Ventas ADD usuarioID int NULL;
+IF COL_LENGTH(N'dbo.Ventas', N'fecha') IS NULL
+    ALTER TABLE dbo.Ventas ADD fecha datetime2(0) NULL;
+IF COL_LENGTH(N'dbo.Ventas', N'metodoPago') IS NULL
+    ALTER TABLE dbo.Ventas ADD metodoPago varchar(50) NULL;
+IF COL_LENGTH(N'dbo.Ventas', N'totalVenta') IS NULL
+    ALTER TABLE dbo.Ventas ADD totalVenta decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.Ventas', N'observacion') IS NULL
+    ALTER TABLE dbo.Ventas ADD observacion varchar(500) NULL;
+
+IF COL_LENGTH(N'dbo.DetalleVenta', N'ventaID') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD ventaID int NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'productoID') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD productoID int NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'cantidad') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD cantidad int NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'precioVenta') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD precioVenta decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'costoCompra') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD costoCompra decimal(12,2) NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'porcentajeGanancia') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD porcentajeGanancia decimal(10,2) NULL;
+IF COL_LENGTH(N'dbo.DetalleVenta', N'ganancia') IS NULL
+    ALTER TABLE dbo.DetalleVenta ADD ganancia decimal(12,2) NULL;
 GO
 
-IF OBJECT_ID('tempdb..#DuplicadosDetalleVenta') IS NOT NULL
-    DROP TABLE #DuplicadosDetalleVenta;
+-- Proveedores antiguos exigían productoPrincipal en cada alta. Se conserva
+-- la columna, pero pasa a ser opcional antes de migrar nombres de proveedor.
+IF COL_LENGTH(N'dbo.Proveedores', N'productoPrincipal') IS NOT NULL
+BEGIN
+    DECLARE @TipoProductoPrincipal nvarchar(128);
+    SELECT @TipoProductoPrincipal =
+        CASE
+            WHEN t.name IN ('varchar', 'char')
+                THEN t.name + '(' + CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length) END + ')'
+            WHEN t.name IN ('nvarchar', 'nchar')
+                THEN t.name + '(' + CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length / 2) END + ')'
+            ELSE t.name
+        END
+    FROM sys.columns c
+    INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'dbo.Proveedores')
+      AND c.name = 'productoPrincipal'
+      AND c.is_nullable = 0;
 
+    IF @TipoProductoPrincipal IS NOT NULL
+        EXEC (N'ALTER TABLE dbo.Proveedores ALTER COLUMN productoPrincipal '
+            + @TipoProductoPrincipal + N' NULL;');
+END;
+GO
+
+DECLARE @EmpresaCompatId int = (SELECT TOP 1 id FROM dbo.Empresa ORDER BY id);
+IF @EmpresaCompatId IS NULL
+BEGIN
+    INSERT INTO dbo.Empresa (nombre) VALUES ('Quantitary Admin');
+    SET @EmpresaCompatId = CAST(SCOPE_IDENTITY() AS int);
+END;
+
+UPDATE dbo.Categoria
+SET empresaID = @EmpresaCompatId
+WHERE empresaID IS NULL OR empresaID NOT IN (SELECT id FROM dbo.Empresa);
+
+UPDATE dbo.Categoria
+SET nombre = 'Categoría ' + CAST(id AS varchar(20))
+WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';
+
+UPDATE dbo.Proveedores
+SET empresaID = @EmpresaCompatId
+WHERE empresaID IS NULL OR empresaID NOT IN (SELECT id FROM dbo.Empresa);
+
+IF COL_LENGTH(N'dbo.Proveedores', N'productoPrincipal') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.Proveedores
+        SET nombre = COALESCE(NULLIF(LTRIM(RTRIM(nombre)), ''''),
+                              NULLIF(LTRIM(RTRIM(productoPrincipal)), ''''),
+                              ''Proveedor '' + CAST(id AS varchar(20)))
+        WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '''';';
+END;
+
+UPDATE dbo.Proveedores
+SET nombre = 'Proveedor ' + CAST(id AS varchar(20))
+WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';
+
+UPDATE dbo.Proveedores SET costoEnvio = 0 WHERE costoEnvio IS NULL;
+
+UPDATE dbo.Productos
+SET empresaID = @EmpresaCompatId
+WHERE empresaID IS NULL OR empresaID NOT IN (SELECT id FROM dbo.Empresa);
+
+IF COL_LENGTH(N'dbo.Productos', N'nombreProducto') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.Productos
+        SET nombre = COALESCE(NULLIF(LTRIM(RTRIM(nombre)), ''''),
+                              NULLIF(LTRIM(RTRIM(nombreProducto)), ''''))
+        WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '''';';
+END;
+
+UPDATE dbo.Productos
+SET nombre = 'Producto ' + CAST(id AS varchar(20))
+WHERE nombre IS NULL OR LTRIM(RTRIM(nombre)) = '';
+
+UPDATE dbo.Productos
+SET sku = 'LEGACY-' + CAST(id AS varchar(20))
+WHERE sku IS NULL OR LTRIM(RTRIM(sku)) = '';
+
+IF COL_LENGTH(N'dbo.Productos', N'precio') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.Productos
+        SET precioVenta = ISNULL(precio, 0)
+        WHERE precioVenta IS NULL OR precioVenta = 0;';
+END;
+
+IF COL_LENGTH(N'dbo.Productos', N'valorVenta') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.Productos
+        SET precioVenta = ISNULL(valorVenta, 0)
+        WHERE precioVenta IS NULL OR precioVenta = 0;';
+END;
+
+UPDATE dbo.Productos
+SET precioVenta = ISNULL(precioVenta, 0),
+    costoCompra = ISNULL(costoCompra, 0),
+    fechaCarga = ISNULL(fechaCarga, SYSUTCDATETIME()),
+    activo = ISNULL(activo, 1);
+
+IF COL_LENGTH(N'dbo.Productos', N'categoria') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        INSERT INTO dbo.Categoria (empresaID, nombre)
+        SELECT DISTINCT p.empresaID, LTRIM(RTRIM(p.categoria))
+        FROM dbo.Productos p
+        WHERE p.categoria IS NOT NULL
+          AND LTRIM(RTRIM(p.categoria)) <> ''''
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.Categoria c
+              WHERE c.empresaID = p.empresaID
+                AND LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(p.categoria))));
+
+        UPDATE p
+        SET categoriaID = c.id
+        FROM dbo.Productos p
+        INNER JOIN dbo.Categoria c
+            ON c.empresaID = p.empresaID
+           AND LOWER(LTRIM(RTRIM(c.nombre))) = LOWER(LTRIM(RTRIM(p.categoria)))
+        WHERE p.categoriaID IS NULL
+           OR NOT EXISTS (SELECT 1 FROM dbo.Categoria actual WHERE actual.id = p.categoriaID);';
+END;
+
+INSERT INTO dbo.Categoria (empresaID, nombre)
+SELECT DISTINCT p.empresaID, 'Sin categoría'
+FROM dbo.Productos p
+WHERE (p.categoriaID IS NULL OR NOT EXISTS (SELECT 1 FROM dbo.Categoria c WHERE c.id = p.categoriaID))
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.Categoria c
+      WHERE c.empresaID = p.empresaID AND c.nombre = 'Sin categoría');
+
+UPDATE p
+SET categoriaID = c.id
+FROM dbo.Productos p
+INNER JOIN dbo.Categoria c ON c.empresaID = p.empresaID AND c.nombre = 'Sin categoría'
+WHERE p.categoriaID IS NULL
+   OR NOT EXISTS (SELECT 1 FROM dbo.Categoria actual WHERE actual.id = p.categoriaID);
+
+IF COL_LENGTH(N'dbo.Productos', N'proveedor') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        INSERT INTO dbo.Proveedores (empresaID, nombre, costoEnvio)
+        SELECT DISTINCT p.empresaID, LTRIM(RTRIM(p.proveedor)), 0
+        FROM dbo.Productos p
+        WHERE p.proveedor IS NOT NULL
+          AND LTRIM(RTRIM(p.proveedor)) <> ''''
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.Proveedores pr
+              WHERE pr.empresaID = p.empresaID
+                AND LOWER(LTRIM(RTRIM(pr.nombre))) = LOWER(LTRIM(RTRIM(p.proveedor))));
+
+        UPDATE p
+        SET proveedorID = pr.id
+        FROM dbo.Productos p
+        INNER JOIN dbo.Proveedores pr
+            ON pr.empresaID = p.empresaID
+           AND LOWER(LTRIM(RTRIM(pr.nombre))) = LOWER(LTRIM(RTRIM(p.proveedor)))
+        WHERE p.proveedorID IS NULL
+           OR NOT EXISTS (SELECT 1 FROM dbo.Proveedores actual WHERE actual.id = p.proveedorID);';
+END;
+
+UPDATE p
+SET proveedorID = NULL
+FROM dbo.Productos p
+WHERE p.proveedorID IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM dbo.Proveedores pr WHERE pr.id = p.proveedorID);
+
+UPDATE dbo.Stock
+SET cantidad = ISNULL(cantidad, 0),
+    cantidadMinimoAlerta = ISNULL(cantidadMinimoAlerta, 0),
+    activo = ISNULL(activo, 1),
+    actualizadoEn = ISNULL(actualizadoEn, SYSUTCDATETIME());
+
+IF COL_LENGTH(N'dbo.Ventas', N'productoId') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE v
+        SET empresaID = p.empresaID
+        FROM dbo.Ventas v
+        INNER JOIN dbo.Productos p ON p.id = v.productoId
+        WHERE v.empresaID IS NULL;';
+END;
+
+UPDATE dbo.Ventas
+SET empresaID = @EmpresaCompatId
+WHERE empresaID IS NULL OR empresaID NOT IN (SELECT id FROM dbo.Empresa);
+
+UPDATE v
+SET usuarioID = u.id
+FROM dbo.Ventas v
+OUTER APPLY (
+    SELECT TOP 1 id
+    FROM dbo.Usuarios u
+    WHERE u.empresaID = v.empresaID
+    ORDER BY id
+) u
+WHERE v.usuarioID IS NULL;
+
+IF COL_LENGTH(N'dbo.Ventas', N'precio') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.Ventas
+        SET totalVenta = ISNULL(precio, 0)
+        WHERE totalVenta IS NULL OR totalVenta = 0;';
+END;
+
+UPDATE dbo.Ventas
+SET fecha = ISNULL(fecha, SYSUTCDATETIME()),
+    metodoPago = COALESCE(NULLIF(LTRIM(RTRIM(metodoPago)), ''), 'Efectivo'),
+    totalVenta = ISNULL(totalVenta, 0);
+
+UPDATE dbo.DetalleVenta SET cantidad = 1 WHERE cantidad IS NULL OR cantidad <= 0;
+UPDATE dbo.DetalleVenta SET precioVenta = 0 WHERE precioVenta IS NULL;
+
+IF COL_LENGTH(N'dbo.DetalleVenta', N'precioCompra') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE dbo.DetalleVenta
+        SET costoCompra = ISNULL(precioCompra, 0)
+        WHERE costoCompra IS NULL OR costoCompra = 0;';
+END;
+
+UPDATE dbo.DetalleVenta
+SET costoCompra = ISNULL(costoCompra, 0),
+    ganancia = ISNULL(ganancia, ISNULL(precioVenta, 0) - ISNULL(costoCompra, 0));
+GO
+
+-- Las columnas obligatorias del modelo viejo quedan opcionales para que
+-- las altas nuevas del esquema normalizado no fallen.
+DECLARE @TablaLegacy sysname;
+DECLARE @ColumnaLegacy sysname;
+DECLARE @TipoLegacy nvarchar(128);
+DECLARE @SqlLegacy nvarchar(max);
+
+DECLARE cursor_legacy_nullable CURSOR LOCAL FAST_FORWARD FOR
 SELECT
-    MIN(id) AS idConservar,
-    ventaID,
-    productoID,
-    SUM(ISNULL(cantidad, 0)) AS cantidadTotal,
-    SUM(ISNULL(precioVenta, 0)) AS precioVentaTotal,
-    SUM(ISNULL(costoCompra, 0)) AS costoCompraTotal,
-    SUM(ISNULL(ganancia, 0)) AS gananciaTotal,
-    COUNT(*) AS cantidadFilas
-INTO #DuplicadosDetalleVenta
-FROM dbo.DetalleVenta
-GROUP BY ventaID, productoID
-HAVING COUNT(*) > 1;
-
-UPDATE d
-SET d.cantidad = x.cantidadTotal,
-    d.precioVenta = x.precioVentaTotal,
-    d.costoCompra = x.costoCompraTotal,
-    d.ganancia = x.gananciaTotal,
-    d.porcentajeGanancia = CASE
-        WHEN x.precioVentaTotal = 0 THEN NULL
-        ELSE ROUND((x.gananciaTotal / x.precioVentaTotal) * 100, 2)
+    OBJECT_SCHEMA_NAME(c.object_id) + N'.' + OBJECT_NAME(c.object_id),
+    c.name,
+    CASE
+        WHEN t.name IN ('varchar', 'char', 'varbinary', 'binary')
+            THEN t.name + '(' + CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length) END + ')'
+        WHEN t.name IN ('nvarchar', 'nchar')
+            THEN t.name + '(' + CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length / 2) END + ')'
+        WHEN t.name IN ('decimal', 'numeric')
+            THEN t.name + '(' + CONVERT(varchar(10), c.precision) + ',' + CONVERT(varchar(10), c.scale) + ')'
+        WHEN t.name IN ('datetime2', 'datetimeoffset', 'time')
+            THEN t.name + '(' + CONVERT(varchar(10), c.scale) + ')'
+        ELSE t.name
     END
-FROM dbo.DetalleVenta d
-INNER JOIN #DuplicadosDetalleVenta x ON x.idConservar = d.id;
+FROM sys.columns c
+INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+WHERE (
+        (c.object_id = OBJECT_ID(N'dbo.Productos') AND c.name IN (
+            'nombreProducto', 'categoria', 'proveedor', 'marca', 'precio',
+            'valorVenta', 'stockActual', 'stockMinimo', 'peso', 'unidadMedida',
+            'cantidadVentas', 'cantidadDeVentas', 'proveedorID'))
+     OR (c.object_id = OBJECT_ID(N'dbo.Proveedores') AND c.name = 'productoPrincipal')
+     OR (c.object_id = OBJECT_ID(N'dbo.Stock') AND c.name IN (
+            'precioUnitario', 'rotacionMensual'))
+     OR (c.object_id = OBJECT_ID(N'dbo.Ventas') AND c.name IN (
+            'productoId', 'nombreProducto', 'cantidad', 'precio', 'costo'))
+     OR (c.object_id = OBJECT_ID(N'dbo.DetalleVenta') AND c.name = 'precioCompra')
+      )
+  AND c.is_nullable = 0
+  AND c.is_identity = 0
+  AND c.is_computed = 0;
 
-DELETE d
-FROM dbo.DetalleVenta d
-INNER JOIN #DuplicadosDetalleVenta x
-    ON x.ventaID = d.ventaID
-   AND x.productoID = d.productoID
-WHERE d.id <> x.idConservar;
-
-DROP TABLE #DuplicadosDetalleVenta;
+OPEN cursor_legacy_nullable;
+FETCH NEXT FROM cursor_legacy_nullable INTO @TablaLegacy, @ColumnaLegacy, @TipoLegacy;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @SqlLegacy = N'ALTER TABLE ' + @TablaLegacy + N' ALTER COLUMN '
+        + QUOTENAME(@ColumnaLegacy) + N' ' + @TipoLegacy + N' NULL;';
+    EXEC sys.sp_executesql @SqlLegacy;
+    FETCH NEXT FROM cursor_legacy_nullable INTO @TablaLegacy, @ColumnaLegacy, @TipoLegacy;
+END;
+CLOSE cursor_legacy_nullable;
+DEALLOCATE cursor_legacy_nullable;
 GO
 
+-- Índice de lectura para bases anteriores. No se consolidan ni eliminan ventas.
 IF NOT EXISTS (
     SELECT 1
     FROM sys.indexes
-    WHERE name = 'UQ_DetalleVenta_Venta_Producto'
+    WHERE name IN ('UQ_DetalleVenta_Venta_Producto', 'IX_DetalleVenta_Venta_Producto')
       AND object_id = OBJECT_ID('dbo.DetalleVenta')
 )
 BEGIN
-    CREATE UNIQUE NONCLUSTERED INDEX UQ_DetalleVenta_Venta_Producto
+    CREATE NONCLUSTERED INDEX IX_DetalleVenta_Venta_Producto
         ON dbo.DetalleVenta (ventaID, productoID);
 END;
 GO
