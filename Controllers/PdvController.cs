@@ -257,9 +257,16 @@ public class PdvController : Controller
                     throw new InvalidOperationException($"No se pudo guardar el detalle de la venta para {producto.Nombre}.");
                 }
 
-                producto.StockActual -= item.Cantidad;
-                producto.CantidadVentas += item.Cantidad;
-                _productoRepository.ActualizarProducto(producto.Id, producto);
+                var stockDescontado = BD.DescontarStockAsync(
+                    connection,
+                    producto.Id,
+                    item.Cantidad,
+                    transaction).GetAwaiter().GetResult();
+
+                if (!stockDescontado)
+                {
+                    throw new InvalidOperationException($"No se pudo descontar el stock de {producto.Nombre}.");
+                }
             }
 
             transaction.Commit();

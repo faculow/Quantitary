@@ -233,6 +233,34 @@ public static class BD
             new { EmpresaId = empresaId, Nombre = nombre }, transaction);
     }
 
+    private static int? ObtenerOCrearProveedorId(IDbConnection connection, int empresaId, string? proveedorNombre, IDbTransaction? transaction = null)
+    {
+        if (string.IsNullOrWhiteSpace(proveedorNombre))
+        {
+            return null;
+        }
+
+        var nombre = proveedorNombre.Trim();
+        var proveedorId = connection.QuerySingleOrDefault<int?>(@"
+            SELECT TOP 1 id
+            FROM Proveedores
+            WHERE empresaID = @EmpresaId
+              AND LOWER(LTRIM(RTRIM(nombre))) = LOWER(LTRIM(RTRIM(@Nombre)))
+            ORDER BY id;",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction);
+
+        if (proveedorId.HasValue)
+        {
+            return proveedorId.Value;
+        }
+
+        return connection.QuerySingle<int>(@"
+            INSERT INTO Proveedores (empresaID, nombre, costoEnvio)
+            VALUES (@EmpresaId, @Nombre, 0);
+            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            new { EmpresaId = empresaId, Nombre = nombre }, transaction);
+    }
+
     public static Producto AgregarProducto(IConfiguration configuration, Producto producto)
     {
         if (string.IsNullOrWhiteSpace(producto.Nombre) || string.IsNullOrWhiteSpace(producto.Sku))
@@ -242,7 +270,7 @@ public static class BD
 
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
-        producto.Proveedor = producto.Proveedor.Trim();
+        producto.Proveedor = (producto.Proveedor ?? string.Empty).Trim();
         producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
 
         if (producto.PrecioVenta <= 0)
@@ -253,6 +281,7 @@ public static class BD
         using var connection = CrearConexion(configuration);
 
         producto.CategoriaID = ObtenerOCrearCategoriaId(connection, producto.EmpresaID, producto.Categoria);
+        producto.ProveedorID = ObtenerOCrearProveedorId(connection, producto.EmpresaID, producto.Proveedor);
 
         if (producto.Id > 0)
         {
@@ -310,7 +339,7 @@ public static class BD
 
         producto.Nombre = producto.Nombre.Trim();
         producto.Sku = producto.Sku.Trim();
-        producto.Proveedor = producto.Proveedor.Trim();
+        producto.Proveedor = (producto.Proveedor ?? string.Empty).Trim();
         producto.Categoria = string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria.Trim();
 
         if (producto.PrecioVenta <= 0)
@@ -331,7 +360,17 @@ public static class BD
             return false;
         }
 
+        if (producto.CostoCompra <= 0)
+        {
+            producto.CostoCompra = connection.ExecuteScalar<decimal?>(@"
+                SELECT costoCompra
+                FROM Productos
+                WHERE id = @Id;",
+                new { Id = id }) ?? 0;
+        }
+
         producto.CategoriaID = ObtenerOCrearCategoriaId(connection, empresaId.Value, producto.Categoria);
+        producto.ProveedorID = ObtenerOCrearProveedorId(connection, empresaId.Value, producto.Proveedor);
 
         var skuDuplicado = connection.ExecuteScalar<int>(@"
             SELECT COUNT(1)
@@ -370,9 +409,10 @@ public static class BD
             Id = id
         });
 
-        connection.Execute(@"UPDATE Stock
+        var filasStock = connection.Execute(@"UPDATE Stock
                             SET cantidad = @Cantidad,
                                 cantidadMinimoAlerta = @CantidadMinimoAlerta,
+                                activo = 1,
                                 actualizadoEn = @ActualizadoEn
                             WHERE productoID = @ProductoId",
             new
@@ -383,12 +423,27 @@ public static class BD
                 ProductoId = id
             });
 
+        if (filasStock == 0)
+        {
+            connection.Execute(@"
+                INSERT INTO Stock (productoID, cantidad, cantidadMinimoAlerta, activo, actualizadoEn)
+                VALUES (@ProductoId, @Cantidad, @CantidadMinimoAlerta, 1, @ActualizadoEn);",
+                new
+                {
+                    Cantidad = producto.StockActual,
+                    CantidadMinimoAlerta = producto.StockMinimo,
+                    ActualizadoEn = DateTime.Now,
+                    ProductoId = id
+                });
+        }
+
         return filasAfectadas > 0;
     }
 
     public static bool EliminarProducto(IConfiguration configuration, int id)
     {
         using var connection = CrearConexion(configuration);
+        connection.Open();
         using var transaction = connection.BeginTransaction();
 
         connection.Execute("DELETE FROM Stock WHERE productoID = @Id", new { Id = id }, transaction);
@@ -1464,7 +1519,8 @@ OPTION (RECOMPILE);";
 
     public static async Task<List<IAProductoSql.Item>> IABuscarProductoPorSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         var sql = @"
             SELECT
                 p.id AS Id,
@@ -1484,7 +1540,8 @@ OPTION (RECOMPILE);";
 
     public static async Task<int> IAProductoDuplicadoSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         return await connection.ExecuteScalarAsync<int>(@"
             SELECT COUNT(1)
             FROM Productos
@@ -1495,7 +1552,8 @@ OPTION (RECOMPILE);";
 
     public static async Task<int> IACrearProductoAsync(IConfiguration configuration, int empresaId, string nombre, string sku, string? categoria, string? descripcion, decimal precio, int stock, int stockMinimo, string? proveedor, decimal costoCompra, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
 
         var categoriaNombre = string.IsNullOrWhiteSpace(categoria) ? "Sin categoría" : categoria.Trim();
         var categoriaId = connection.QuerySingleOrDefault<int?>(@"
@@ -1514,6 +1572,8 @@ OPTION (RECOMPILE);";
                 new { EmpresaId = empresaId, Nombre = categoriaNombre }, transaction);
         }
 
+        var proveedorId = ObtenerOCrearProveedorId(connection, empresaId, proveedor, transaction);
+
         var productoId = connection.QuerySingle<int>(@"
             INSERT INTO Productos (empresaID, categoriaID, proveedorID, nombre, sku, descripcion, fechaCarga, precioVenta, costoCompra, activo)
             VALUES (@EmpresaId, @CategoriaId, @ProveedorId, @Nombre, @Sku, @Descripcion, SYSUTCDATETIME(), @Precio, @CostoCompra, 1);
@@ -1522,7 +1582,7 @@ OPTION (RECOMPILE);";
             {
                 EmpresaId = empresaId,
                 CategoriaId = categoriaId,
-                ProveedorId = (int?)null,
+                ProveedorId = proveedorId,
                 Nombre = nombre.Trim(),
                 Sku = sku.Trim(),
                 Descripcion = descripcion,
@@ -1540,7 +1600,8 @@ OPTION (RECOMPILE);";
 
     public static async Task<bool> IAActualizarProductoPrecioAsync(IConfiguration configuration, int empresaId, int productoId, decimal precio, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         return await connection.ExecuteAsync(@"
             UPDATE Productos
             SET precioVenta = @Precio,
@@ -1552,7 +1613,8 @@ OPTION (RECOMPILE);";
 
     public static async Task<bool> IAActualizarProductoStockAsync(IConfiguration configuration, int empresaId, int productoId, int stock, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         var existe = await connection.QuerySingleOrDefaultAsync<int?>(@"
             SELECT TOP 1 id FROM Stock WHERE productoID = @ProductoId",
             new { ProductoId = productoId }, transaction);
@@ -1576,26 +1638,31 @@ OPTION (RECOMPILE);";
 
     public static async Task<int> IAContarVentasProductoAsync(IConfiguration configuration, int empresaId, int productoId, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
-        return await connection.ExecuteScalarAsync<int>(@"
-            SELECT CASE WHEN
-                EXISTS (
-                    SELECT 1
-                    FROM DetalleVenta dv
-                    INNER JOIN Ventas v ON v.id = dv.ventaID
-                    WHERE dv.productoID = @ProductoId AND v.empresaID = @EmpresaId
-                )
-                OR EXISTS (
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
+        var tieneVentaLegacy = ExisteColumna(connection, "Ventas", "productoId", transaction);
+        var sqlLegacy = tieneVentaLegacy
+            ? @" OR EXISTS (
                     SELECT 1 FROM Ventas v
                     WHERE v.productoId = @ProductoId AND v.empresaID = @EmpresaId
-                )
+                )"
+            : string.Empty;
+
+        return await connection.ExecuteScalarAsync<int>(@"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM DetalleVenta dv
+                INNER JOIN Ventas v ON v.id = dv.ventaID
+                WHERE dv.productoID = @ProductoId AND v.empresaID = @EmpresaId
+            )" + sqlLegacy + @"
             THEN 1 ELSE 0 END",
             new { EmpresaId = empresaId, ProductoId = productoId }, transaction);
     }
 
     public static async Task<bool> IAEliminarProductoAsync(IConfiguration configuration, int empresaId, int productoId, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         return await connection.ExecuteAsync(@"
             DELETE FROM Productos
             WHERE id = @ProductoId
@@ -1605,7 +1672,8 @@ OPTION (RECOMPILE);";
 
     public static async Task IAInsertarAuditoriaAsync(IConfiguration configuration, int usuario, int empresa, string accion, int productoId, string antes, string despues, IDbTransaction? transaction = null)
     {
-        using var connection = transaction == null ? CrearConexion(configuration) : transaction.Connection!;
+        using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
+        var connection = transaction?.Connection ?? ownedConnection!;
         await connection.ExecuteAsync(@"
             INSERT INTO IAAuditoria (UsuarioId, EmpresaId, Accion, ProductoId, Antes, Despues, Fecha)
             VALUES (@UsuarioId, @EmpresaId, @Accion, @ProductoId, @Antes, @Despues, SYSUTCDATETIME())",
@@ -1942,7 +2010,7 @@ OPTION (RECOMPILE);";
             Observacion = $"Venta de {cantidad} unidades de {nombreProducto}"
         };
 
-        if (ExisteColumna(connection, "Ventas", "productoId"))
+        if (ExisteColumna(connection, "Ventas", "productoId", transaction))
         {
             return await connection.ExecuteScalarAsync<int>(@"
                 INSERT INTO Ventas
@@ -1971,7 +2039,7 @@ OPTION (RECOMPILE);";
             Ganancia = ganancia
         };
 
-        if (ExisteColumna(connection, "DetalleVenta", "precioCompra"))
+        if (ExisteColumna(connection, "DetalleVenta", "precioCompra", transaction))
         {
             return await connection.ExecuteAsync(@"
                 INSERT INTO DetalleVenta
@@ -1983,6 +2051,25 @@ OPTION (RECOMPILE);";
         return await connection.ExecuteAsync(@"
             INSERT INTO DetalleVenta (ventaID, productoID, cantidad, precioVenta, costoCompra, porcentajeGanancia, ganancia)
             VALUES (@VentaId, @ProductoId, @Cantidad, @PrecioVenta, @CostoCompra, @PorcentajeGanancia, @Ganancia)", parametros, transaction);
+    }
+
+    public static async Task<bool> DescontarStockAsync(IDbConnection connection, int productoId, int cantidad, IDbTransaction transaction)
+    {
+        if (cantidad <= 0)
+        {
+            return false;
+        }
+
+        var filas = await connection.ExecuteAsync(@"
+            UPDATE Stock
+            SET cantidad = cantidad - @Cantidad,
+                actualizadoEn = SYSUTCDATETIME()
+            WHERE productoID = @ProductoId
+              AND activo = 1
+              AND cantidad >= @Cantidad;",
+            new { ProductoId = productoId, Cantidad = cantidad }, transaction);
+
+        return filas == 1;
     }
 
     public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
@@ -2108,7 +2195,7 @@ OPTION (RECOMPILE);";
         return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla }) == 1;
     }
 
-    private static bool ExisteColumna(IDbConnection connection, string nombreTabla, string nombreColumna)
+    private static bool ExisteColumna(IDbConnection connection, string nombreTabla, string nombreColumna, IDbTransaction? transaction = null)
     {
         var sql = @"SELECT CASE WHEN EXISTS (
                         SELECT 1
@@ -2117,7 +2204,7 @@ OPTION (RECOMPILE);";
                           AND COLUMN_NAME = @NombreColumna
                           AND TABLE_SCHEMA = 'dbo') THEN 1 ELSE 0 END;";
 
-        return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla, NombreColumna = nombreColumna }) == 1;
+        return connection.QuerySingle<int>(sql, new { NombreTabla = nombreTabla, NombreColumna = nombreColumna }, transaction) == 1;
     }
 
     public static void GarantizarEsquemaActual(IConfiguration configuration)
