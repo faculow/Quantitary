@@ -30,6 +30,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(BD.ObtenerCadenaConexion(builder.Configuration)));
 
 builder.Services.AddScoped<ProductoRepository>();
+builder.Services.AddScoped<DatosDemoService>();
 
 var claude = builder.Configuration.GetSection("Claude").Get<ClaudeOptions>() ?? new ClaudeOptions();
 claude.ApiKey = builder.Configuration["ANTHROPIC_API_KEY"]

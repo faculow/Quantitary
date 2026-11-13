@@ -6,7 +6,6 @@
     var conflictosPorNombreCount = (ViewBag.ConflictosPorNombre as System.Collections.ICollection)?.Count ?? 0;
     var esUsuarioDemo = ViewBag.EsUsuarioDemo is bool valorDemo && valorDemo;
     var cantidadProductosDemo = ViewBag.CantidadProductosDemo is int cantidadDemo ? cantidadDemo : 0;
-    var claseCatalogoDemo = cantidadProductosDemo > 0 ? "alert-success" : "alert-warning";
 }
 
 @if (conflictosCount > 0)
@@ -137,24 +136,14 @@ else
     <div class="panel">
         <h2>Importar catálogo desde Excel</h2>
 
-        @if (esUsuarioDemo)
+        @if (esUsuarioDemo && cantidadProductosDemo > 0)
         {
-            <div class="alert @claseCatalogoDemo d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <strong>Catálogo demo integrado</strong><br />
-                    @if (cantidadProductosDemo > 0)
-                    {
-                        <span>Esta cuenta ya tiene @cantidadProductosDemo productos cargados con stock, alertas y ventas históricas.</span>
-                    }
-                    else
-                    {
-                        <span>No se encontraron los productos demo. Ejecutá el script.sql actualizado para cargarlos.</span>
-                    }
+                    <span>Esta cuenta ya tiene @cantidadProductosDemo productos cargados con stock, alertas y ventas históricas.</span>
                 </div>
-                @if (cantidadProductosDemo > 0)
-                {
-                    <a asp-action="Index" class="btn btn-success">Ver productos demo</a>
-                }
+                <a asp-action="Index" class="btn btn-success">Ver productos demo</a>
             </div>
         }
 

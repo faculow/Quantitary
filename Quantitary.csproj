@@ -17,6 +17,11 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="DatosDemo\Productos_Demo_Expo.xlsx"
+                      LogicalName="Quantitary.DatosDemo.Productos_Demo_Expo.xlsx" />
+  </ItemGroup>
+
   <Target Name="ReleaseLockedQuantitaryBinary" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="taskkill /F /IM Quantitary.exe /T" IgnoreExitCode="true" ContinueOnError="true" />
     <Delete Files="$(OutputPath)Quantitary.exe;$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\apphost.exe" ContinueOnError="true" />

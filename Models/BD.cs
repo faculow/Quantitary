@@ -2268,6 +2268,53 @@ OPTION (RECOMPILE);";
             }
         }
 
+        connection.Execute(@"
+            DECLARE @ColumnaProductoLegacy sysname;
+            DECLARE @TipoProductoLegacy nvarchar(128);
+            DECLARE @SqlProductoLegacy nvarchar(max);
+
+            DECLARE cursor_productos_legacy CURSOR LOCAL FAST_FORWARD FOR
+            SELECT
+                c.[name],
+                CASE
+                    WHEN t.[name] IN ('varchar', 'char', 'varbinary', 'binary')
+                        THEN t.[name] + '(' + CASE WHEN c.[max_length] = -1 THEN 'max' ELSE CONVERT(varchar(10), c.[max_length]) END + ')'
+                    WHEN t.[name] IN ('nvarchar', 'nchar')
+                        THEN t.[name] + '(' + CASE WHEN c.[max_length] = -1 THEN 'max' ELSE CONVERT(varchar(10), c.[max_length] / 2) END + ')'
+                    WHEN t.[name] IN ('decimal', 'numeric')
+                        THEN t.[name] + '(' + CONVERT(varchar(10), c.[precision]) + ',' + CONVERT(varchar(10), c.[scale]) + ')'
+                    WHEN t.[name] IN ('datetime2', 'datetimeoffset', 'time')
+                        THEN t.[name] + '(' + CONVERT(varchar(10), c.[scale]) + ')'
+                    ELSE t.[name]
+                END
+            FROM sys.columns c
+            INNER JOIN sys.types t ON t.[user_type_id] = c.[user_type_id]
+            WHERE c.[object_id] = OBJECT_ID(N'dbo.Productos')
+              AND c.[name] IN (
+                  'nombreProducto', 'categoria', 'proveedor', 'marca', 'precio',
+                  'stockActual', 'stockMinimo', 'peso', 'unidadMedida', 'cantidadVentas'
+              )
+              AND c.[is_nullable] = 0
+              AND c.[is_identity] = 0
+              AND c.[is_computed] = 0;
+
+            OPEN cursor_productos_legacy;
+            FETCH NEXT FROM cursor_productos_legacy INTO @ColumnaProductoLegacy, @TipoProductoLegacy;
+
+            WHILE @@FETCH_STATUS = 0
+            BEGIN
+                SET @SqlProductoLegacy =
+                    N'ALTER TABLE dbo.Productos ALTER COLUMN ' + QUOTENAME(@ColumnaProductoLegacy) +
+                    N' ' + @TipoProductoLegacy + N' NULL;';
+                EXEC sys.sp_executesql @SqlProductoLegacy;
+
+                FETCH NEXT FROM cursor_productos_legacy INTO @ColumnaProductoLegacy, @TipoProductoLegacy;
+            END;
+
+            CLOSE cursor_productos_legacy;
+            DEALLOCATE cursor_productos_legacy;
+        ");
+
         if (ExisteColumna(connection, "Productos", "nombreProducto"))
         {
             connection.Execute(@"UPDATE dbo.Productos

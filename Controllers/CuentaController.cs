@@ -1,15 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
 using Quantitary.Models;
+using Quantitary.Services;
 
 namespace Quantitary.Controllers;
 
 public class CuentaController : Controller
 {
     private readonly IConfiguration _configuration;
+    private readonly DatosDemoService _datosDemo;
+    private readonly ILogger<CuentaController> _logger;
 
-    public CuentaController(IConfiguration configuration)
+    public CuentaController(
+        IConfiguration configuration,
+        DatosDemoService datosDemo,
+        ILogger<CuentaController> logger)
     {
         _configuration = configuration;
+        _datosDemo = datosDemo;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -30,6 +38,21 @@ public class CuentaController : Controller
         {
             ViewBag.Error = "Completa todos los campos.";
             return View();
+        }
+
+        if (string.Equals(mail.Trim(), DatosDemoService.Mail, StringComparison.OrdinalIgnoreCase)
+            && contrasena == DatosDemoService.Contrasena)
+        {
+            try
+            {
+                _datosDemo.GarantizarCuentaYDatos();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo inicializar la cuenta demo integrada.");
+                ViewBag.Error = "No se pudo preparar la cuenta demo. Revisá que SQL Server esté iniciado e intentá nuevamente.";
+                return View();
+            }
         }
 
         var exito = BD.IniciarSesion(mail, contrasena, HttpContext, _configuration);
