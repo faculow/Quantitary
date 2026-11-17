@@ -1,8 +1,9 @@
+@using Quantitary.Models
 @{
     ViewData["Title"] = "Análisis por producto";
     var fechaInicio = ViewBag.FechaInicio as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     var fechaFin = ViewBag.FechaFin as DateTime? ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month), 23, 59, 59, 999);
-    var analisis = ViewBag.AnalisisProductos as List<Quantitary.Controllers.HomeController.ProductoAnalisisResumen> ?? new List<Quantitary.Controllers.HomeController.ProductoAnalisisResumen>();
+    var analisis = ViewBag.AnalisisProductos as List<ProductoAnalisisResumen> ?? new List<ProductoAnalisisResumen>();
     var ventasPorMes = ViewBag.VentasPorMes as List<dynamic> ?? new List<dynamic>();
     var interesCompraPorMes = ViewBag.InteresCompraPorMes as List<dynamic> ?? new List<dynamic>();
     var ventasSemana = ViewBag.VentasSemana as List<dynamic> ?? new List<dynamic>();
@@ -20,7 +21,7 @@
         </div>
     </div>
 
-    <form method="get" asp-action="AnalisisProducto" class="row g-3 align-items-end mb-4">
+    <form method="get" asp-controller="Home" asp-action="AnalisisProducto" class="row g-3 align-items-end mb-4">
         <div class="col-md-4">
             <label class="form-label">Fecha inicio</label>
             <input type="date" name="fechaInicio" value="@fechaInicio.ToString("yyyy-MM-dd")" class="form-control" />

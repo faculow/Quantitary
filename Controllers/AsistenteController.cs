@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Microsoft.AspNetCore.RateLimiting;
 using Quantitary.Services;
+using Quantitary.Models;
 
 namespace Quantitary.Controllers;
 
@@ -133,11 +134,9 @@ public sealed class AsistenteController : Controller
         return Ok(await _historial.Leer(chatId, s.Value.Usuario, s.Value.Empresa));
     }
 
-    public sealed record RenombrarRequest(string? Titulo);
-
     [HttpPatch("/api/ia/chats/{chatId:guid}")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Renombrar(Guid chatId, [FromBody] RenombrarRequest request)
+    public async Task<IActionResult> Renombrar(Guid chatId, [FromBody] ChatRenombrarRequest request)
     {
         var s = Sesion(); if (s is null) return Unauthorized();
         if (string.IsNullOrWhiteSpace(request.Titulo) || request.Titulo.Length > 120) return BadRequest();
@@ -146,7 +145,7 @@ public sealed class AsistenteController : Controller
 
     [HttpPost("/api/ia/chats/{chatId:guid}/renombrar")]
     [ValidateAntiForgeryToken]
-    public Task<IActionResult> RenombrarPost(Guid chatId, [FromBody] RenombrarRequest request) => Renombrar(chatId, request);
+    public Task<IActionResult> RenombrarPost(Guid chatId, [FromBody] ChatRenombrarRequest request) => Renombrar(chatId, request);
 
     [HttpDelete("/api/ia/chats/{chatId:guid}")]
     [ValidateAntiForgeryToken]
@@ -176,9 +175,6 @@ public sealed class AsistenteController : Controller
         catch (UnauthorizedAccessException) { return Forbid(); }
     }
 
-    public sealed record ConfirmacionRequest(string? Token);
-    private sealed record Pendiente(string Token, IAProductoSql.Solicitud Solicitud, int Usuario, int Empresa, int Paso, DateTime Vence, string Vista);
-
     [HttpPost("/api/ia/productos/preparar")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PrepararProducto([FromBody] IAProductoSql.Solicitud solicitud)
@@ -188,7 +184,7 @@ public sealed class AsistenteController : Controller
         {
             var resumen=await _producto.VistaPrevia(s.Value.Usuario,s.Value.Empresa,solicitud);
             var token=Guid.NewGuid().ToString("N");
-            HttpContext.Session.SetString("IAOperacion",JsonSerializer.Serialize(new Pendiente(token,solicitud,s.Value.Usuario,s.Value.Empresa,0,DateTime.UtcNow.AddMinutes(5),JsonSerializer.Serialize(resumen))));
+            HttpContext.Session.SetString("IAOperacion",JsonSerializer.Serialize(new IAOperacionPendiente(token,solicitud,s.Value.Usuario,s.Value.Empresa,0,DateTime.UtcNow.AddMinutes(5),JsonSerializer.Serialize(resumen))));
             return Ok(new { token, resumen, mensaje="Primera confirmación: revisá los datos antes de continuar." });
         }
         catch(UnauthorizedAccessException) {return Forbid();}
@@ -197,13 +193,13 @@ public sealed class AsistenteController : Controller
 
     [HttpPost("/api/ia/productos/confirmar")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConfirmarProducto([FromBody] ConfirmacionRequest request)
+    public async Task<IActionResult> ConfirmarProducto([FromBody] ChatConfirmacionRequest request)
     {
         var s=Sesion();if(s is null)return Unauthorized();
         var raw=HttpContext.Session.GetString("IAOperacion");
         if(raw is null)return BadRequest(new {error="No hay operaciones pendientes."});
-        Pendiente? op;
-        try{op=JsonSerializer.Deserialize<Pendiente>(raw);}catch{return BadRequest();}
+        IAOperacionPendiente? op;
+        try{op=JsonSerializer.Deserialize<IAOperacionPendiente>(raw);}catch{return BadRequest();}
         if(op is null||op.Token!=request.Token||op.Usuario!=s.Value.Usuario||op.Empresa!=s.Value.Empresa||op.Vence<DateTime.UtcNow)
         {HttpContext.Session.Remove("IAOperacion");return BadRequest(new {error="Operación vencida. Volvé a prepararla."});}
         if(op.Paso==0)
@@ -211,11 +207,9 @@ public sealed class AsistenteController : Controller
             HttpContext.Session.SetString("IAOperacion",JsonSerializer.Serialize(op with {Paso=1}));
             return Ok(new {confirmado=false,mensaje="Segunda confirmación: ¿ejecutar este cambio definitivamente?"});
         }
-        // Token de un solo uso. Se consume antes de realizar el cambio.
         HttpContext.Session.Remove("IAOperacion");
         try
         {
-            // Revalidación de los datos y los permisos inmediatamente antes de escribir.
             var actual = await _producto.VistaPrevia(s.Value.Usuario,s.Value.Empresa,op.Solicitud);
             if (JsonSerializer.Serialize(actual) != op.Vista)
                 return Conflict(new {error="El producto cambió desde la vista previa. Prepará de nuevo la operación."});

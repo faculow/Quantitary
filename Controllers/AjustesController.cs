@@ -168,19 +168,4 @@ public sealed class AjustesController : Controller
     {
         return await BD.TienePermisoEmpresaAsync(connection, usuario, empresa) == 1;
     }
-
-    private sealed class DatosAjustes
-    {
-        public string NombreUsuario { get; init; } = string.Empty;
-        public string Mail { get; init; } = string.Empty;
-        public string? NumeroTelefono { get; init; }
-        public string NombreEmpresa { get; init; } = string.Empty;
-        public bool PuedeEditarEmpresa { get; init; }
-    }
-
-    private sealed class DatosRepetidos
-    {
-        public int Mail { get; init; }
-        public int Nombre { get; init; }
-    }
 }
