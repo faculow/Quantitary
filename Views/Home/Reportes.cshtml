@@ -1,0 +1,175 @@
+@model Quantitary.Models.ReporteFormularioViewModel
+@{
+    ViewData["Title"] = "Reportes";
+    var reportesGuardados = ViewBag.ReportesGuardados as List<Quantitary.Models.ReporteGuardado> ?? new List<Quantitary.Models.ReporteGuardado>();
+    var exito = TempData["ReporteGuardadoExito"] as string;
+    var cancelado = TempData["ReporteCancelado"] as string;
+
+    var ultimoReporteJson = Context.Session.GetString("UltimoReporte");
+    var ultimoReporte = !string.IsNullOrWhiteSpace(ultimoReporteJson)
+        ? System.Text.Json.JsonSerializer.Deserialize<Quantitary.Models.ReporteGuardado>(ultimoReporteJson)
+        : null;
+}
+
+<div class="panel">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h2 class="mb-1">Reportes</h2>
+            <p class="text-muted mb-0">Creá y visualizá reportes del negocio.</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(exito))
+    {
+        <div class="alert alert-success">@exito</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(cancelado))
+    {
+        <div class="alert alert-warning">@cancelado</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Crear reporte</h5>
+
+                    <form asp-controller="Home" asp-action="GuardarReporte" method="post" class="row g-3">
+                        @Html.AntiForgeryToken()
+
+                        <div class="col-12">
+                            <label asp-for="Nombre" class="form-label">Nombre del reporte</label>
+                            <input asp-for="Nombre" class="form-control" placeholder="Ej: Reporte de ventas semanal" />
+                            <span asp-validation-for="Nombre" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="TipoReporte" class="form-label">Tipo de reporte</label>
+                            <select asp-for="TipoReporte" class="form-select">
+                                <option value="Ventas">Ventas</option>
+                                <option value="Stock">Stock</option>
+                                <option value="Productos">Productos</option>
+                                <option value="Finanzas">Finanzas</option>
+                            </select>
+                            <span asp-validation-for="TipoReporte" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="PeriodoTiempo" class="form-label">Período de tiempo</label>
+                            <select asp-for="PeriodoTiempo" class="form-select">
+                                <option value="Diario">Diario</option>
+                                <option value="Semanal">Semanal</option>
+                                <option value="Mensual" selected>Mensual</option>
+                                <option value="Trimestral">Trimestral</option>
+                                <option value="Anual">Anual</option>
+                            </select>
+                            <span asp-validation-for="PeriodoTiempo" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="FormatoReporte" class="form-label">Formato del reporte</label>
+                            <select asp-for="FormatoReporte" class="form-select">
+                                <option value="PDF">PDF</option>
+                                <option value="Excel">Excel</option>
+                                <option value="CSV">CSV</option>
+                                <option value="HTML">HTML</option>
+                            </select>
+                            <span asp-validation-for="FormatoReporte" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="FrecuenciaActualizacion" class="form-label">Cada cuánto se actualiza</label>
+                            <select asp-for="FrecuenciaActualizacion" class="form-select">
+                                <option value="Manual">Manual</option>
+                                <option value="Diario">Diario</option>
+                                <option value="Semanal">Semanal</option>
+                                <option value="Mensual">Mensual</option>
+                            </select>
+                            <span asp-validation-for="FrecuenciaActualizacion" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-12 d-flex gap-2 justify-content-end">
+                            <button type="submit" class="btn btn-primary">Guardar</button>
+                            <button type="submit" class="btn btn-outline-secondary" formaction="@Url.Action("CancelarReporte", "Home")" formmethod="post">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Vista previa</h5>
+                        @if (ultimoReporte != null)
+                        {
+                            <div class="d-flex gap-2">
+                                <a asp-controller="Home" asp-action="VistaPreviaReporte" target="_blank" class="btn btn-outline-primary btn-sm">Ver</a>
+                                <a asp-controller="Home" asp-action="DescargarReporte" class="btn btn-success btn-sm">Descargar</a>
+                            </div>
+                        }
+                    </div>
+
+                    @if (ultimoReporte != null)
+                    {
+                        <div class="border rounded p-3 bg-light">
+                            @Html.Raw(ultimoReporte.VistaPreviaHtml)
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-muted">Aún no hay un reporte creado para visualizar.</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Reportes guardados</h5>
+
+                @if (reportesGuardados.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Período</th>
+                                    <th>Formato</th>
+                                    <th>Actualiza</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var reporte in reportesGuardados)
+                                {
+                                    <tr>
+                                        <td>@reporte.Nombre</td>
+                                        <td>@reporte.TipoReporte</td>
+                                        <td>@reporte.PeriodoTiempo</td>
+                                        <td>@reporte.FormatoReporte</td>
+                                        <td>@reporte.FrecuenciaActualizacion</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted">Todavía no hay reportes guardados.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
+    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"></script>
+}

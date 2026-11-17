@@ -9,6 +9,7 @@
     var esAnalisis = controladorActual == "Home" && (accionActual == "AnalisisVentasGanancias" || accionActual == "AnalisisProducto");
     var esIndicadores = controladorActual == "Home" && accionActual == "IndicadoresYOportunidades";
     var esAjustes = controladorActual == "Ajustes";
+    var esReportes = controladorActual == "Home" && accionActual == "Reportes";
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -93,6 +94,14 @@
                         <path d="M3 19.5h18"></path>
                     </svg>
                     <span>Análisis</span>
+                </a>
+                <a asp-controller="Home" asp-action="Reportes" class="nav-link-side @(esReportes ? "active" : "")" aria-current="@(esReportes ? "page" : null)">
+                    <svg class="nav-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 3.5h7l5 5V18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z"></path>
+                        <path d="M14 3.5V9h5"></path>
+                        <path d="M8 13h8M8 16h8"></path>
+                    </svg>
+                    <span>Reportes</span>
                 </a>
             </nav>
 

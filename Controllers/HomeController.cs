@@ -337,4 +337,215 @@ public class HomeController : Controller
             ultimaVentaValor = !string.IsNullOrWhiteSpace(ultimaVenta) ? DateTime.Parse(ultimaVenta).ToString("O") : null
         });
     }
+
+    [HttpGet]
+    public IActionResult Reportes()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var model = new ReporteFormularioViewModel();
+        var reportes = HttpContext.Session.GetString("ReportesGuardados");
+
+        if (!string.IsNullOrWhiteSpace(reportes))
+        {
+            try
+            {
+                ViewBag.ReportesGuardados = System.Text.Json.JsonSerializer.Deserialize<List<ReporteGuardado>>(reportes) ?? new List<ReporteGuardado>();
+            }
+            catch
+            {
+                ViewBag.ReportesGuardados = new List<ReporteGuardado>();
+            }
+        }
+        else
+        {
+            ViewBag.ReportesGuardados = new List<ReporteGuardado>();
+        }
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult GuardarReporte(ReporteFormularioViewModel modelo)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ReportesGuardados = ObtenerReportesGuardados();
+            return View("Reportes", modelo);
+        }
+
+        var lista = ObtenerReportesGuardados();
+        var nuevoReporte = new ReporteGuardado
+        {
+            Nombre = modelo.Nombre.Trim(),
+            TipoReporte = modelo.TipoReporte,
+            PeriodoTiempo = modelo.PeriodoTiempo,
+            FormatoReporte = modelo.FormatoReporte,
+            FrecuenciaActualizacion = modelo.FrecuenciaActualizacion,
+            FechaCreacion = DateTime.Now,
+            VistaPreviaHtml = GenerarVistaPrevia(modelo)
+        };
+
+        lista.Add(nuevoReporte);
+        HttpContext.Session.SetString("ReportesGuardados", System.Text.Json.JsonSerializer.Serialize(lista));
+        HttpContext.Session.SetString("UltimoReporte", System.Text.Json.JsonSerializer.Serialize(nuevoReporte));
+        TempData["ReporteGuardadoExito"] = "El reporte se guardó correctamente.";
+        return RedirectToAction(nameof(Reportes));
+    }
+
+    [HttpGet]
+    public IActionResult VistaPreviaReporte()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var json = HttpContext.Session.GetString("UltimoReporte");
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return RedirectToAction(nameof(Reportes));
+        }
+
+        var reporte = System.Text.Json.JsonSerializer.Deserialize<ReporteGuardado>(json);
+        if (reporte is null)
+        {
+            return RedirectToAction(nameof(Reportes));
+        }
+
+        return Content(reporte.VistaPreviaHtml, "text/html");
+    }
+
+    [HttpGet]
+    public IActionResult DescargarReporte()
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        var json = HttpContext.Session.GetString("UltimoReporte");
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return RedirectToAction(nameof(Reportes));
+        }
+
+        var reporte = System.Text.Json.JsonSerializer.Deserialize<ReporteGuardado>(json);
+        if (reporte is null)
+        {
+            return RedirectToAction(nameof(Reportes));
+        }
+
+        var contenido = GenerarContenidoReporte(reporte);
+        var extension = reporte.FormatoReporte switch
+        {
+            "Excel" => ".xlsx",
+            "CSV" => ".csv",
+            "HTML" => ".html",
+            _ => ".pdf"
+        };
+
+        var mime = reporte.FormatoReporte switch
+        {
+            "Excel" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "CSV" => "text/csv",
+            "HTML" => "text/html",
+            _ => "application/pdf"
+        };
+
+        return File(Encoding.UTF8.GetBytes(contenido), mime, $"{SanearNombre(reporte.Nombre)}{extension}");
+    }
+
+    private List<ReporteGuardado> ObtenerReportesGuardados()
+    {
+        var json = HttpContext.Session.GetString("ReportesGuardados");
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new List<ReporteGuardado>();
+        }
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<ReporteGuardado>>(json) ?? new List<ReporteGuardado>();
+        }
+        catch
+        {
+            return new List<ReporteGuardado>();
+        }
+    }
+
+    private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo)
+    {
+        return $@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; color: #1f2937;'>
+                <h3>{System.Net.WebUtility.HtmlEncode(modelo.Nombre)}</h3>
+                <p><strong>Tipo:</strong> {System.Net.WebUtility.HtmlEncode(modelo.TipoReporte)}</p>
+                <p><strong>Período:</strong> {System.Net.WebUtility.HtmlEncode(modelo.PeriodoTiempo)}</p>
+                <p><strong>Formato:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FormatoReporte)}</p>
+                <p><strong>Actualización:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FrecuenciaActualizacion)}</p>
+                <hr />
+                <table style='width:100%; border-collapse: collapse; margin-top: 12px;'>
+                    <thead>
+                        <tr style='background: #f3f4f6;'>
+                            <th style='padding: 8px; border: 1px solid #d1d5db; text-align: left;'>Concepto</th>
+                            <th style='padding: 8px; border: 1px solid #d1d5db; text-align: left;'>Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Total ventas</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>$125.000</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>$42.300</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>128</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>";
+    }
+
+    private static string GenerarContenidoReporte(ReporteGuardado reporte)
+    {
+        if (reporte.FormatoReporte == "CSV")
+        {
+            return "Nombre,Tipo,Periodo,Formato,Actualizacion\n" +
+                   $"{reporte.Nombre},{reporte.TipoReporte},{reporte.PeriodoTiempo},{reporte.FormatoReporte},{reporte.FrecuenciaActualizacion}\n";
+        }
+
+        if (reporte.FormatoReporte == "HTML")
+        {
+            return reporte.VistaPreviaHtml;
+        }
+
+        if (reporte.FormatoReporte == "Excel")
+        {
+            return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: Excel\nActualización: {reporte.FrecuenciaActualizacion}";
+        }
+
+        return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: PDF\nActualización: {reporte.FrecuenciaActualizacion}\n\nResumen\n-----\nTotal ventas: $125.000\nGanancia: $42.300\nProductos: 128";
+    }
+
+    private static string SanearNombre(string nombre)
+    {
+        var limpio = new string(nombre.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == ' ').ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(limpio) ? "reporte" : limpio.Replace(' ', '-');
+    }
 }
