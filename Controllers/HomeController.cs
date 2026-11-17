@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using Quantitary.Models;
 
 namespace Quantitary.Controllers;
@@ -9,12 +9,12 @@ namespace Quantitary.Controllers;
 public class HomeController : Controller
 {
     private readonly ProductoRepository _inventoryRepository;
-    private readonly AppDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    public HomeController(ProductoRepository inventoryRepository, AppDbContext context)
+    public HomeController(ProductoRepository inventoryRepository, IConfiguration configuration)
     {
         _inventoryRepository = inventoryRepository;
-        _context = context;
+        _configuration = configuration;
     }
 
     private bool HaySesionActiva()
@@ -35,6 +35,11 @@ public class HomeController : Controller
     private int ObtenerEmpresaIdActual()
     {
         return BD.ObtenerEmpresaIdActual(_inventoryRepository.GetConfiguration(), HttpContext);
+    }
+
+    private SqlConnection CrearConexion()
+    {
+        return new SqlConnection(BD.ObtenerCadenaConexion(_configuration));
     }
 
     public IActionResult Index()
@@ -154,11 +159,9 @@ public class HomeController : Controller
         }
 
         var empresaId = ObtenerEmpresaIdActual();
-        var connection = _context.Database.GetDbConnection();
+        using var connection = CrearConexion();
         await connection.OpenAsync();
 
-        // Un período acotado mantiene los gráficos legibles al entrar. El usuario puede
-        // ampliar el rango manualmente con los filtros de la pantalla.
         var inicio = fechaInicio ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var fin = fechaFin ?? DateTime.Today;
 
@@ -206,7 +209,7 @@ public class HomeController : Controller
             fin = intercambio;
         }
 
-        using var connection = _context.Database.GetDbConnection();
+        using var connection = CrearConexion();
         await connection.OpenAsync();
 
         var analisis = await BD.ObtenerAnalisisProductoAsync(connection, empresaId, inicio, fin);
@@ -239,19 +242,16 @@ public class HomeController : Controller
                 Margen = margen,
                 Stock = p.StockActual,
                 StockMinimo = p.StockMinimo,
-                Reposicion = reposicion,
-                Rotacion = rotacion,
                 VentasMes = cantidadVendida,
-                InteresCompraMes = cantidadVendida
+                InteresCompraMes = cantidadVendida,
+                Rotacion = rotacion,
+                Reposicion = reposicion
             };
         }).ToList();
 
+        ViewBag.AnalisisProductos = resumen;
         ViewBag.FechaInicio = inicio;
         ViewBag.FechaFin = fin;
-        ViewBag.AnalisisProductos = resumen;
-        ViewBag.VentasPorMes = analisis.VentasPorMes;
-        ViewBag.InteresCompraPorMes = analisis.InteresCompraPorMes;
-        ViewBag.VentasSemana = analisis.VentasSemana;
         return View();
     }
 

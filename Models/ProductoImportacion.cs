@@ -217,12 +217,12 @@ public static class ImportacionExcelHelper
                 conflictos.Add(new ProductoImportacionPreview
                 {
                     Sku = sku,
-                    NombreActual = existente.Nombre,
-                    NombreNuevo = producto.Nombre,
-                    CategoriaActual = existente.Categoria,
-                    CategoriaNueva = producto.Categoria,
-                    ProveedorActual = existente.Proveedor,
-                    ProveedorNuevo = producto.Proveedor,
+                    NombreActual = existente.Nombre ?? string.Empty,
+                    NombreNuevo = producto.Nombre ?? string.Empty,
+                    CategoriaActual = existente.Categoria ?? string.Empty,
+                    CategoriaNueva = producto.Categoria ?? string.Empty,
+                    ProveedorActual = existente.Proveedor ?? string.Empty,
+                    ProveedorNuevo = producto.Proveedor ?? string.Empty,
                     StockActual = existente.StockActual,
                     StockNuevo = producto.StockActual,
                     PrecioCompraActual = existente.CostoCompra,
@@ -237,11 +237,17 @@ public static class ImportacionExcelHelper
             var nombreImportado = (producto.Nombre ?? string.Empty).Trim();
             if (!string.IsNullOrWhiteSpace(nombreImportado) && nombresExistentes.TryGetValue(nombreImportado, out var productosMismoNombre))
             {
+                var productoActual = productosMismoNombre.FirstOrDefault();
+                if (productoActual == null)
+                {
+                    continue;
+                }
+
                 conflictosPorNombre.Add(new ProductoNombreConflicto
                 {
                     Sku = sku,
                     NombreImportado = nombreImportado,
-                    NombreActual = productosMismoNombre.First().Nombre,
+                    NombreActual = productoActual.Nombre,
                     ProductosCoincidentes = productosMismoNombre.Select(p => new ProductoCoincidente
                     {
                         Id = p.Id,

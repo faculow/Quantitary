@@ -28,6 +28,11 @@ public static class ExcelPlantillaHelper
             sheets.Append(sheet);
 
             var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>();
+            if (sheetData == null)
+            {
+                throw new InvalidOperationException("No se pudo crear la hoja de trabajo para la plantilla.");
+            }
+
             var row = new Row();
 
             var columnas = new[]

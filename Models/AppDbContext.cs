@@ -15,8 +15,6 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Ignore<Productos>();
-
         modelBuilder.Entity<Empresa>().ToTable("Empresa");
         modelBuilder.Entity<Usuario>().ToTable("Usuarios");
         modelBuilder.Entity<Producto>().ToTable("Productos");

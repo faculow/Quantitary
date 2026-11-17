@@ -1013,7 +1013,7 @@ OPTION (RECOMPILE);";
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              WHERE (@EmpresaId = 0 OR v.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -1048,7 +1048,7 @@ OPTION (RECOMPILE);";
               INNER JOIN Ventas v ON v.id = d.ventaID
               INNER JOIN Productos p ON p.id = d.productoID
               LEFT JOIN Categoria c ON c.id = p.categoriaID
-                            WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
+              WHERE (@EmpresaId = 0 OR p.empresaID = @EmpresaId)
                 AND v.fecha >= @Inicio AND v.fecha <= @Fin
                 AND (@NombreProducto IS NULL OR LOWER(LTRIM(RTRIM(p.nombre))) LIKE '%' + LOWER(LTRIM(RTRIM(@NombreProducto))) + '%')
                 AND (@Sku IS NULL OR LOWER(LTRIM(RTRIM(p.sku))) LIKE '%' + LOWER(LTRIM(RTRIM(@Sku))) + '%')
@@ -1538,19 +1538,19 @@ OPTION (RECOMPILE);";
         return items.AsList();
     }
 
-    public static async Task<int> IAProductoDuplicadoSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
+    public static Task<int> IAProductoDuplicadoSkuAsync(IConfiguration configuration, int empresaId, string sku, IDbTransaction? transaction = null)
     {
         using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
         var connection = transaction?.Connection ?? ownedConnection!;
-        return await connection.ExecuteScalarAsync<int>(@"
+        return Task.FromResult(connection.ExecuteScalar<int>(@"
             SELECT COUNT(1)
             FROM Productos
             WHERE empresaID = @EmpresaId
               AND LOWER(LTRIM(RTRIM(sku))) = LOWER(LTRIM(RTRIM(@Sku)))",
-            new { EmpresaId = empresaId, Sku = sku.Trim() }, transaction);
+            new { EmpresaId = empresaId, Sku = sku.Trim() }, transaction));
     }
 
-    public static async Task<int> IACrearProductoAsync(IConfiguration configuration, int empresaId, string nombre, string sku, string? categoria, string? descripcion, decimal precio, int stock, int stockMinimo, string? proveedor, decimal costoCompra, IDbTransaction? transaction = null)
+    public static Task<int> IACrearProductoAsync(IConfiguration configuration, int empresaId, string nombre, string sku, string? categoria, string? descripcion, decimal precio, int stock, int stockMinimo, string? proveedor, decimal costoCompra, IDbTransaction? transaction = null)
     {
         using var ownedConnection = transaction == null ? CrearConexion(configuration) : null;
         var connection = transaction?.Connection ?? ownedConnection!;
@@ -1595,7 +1595,7 @@ OPTION (RECOMPILE);";
             VALUES (@ProductoId, @Cantidad, @CantidadMinimoAlerta, 1, SYSUTCDATETIME());",
             new { ProductoId = productoId, Cantidad = stock, CantidadMinimoAlerta = stockMinimo }, transaction);
 
-        return productoId;
+        return Task.FromResult(productoId);
     }
 
     public static async Task<bool> IAActualizarProductoPrecioAsync(IConfiguration configuration, int empresaId, int productoId, decimal precio, IDbTransaction? transaction = null)
@@ -1920,7 +1920,7 @@ OPTION (RECOMPILE);";
         };
     }
 
-    public static async Task<IndicadoresYOportunidadesConsultaData> ObtenerIndicadoresYOportunidadesConsultaAsync(IDbConnection connection, int? empresaId = null)
+    public static Task<IndicadoresYOportunidadesConsultaData> ObtenerIndicadoresYOportunidadesConsultaAsync(IDbConnection connection, int? empresaId = null)
     {
         var productos = connection.Query<ProductoIndicadorBase>(@"
             SELECT p.id AS Id,
@@ -1961,12 +1961,12 @@ OPTION (RECOMPILE);";
             GROUP BY c.nombre",
             new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
 
-        return new IndicadoresYOportunidadesConsultaData
+        return Task.FromResult(new IndicadoresYOportunidadesConsultaData
         {
             Productos = productos,
             VentasPorProducto = ventasPorProducto,
             VentasPorCategoria = ventasPorCategoria
-        };
+        });
     }
 
     public static async Task<PerfilAjustesDatos?> ObtenerDatosAjustesAsync(IDbConnection connection, int usuario, int empresa)

@@ -531,7 +531,7 @@ public class StockController : Controller
             TempData["MensajeError"] = ex.Message;
             return RedirectToAction(nameof(Index));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             TempData.Remove("MensajeAdvertencia");
             TempData.Remove("MensajeExito");

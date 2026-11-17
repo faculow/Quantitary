@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using Quantitary.Models;
 using Quantitary.Services;
 using System.Threading.RateLimiting;
@@ -25,9 +24,6 @@ builder.Services.AddAntiforgery(options =>
         ? CookieSecurePolicy.SameAsRequest
         : CookieSecurePolicy.Always;
 });
-
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(BD.ObtenerCadenaConexion(builder.Configuration)));
 
 builder.Services.AddScoped<ProductoRepository>();
 builder.Services.AddScoped<DatosDemoService>();

@@ -2961,3 +2961,4 @@ p {
 
 # **27\. Ubicacion de clases cs**
 * Todas las clases deberian ser models fuera de los controllers, nunca en otro lugar
+* Cada clase debe tener su propio archivo
