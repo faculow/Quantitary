@@ -146,6 +146,18 @@ public class StockController : Controller
 
         producto.EmpresaID = HttpContext.Session.GetInt32("EmpresaID") ?? 0;
 
+        if (producto.StockActual < 0)
+        {
+            TempData["MensajeAdvertencia"] = "No es posible tener stock negativo. Se ajustó el valor a 0.";
+            producto.StockActual = 0;
+        }
+
+        if (producto.StockMinimo < 0)
+        {
+            TempData["MensajeAdvertencia"] = "No es posible tener stock mínimo negativo. Se ajustó el valor a 0.";
+            producto.StockMinimo = 0;
+        }
+
         if (!ModelState.IsValid)
         {
             ViewBag.Categorias = _inventoryRepository.ObtenerCategorias(producto.EmpresaID);
@@ -187,6 +199,18 @@ public class StockController : Controller
         if (redirect != null)
         {
             return redirect;
+        }
+
+        if (producto.StockActual < 0)
+        {
+            TempData["MensajeAdvertencia"] = "No es posible tener stock negativo. Se ajustó el valor a 0.";
+            producto.StockActual = 0;
+        }
+
+        if (producto.StockMinimo < 0)
+        {
+            TempData["MensajeAdvertencia"] = "No es posible tener stock mínimo negativo. Se ajustó el valor a 0.";
+            producto.StockMinimo = 0;
         }
 
         try
@@ -248,6 +272,13 @@ public class StockController : Controller
         if (redirect != null)
         {
             return redirect;
+        }
+
+        if (cantidad < 0)
+        {
+            var stockCorregido = 0;
+            TempData["MensajeAdvertencia"] = $"No es posible tener stock negativo. Se registró el valor como {stockCorregido}.";
+            cantidad = stockCorregido;
         }
 
         _inventoryRepository.AgregarStock(id, cantidad, precioUnitario);

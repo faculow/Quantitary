@@ -31,10 +31,10 @@ public class Producto
     [Range(0, double.MaxValue, ErrorMessage = "El costo no puede ser negativo.")]
     public decimal CostoCompra { get; set; }
 
-    [Range(0, int.MaxValue, ErrorMessage = "El stock no puede ser negativo.")]
+    // Se normaliza en el controlador para evitar stock negativo y mostrar un aviso claro.
     public int StockActual { get; set; }
 
-    [Range(0, int.MaxValue, ErrorMessage = "El stock mínimo no puede ser negativo.")]
+    // Se normaliza en el controlador para evitar stock mínimo negativo.
     public int StockMinimo { get; set; }
 
     public int StockMinimoAlerta { get; set; }
