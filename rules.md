@@ -2958,3 +2958,6 @@ p {
 # **26\. Ubicacion de las querys**
 * Todas las querys deben estar ubicadas en la clase BD.cs, nunca en ningun otro lugar
 * En la clase BD.cs solo deben haber querys
+
+# **27\. Ubicacion de clases cs**
+* Todas las clases deberian ser models fuera de los controllers, nunca en otro lugar

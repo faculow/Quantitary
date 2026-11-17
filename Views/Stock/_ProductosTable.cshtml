@@ -17,7 +17,11 @@
                 }
                 else if (producto.StockActual < producto.StockMinimo)
                 {
-                    <span class="badge bg-warning text-dark ms-2">Bajo</span>
+                    <span class="badge bg-orange text-dark ms-2">Bajo</span>
+                }
+                else if (producto.StockActual == producto.StockMinimo)
+                {
+                    <span class="badge bg-warning text-dark ms-2">Mínimo</span>
                 }
             </td>
             <td>@producto.Proveedor</td>

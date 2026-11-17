@@ -1375,9 +1375,19 @@ body {
     color: #92400e;
 }
 
+.stock-badge.orange {
+    background: #fed7aa;
+    color: #9a4d00;
+}
+
 .stock-badge.danger {
     background: #fee2e2;
     color: #991b1b;
+}
+
+.bg-orange {
+    background-color: #fed7aa !important;
+    color: #9a4d00 !important;
 }
 
 .product-card h5 {

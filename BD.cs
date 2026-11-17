@@ -1012,7 +1012,7 @@ public static class BD
             LEFT JOIN Permisos p ON p.id = r.permisoID
             WHERE u.id = @Usuario
               AND u.empresaID = @Empresa;",
-            new { Usuario = usuario, Empresa = empresa });
+            new { Usuario = usuario, Empresa = empresa };
     }
 
     public static async Task<DatosRepetidos> ObtenerDatosRepetidosAsync(IDbConnection connection, string mail, string nombre, int usuarioActual)
