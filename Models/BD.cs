@@ -1577,7 +1577,7 @@ OPTION (RECOMPILE);";
         var productoId = connection.QuerySingle<int>(@"
             INSERT INTO Productos (empresaID, categoriaID, proveedorID, nombre, sku, descripcion, fechaCarga, precioVenta, costoCompra, activo)
             VALUES (@EmpresaId, @CategoriaId, @ProveedorId, @Nombre, @Sku, @Descripcion, SYSUTCDATETIME(), @Precio, @CostoCompra, 1);
-            SELECT CAST(SCOPE_IDENTITY() AS int);",
+            SELECT CAST(SCOPE_IDENTITY() as int);",
             new
             {
                 EmpresaId = empresaId,
@@ -2709,6 +2709,23 @@ OPTION (RECOMPILE);";
                     INCLUDE (nombre, sku, categoriaID);
             END;
         ");
+
+        connection.Execute(@"
+UPDATE v
+SET v.totalVenta = ISNULL(t.totalDetalle, 0)
+FROM dbo.Ventas v
+OUTER APPLY
+(
+    SELECT SUM(ISNULL(d.precioVenta, 0)) AS totalDetalle
+    FROM dbo.DetalleVenta d
+    WHERE d.ventaID = v.id
+) t
+WHERE EXISTS
+(
+    SELECT 1
+    FROM dbo.DetalleVenta d
+    WHERE d.ventaID = v.id
+);");
     }
 
 }

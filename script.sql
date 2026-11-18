@@ -980,8 +980,8 @@ BEGIN
     INSERT INTO [dbo].[Ventas] ([empresaID], [usuarioID], [fecha], [metodoPago], [totalVenta], [observacion])
     VALUES
         (@EmpresaId, @UsuarioId, SYSUTCDATETIME(), 'Tarjeta', 890000.00, 'Venta inicial de prueba'),
-        (@EmpresaId, @UsuarioId, DATEADD(day, 7, SYSUTCDATETIME()), 'Efectivo', 76000.00, 'Venta inicial de prueba'),
-        (@EmpresaId, @UsuarioId, DATEADD(day, 15, SYSUTCDATETIME()), 'Transferencia', 62000.00, 'Venta inicial de prueba');
+        (@EmpresaId, @UsuarioId, DATEADD(day, -1, SYSUTCDATETIME()), 'Efectivo', 76000.00, 'Venta inicial de prueba'),
+        (@EmpresaId, @UsuarioId, DATEADD(day, -2, SYSUTCDATETIME()), 'Transferencia', 62000.00, 'Venta inicial de prueba');
 END;
 
 IF NOT EXISTS (SELECT 1 FROM [dbo].[DetalleVenta] dv
@@ -990,23 +990,33 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[DetalleVenta] dv
 BEGIN
     INSERT INTO [dbo].[DetalleVenta] ([ventaID], [productoID], [cantidad], [precioVenta], [costoCompra], [porcentajeGanancia], [ganancia])
     VALUES
-        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId ORDER BY [fecha] ASC),
+        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId AND [totalVenta] = 890000.00),
          (SELECT TOP 1 [id] FROM [dbo].[Productos] WHERE [empresaID] = @EmpresaId AND [sku] = 'N-001'),
          1, 890000.00, 600000.00, 48.33, 290000.00),
-        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId ORDER BY [fecha] DESC),
+        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId AND [totalVenta] = 76000.00),
          (SELECT TOP 1 [id] FROM [dbo].[Productos] WHERE [empresaID] = @EmpresaId AND [sku] = 'M-010'),
          2, 76000.00, 36000.00, 111.11, 40000.00),
-        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId ORDER BY [fecha] DESC),
+        ((SELECT TOP 1 [id] FROM [dbo].[Ventas] WHERE [empresaID] = @EmpresaId AND [usuarioID] = @UsuarioId AND [totalVenta] = 62000.00),
          (SELECT TOP 1 [id] FROM [dbo].[Productos] WHERE [empresaID] = @EmpresaId AND [sku] = 'K-205'),
          1, 62000.00, 29000.00, 113.79, 33000.00);
 END;
-GO
 
--- ============================================================
--- CUENTA DEMO
--- ============================================================
--- La cuenta demo y su catálogo Excel se inicializan desde la aplicación
--- al ingresar con demo@quantitary.com. No requieren datos manuales aquí.
+-- Mantiene iguales el total de la cabecera y el precio histórico de sus detalles.
+UPDATE v
+SET v.totalVenta = ISNULL(t.totalDetalle, 0)
+FROM dbo.Ventas v
+OUTER APPLY
+(
+    SELECT SUM(ISNULL(d.precioVenta, 0)) AS totalDetalle
+    FROM dbo.DetalleVenta d
+    WHERE d.ventaID = v.id
+) t
+WHERE EXISTS (
+    SELECT 1
+    FROM dbo.DetalleVenta d
+    WHERE d.ventaID = v.id
+);
+GO
 
 -- ============================================================
 -- ACTUALIZACIÓN DE STORED PROCEDURES

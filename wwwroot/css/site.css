@@ -2439,3 +2439,51 @@ body.modal-open {
 .btn-close-modal {
     border-radius: 10px;
 }
+
+/* Filtros de reportes siempre en una sola fila */
+.report-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.5fr) repeat(5, minmax(140px, 1fr)) auto;
+    align-items: end;
+    gap: 12px;
+    min-width: 1120px;
+}
+
+.report-filter-field {
+    min-width: 0;
+}
+
+.report-filter-field .form-label {
+    white-space: nowrap;
+}
+
+.report-filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 1px;
+}
+
+.report-filter-actions .btn {
+    white-space: nowrap;
+}
+
+.report-filter-grid {
+    overflow: visible;
+}
+
+@media (max-width: 1200px) {
+    .report-filter-grid {
+        min-width: 1120px;
+    }
+
+    .report-filter-form {
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 767px) {
+    .report-filter-form {
+        overflow-x: auto;
+    }
+}

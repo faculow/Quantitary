@@ -339,7 +339,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
-    public IActionResult Reportes()
+    public IActionResult Reportes(string? busqueda, string? tipoReporte, DateTime? fechaDesde, DateTime? fechaHasta, string? frecuenciaActualizacion, string? periodoTiempo)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -348,23 +348,68 @@ public class HomeController : Controller
         }
 
         var model = new ReporteFormularioViewModel();
-        var reportes = HttpContext.Session.GetString("ReportesGuardados");
+        var reportesGuardados = ObtenerReportesGuardados();
 
-        if (!string.IsNullOrWhiteSpace(reportes))
+        var busquedaNormalizada = string.IsNullOrWhiteSpace(busqueda) ? null : busqueda.Trim();
+
+        if (fechaDesde.HasValue && fechaHasta.HasValue && fechaHasta.Value.Date < fechaDesde.Value.Date)
         {
-            try
-            {
-                ViewBag.ReportesGuardados = System.Text.Json.JsonSerializer.Deserialize<List<ReporteGuardado>>(reportes) ?? new List<ReporteGuardado>();
-            }
-            catch
-            {
-                ViewBag.ReportesGuardados = new List<ReporteGuardado>();
-            }
+            var fechaIntermedia = fechaDesde.Value;
+            fechaDesde = fechaHasta;
+            fechaHasta = fechaIntermedia;
         }
-        else
+
+        var reportesFiltrados = reportesGuardados.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(busquedaNormalizada))
         {
-            ViewBag.ReportesGuardados = new List<ReporteGuardado>();
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                reporte.Nombre.Contains(busquedaNormalizada, StringComparison.CurrentCultureIgnoreCase));
         }
+
+        if (!string.IsNullOrWhiteSpace(tipoReporte))
+        {
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                string.Equals(reporte.TipoReporte, tipoReporte, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (fechaDesde.HasValue)
+        {
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                reporte.FechaCreacion.Date >= fechaDesde.Value.Date);
+        }
+
+        if (fechaHasta.HasValue)
+        {
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                reporte.FechaCreacion.Date <= fechaHasta.Value.Date);
+        }
+
+        if (!string.IsNullOrWhiteSpace(frecuenciaActualizacion))
+        {
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                string.Equals(reporte.FrecuenciaActualizacion, frecuenciaActualizacion, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(periodoTiempo))
+        {
+            reportesFiltrados = reportesFiltrados.Where(reporte =>
+                string.Equals(reporte.PeriodoTiempo, periodoTiempo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var reportes = reportesFiltrados
+            .OrderByDescending(reporte => reporte.FechaCreacion)
+            .ToList();
+
+        ViewBag.ReportesGuardados = reportes;
+        ViewBag.TotalReportes = reportesGuardados.Count;
+        ViewBag.ResultadosReportes = reportes.Count;
+        ViewBag.Busqueda = busquedaNormalizada;
+        ViewBag.TipoReporteFiltro = tipoReporte;
+        ViewBag.FechaDesde = fechaDesde;
+        ViewBag.FechaHasta = fechaHasta;
+        ViewBag.FrecuenciaActualizacionFiltro = frecuenciaActualizacion;
+        ViewBag.PeriodoTiempoFiltro = periodoTiempo;
 
         return View(model);
     }
@@ -386,6 +431,11 @@ public class HomeController : Controller
         }
 
         var lista = ObtenerReportesGuardados();
+        var empresaId = ObtenerEmpresaIdActual();
+        var rangoReporte = ObtenerRangoReporte(modelo.PeriodoTiempo);
+        var fechasReporte = ObtenerFechasReporte(modelo.PeriodoTiempo);
+        var dashboard = _inventoryRepository.ObtenerDashboard(rangoReporte, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
+
         var nuevoReporte = new ReporteGuardado
         {
             Nombre = modelo.Nombre.Trim(),
@@ -394,7 +444,15 @@ public class HomeController : Controller
             FormatoReporte = modelo.FormatoReporte,
             FrecuenciaActualizacion = modelo.FrecuenciaActualizacion,
             FechaCreacion = DateTime.Now,
-            VistaPreviaHtml = GenerarVistaPrevia(modelo)
+            TotalVentas = dashboard.TotalVentasMes,
+            Ganancia = dashboard.GananciaNetaMes,
+            Gastos = dashboard.GastosTotalesMes,
+            VentaPromedio = dashboard.VentaPromedioMes,
+            CantidadProductosVendidos = dashboard.UltimosProductosVendidos.Sum(item => item.Cantidad),
+            TotalProductos = dashboard.TotalProductos,
+            ProductosPocoStock = dashboard.ProductosPocoStock,
+            ProductosSinStock = dashboard.ProductosSinStock,
+            VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard)
         };
 
         lista.Add(nuevoReporte);
@@ -487,8 +545,75 @@ public class HomeController : Controller
         }
     }
 
-    private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo)
+    private static string ObtenerRangoReporte(string periodoTiempo)
     {
+        return periodoTiempo.Trim().ToLowerInvariant() switch
+        {
+            "diario" => "dia",
+            "semanal" => "semana",
+            "mensual" => "mes",
+            "trimestral" => "todos",
+            "anual" => "año",
+            _ => "mes"
+        };
+    }
+
+    private static (DateTime Inicio, DateTime Fin) ObtenerFechasReporte(string periodoTiempo)
+    {
+        var hoy = DateTime.Today;
+
+        return periodoTiempo.Trim().ToLowerInvariant() switch
+        {
+            "diario" => (hoy, hoy),
+            "semanal" => (hoy.AddDays(-((int)hoy.DayOfWeek == 0 ? 6 : (int)hoy.DayOfWeek - 1)), hoy),
+            "mensual" => (new DateTime(hoy.Year, hoy.Month, 1), hoy),
+            "trimestral" => (hoy.AddMonths(-3), hoy),
+            "anual" => (new DateTime(hoy.Year, 1, 1), hoy),
+            _ => (new DateTime(hoy.Year, hoy.Month, 1), hoy)
+        };
+    }
+
+    private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo, DashboardSummary dashboard)
+    {
+        string filas;
+
+        if (modelo.TipoReporte == "Stock" || modelo.TipoReporte == "Productos")
+        {
+            filas = $@"
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos totales</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.TotalProductos}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos con poco stock</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosPocoStock}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos sin stock</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosSinStock}</td>
+                        </tr>";
+        }
+        else
+        {
+            filas = $@"
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Total ventas</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.TotalVentasMes.ToString("N2")}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GananciaNetaMes.ToString("N2")}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Gastos</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GastosTotalesMes.ToString("N2")}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Venta promedio</td>
+                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.VentaPromedioMes.ToString("N2")}</td>
+                        </tr>";
+        }
+
         return $@"
             <div style='font-family: Arial, sans-serif; padding: 20px; color: #1f2937;'>
                 <h3>{System.Net.WebUtility.HtmlEncode(modelo.Nombre)}</h3>
@@ -504,20 +629,7 @@ public class HomeController : Controller
                             <th style='padding: 8px; border: 1px solid #d1d5db; text-align: left;'>Valor</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Total ventas</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>$125.000</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>$42.300</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>128</td>
-                        </tr>
-                    </tbody>
+                    <tbody>{filas}</tbody>
                 </table>
             </div>";
     }
@@ -526,8 +638,14 @@ public class HomeController : Controller
     {
         if (reporte.FormatoReporte == "CSV")
         {
-            return "Nombre,Tipo,Periodo,Formato,Actualizacion\n" +
-                   $"{reporte.Nombre},{reporte.TipoReporte},{reporte.PeriodoTiempo},{reporte.FormatoReporte},{reporte.FrecuenciaActualizacion}\n";
+            if (reporte.TipoReporte == "Stock" || reporte.TipoReporte == "Productos")
+            {
+                return "Nombre,Tipo,Periodo,Formato,Actualizacion,ProductosTotales,ProductosPocoStock,ProductosSinStock\n" +
+                       $"{reporte.Nombre},{reporte.TipoReporte},{reporte.PeriodoTiempo},{reporte.FormatoReporte},{reporte.FrecuenciaActualizacion},{reporte.TotalProductos},{reporte.ProductosPocoStock},{reporte.ProductosSinStock}\n";
+            }
+
+            return "Nombre,Tipo,Periodo,Formato,Actualizacion,TotalVentas,Ganancia,Gastos,VentaPromedio\n" +
+                   $"{reporte.Nombre},{reporte.TipoReporte},{reporte.PeriodoTiempo},{reporte.FormatoReporte},{reporte.FrecuenciaActualizacion},{reporte.TotalVentas},{reporte.Ganancia},{reporte.Gastos},{reporte.VentaPromedio}\n";
         }
 
         if (reporte.FormatoReporte == "HTML")
@@ -535,12 +653,12 @@ public class HomeController : Controller
             return reporte.VistaPreviaHtml;
         }
 
-        if (reporte.FormatoReporte == "Excel")
+        if (reporte.TipoReporte == "Stock" || reporte.TipoReporte == "Productos")
         {
-            return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: Excel\nActualización: {reporte.FrecuenciaActualizacion}";
+            return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: {reporte.FormatoReporte}\nActualización: {reporte.FrecuenciaActualizacion}\n\nResumen\n-----\nProductos totales: {reporte.TotalProductos}\nProductos con poco stock: {reporte.ProductosPocoStock}\nProductos sin stock: {reporte.ProductosSinStock}";
         }
 
-        return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: PDF\nActualización: {reporte.FrecuenciaActualizacion}\n\nResumen\n-----\nTotal ventas: $125.000\nGanancia: $42.300\nProductos: 128";
+        return $"Reporte: {reporte.Nombre}\nTipo: {reporte.TipoReporte}\nPeriodo: {reporte.PeriodoTiempo}\nFormato: {reporte.FormatoReporte}\nActualización: {reporte.FrecuenciaActualizacion}\n\nResumen\n-----\nTotal ventas: ${reporte.TotalVentas.ToString("N2")}\nGanancia: ${reporte.Ganancia.ToString("N2")}\nGastos: ${reporte.Gastos.ToString("N2")}\nVenta promedio: ${reporte.VentaPromedio.ToString("N2")}";
     }
 
     private static string SanearNombre(string nombre)

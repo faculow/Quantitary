@@ -2,6 +2,14 @@
 @{
     ViewData["Title"] = "Reportes";
     var reportesGuardados = ViewBag.ReportesGuardados as List<Quantitary.Models.ReporteGuardado> ?? new List<Quantitary.Models.ReporteGuardado>();
+    var totalReportes = ViewBag.TotalReportes as int? ?? reportesGuardados.Count;
+    var resultadosReportes = ViewBag.ResultadosReportes as int? ?? reportesGuardados.Count;
+    var busqueda = ViewBag.Busqueda as string;
+    var tipoReporteFiltro = ViewBag.TipoReporteFiltro as string;
+    var frecuenciaActualizacionFiltro = ViewBag.FrecuenciaActualizacionFiltro as string;
+    var periodoTiempoFiltro = ViewBag.PeriodoTiempoFiltro as string;
+    var fechaDesde = ViewBag.FechaDesde as DateTime?;
+    var fechaHasta = ViewBag.FechaHasta as DateTime?;
     var exito = TempData["ReporteGuardadoExito"] as string;
     var cancelado = TempData["ReporteCancelado"] as string;
 
@@ -130,7 +138,68 @@
     <div class="mt-4">
         <div class="card shadow-sm">
             <div class="card-body">
-                <h5 class="card-title mb-3">Reportes guardados</h5>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h5 class="card-title mb-0">Reportes guardados</h5>
+                    <span class="text-muted small">@resultadosReportes de @totalReportes reportes</span>
+                </div>
+
+                <form asp-controller="Home" asp-action="Reportes" method="get" class="report-filter-form border rounded p-3 mb-3 bg-light">
+                    <div class="report-filter-grid">
+                        <div class="report-filter-field">
+                            <label for="busquedaReportes" class="form-label">Buscar por nombre</label>
+                            <input id="busquedaReportes" name="busqueda" type="search" class="form-control" value="@busqueda" placeholder="Ej: ventas semanal" />
+                        </div>
+
+                        <div class="report-filter-field">
+                            <label for="tipoReporteFiltro" class="form-label">Tipo</label>
+                            <select id="tipoReporteFiltro" name="tipoReporte" class="form-select">
+                                <option value="">Todos</option>
+                                <option value="Ventas" selected="@(tipoReporteFiltro == "Ventas")">Ventas</option>
+                                <option value="Stock" selected="@(tipoReporteFiltro == "Stock")">Stock</option>
+                                <option value="Productos" selected="@(tipoReporteFiltro == "Productos")">Productos</option>
+                                <option value="Finanzas" selected="@(tipoReporteFiltro == "Finanzas")">Finanzas</option>
+                            </select>
+                        </div>
+
+                        <div class="report-filter-field">
+                            <label for="fechaDesde" class="form-label">Creado desde</label>
+                            <input id="fechaDesde" name="fechaDesde" type="date" class="form-control" value="@(fechaDesde?.ToString("yyyy-MM-dd"))" />
+                        </div>
+
+                        <div class="report-filter-field">
+                            <label for="fechaHasta" class="form-label">Creado hasta</label>
+                            <input id="fechaHasta" name="fechaHasta" type="date" class="form-control" value="@(fechaHasta?.ToString("yyyy-MM-dd"))" />
+                        </div>
+
+                        <div class="report-filter-field">
+                            <label for="frecuenciaFiltro" class="form-label">Actualización</label>
+                            <select id="frecuenciaFiltro" name="frecuenciaActualizacion" class="form-select">
+                                <option value="">Todas</option>
+                                <option value="Manual" selected="@(frecuenciaActualizacionFiltro == "Manual")">Manual</option>
+                                <option value="Diario" selected="@(frecuenciaActualizacionFiltro == "Diario")">Diario</option>
+                                <option value="Semanal" selected="@(frecuenciaActualizacionFiltro == "Semanal")">Semanal</option>
+                                <option value="Mensual" selected="@(frecuenciaActualizacionFiltro == "Mensual")">Mensual</option>
+                            </select>
+                        </div>
+
+                        <div class="report-filter-field">
+                            <label for="periodoFiltro" class="form-label">Período incluido</label>
+                            <select id="periodoFiltro" name="periodoTiempo" class="form-select">
+                                <option value="">Todos</option>
+                                <option value="Diario" selected="@(periodoTiempoFiltro == "Diario")">Diario</option>
+                                <option value="Semanal" selected="@(periodoTiempoFiltro == "Semanal")">Semanal</option>
+                                <option value="Mensual" selected="@(periodoTiempoFiltro == "Mensual")">Mensual</option>
+                                <option value="Trimestral" selected="@(periodoTiempoFiltro == "Trimestral")">Trimestral</option>
+                                <option value="Anual" selected="@(periodoTiempoFiltro == "Anual")">Anual</option>
+                            </select>
+                        </div>
+
+                        <div class="report-filter-actions">
+                            <button type="submit" class="btn btn-primary">Filtrar</button>
+                            <a asp-controller="Home" asp-action="Reportes" class="btn btn-outline-secondary">Limpiar</a>
+                        </div>
+                    </div>
+                </form>
 
                 @if (reportesGuardados.Any())
                 {
@@ -140,9 +209,10 @@
                                 <tr>
                                     <th>Nombre</th>
                                     <th>Tipo</th>
-                                    <th>Período</th>
+                                    <th>Período incluido</th>
                                     <th>Formato</th>
-                                    <th>Actualiza</th>
+                                    <th>Actualización</th>
+                                    <th>Fecha de creación</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -154,11 +224,16 @@
                                         <td>@reporte.PeriodoTiempo</td>
                                         <td>@reporte.FormatoReporte</td>
                                         <td>@reporte.FrecuenciaActualizacion</td>
+                                        <td>@reporte.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
+                }
+                else if (totalReportes > 0)
+                {
+                    <div class="text-muted">No se encontraron reportes con los filtros seleccionados.</div>
                 }
                 else
                 {

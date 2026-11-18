@@ -30,4 +30,12 @@ public sealed class ReporteGuardado
     public string FrecuenciaActualizacion { get; set; } = string.Empty;
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
     public string VistaPreviaHtml { get; set; } = string.Empty;
+    public decimal TotalVentas { get; set; }
+    public decimal Ganancia { get; set; }
+    public decimal Gastos { get; set; }
+    public decimal VentaPromedio { get; set; }
+    public int CantidadProductosVendidos { get; set; }
+    public int TotalProductos { get; set; }
+    public int ProductosPocoStock { get; set; }
+    public int ProductosSinStock { get; set; }
 }
