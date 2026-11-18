@@ -1088,3 +1088,52 @@ GO
 -- DetalleVenta.costoCompra    -> snapshot histórico del costo al momento de vender.
 -- Ventas.totalVenta           -> total del comprobante, no replica datos por producto.
 -- ============================================================
+
+-- Reportes persistentes por usuario y empresa
+IF OBJECT_ID(N'dbo.Reportes', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[Reportes](
+        [id] [int] IDENTITY(1,1) NOT NULL,
+        [usuarioID] [int] NOT NULL,
+        [empresaID] [int] NOT NULL,
+        [nombre] [varchar](120) NOT NULL,
+        [tipoReporte] [varchar](50) NOT NULL,
+        [periodoTiempo] [varchar](50) NOT NULL,
+        [formatoReporte] [varchar](20) NOT NULL,
+        [frecuenciaActualizacion] [varchar](30) NOT NULL,
+        [fechaCreacion] [datetime2](0) NOT NULL DEFAULT (SYSUTCDATETIME()),
+        [vistaPreviaHtml] [varchar](max) NOT NULL,
+        [totalVentas] [decimal](12,2) NOT NULL DEFAULT ((0.00)),
+        [ganancia] [decimal](12,2) NOT NULL DEFAULT ((0.00)),
+        [gastos] [decimal](12,2) NOT NULL DEFAULT ((0.00)),
+        [ventaPromedio] [decimal](12,2) NOT NULL DEFAULT ((0.00)),
+        [cantidadProductosVendidos] [int] NOT NULL DEFAULT ((0)),
+        [totalProductos] [int] NOT NULL DEFAULT ((0)),
+        [productosPocoStock] [int] NOT NULL DEFAULT ((0)),
+        [productosSinStock] [int] NOT NULL DEFAULT ((0)),
+        CONSTRAINT [PK_Reportes] PRIMARY KEY CLUSTERED ([id] ASC)
+    ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE name = 'FK_Reportes_Usuarios' AND parent_object_id = OBJECT_ID('dbo.Reportes')
+)
+BEGIN
+    ALTER TABLE [dbo].[Reportes]
+    ADD CONSTRAINT [FK_Reportes_Usuarios]
+    FOREIGN KEY ([usuarioID]) REFERENCES [dbo].[Usuarios]([id]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE name = 'FK_Reportes_Empresa' AND parent_object_id = OBJECT_ID('dbo.Reportes')
+)
+BEGIN
+    ALTER TABLE [dbo].[Reportes]
+    ADD CONSTRAINT [FK_Reportes_Empresa]
+    FOREIGN KEY ([empresaID]) REFERENCES [dbo].[Empresa]([id]);
+END;
+GO

@@ -43,7 +43,7 @@ public sealed class IAHistorialSql
     public async Task<bool> Eliminar(Guid chat, int usuario, int empresa)
         => await BD.IAEliminarChatAsync(_config, chat, usuario, empresa);
 
-    private static ChatTurn ConvertirTurno(BD.IAMensaje mensaje)
+    private static ChatTurn ConvertirTurno(IAMensaje mensaje)
     {
         var role = mensaje.Rol ?? "user";
         if (!role.Equals("assistant", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(mensaje.ContenidoJson))

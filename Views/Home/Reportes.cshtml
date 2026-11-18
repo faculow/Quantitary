@@ -13,10 +13,7 @@
     var exito = TempData["ReporteGuardadoExito"] as string;
     var cancelado = TempData["ReporteCancelado"] as string;
 
-    var ultimoReporteJson = Context.Session.GetString("UltimoReporte");
-    var ultimoReporte = !string.IsNullOrWhiteSpace(ultimoReporteJson)
-        ? System.Text.Json.JsonSerializer.Deserialize<Quantitary.Models.ReporteGuardado>(ultimoReporteJson)
-        : null;
+    var ultimoReporte = ViewBag.UltimoReporte as Quantitary.Models.ReporteGuardado;
 }
 
 <div class="panel">
@@ -114,8 +111,8 @@
                         @if (ultimoReporte != null)
                         {
                             <div class="d-flex gap-2">
-                                <a asp-controller="Home" asp-action="VistaPreviaReporte" target="_blank" class="btn btn-outline-primary btn-sm">Ver</a>
-                                <a asp-controller="Home" asp-action="DescargarReporte" class="btn btn-success btn-sm">Descargar</a>
+                                <a asp-controller="Home" asp-action="VistaPreviaReporte" asp-route-id="@ultimoReporte.Id" target="_blank" class="btn btn-outline-primary btn-sm">Ver</a>
+                                <a asp-controller="Home" asp-action="DescargarReporte" asp-route-id="@ultimoReporte.Id" class="btn btn-success btn-sm">Descargar</a>
                             </div>
                         }
                     </div>

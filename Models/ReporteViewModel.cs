@@ -23,6 +23,9 @@ public sealed class ReporteFormularioViewModel
 
 public sealed class ReporteGuardado
 {
+    public int Id { get; set; }
+    public int UsuarioID { get; set; }
+    public int EmpresaID { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public string TipoReporte { get; set; } = string.Empty;
     public string PeriodoTiempo { get; set; } = string.Empty;

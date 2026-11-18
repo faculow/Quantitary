@@ -349,6 +349,7 @@ public class HomeController : Controller
 
         var model = new ReporteFormularioViewModel();
         var reportesGuardados = ObtenerReportesGuardados();
+        ViewBag.UltimoReporte = reportesGuardados.FirstOrDefault();
 
         var busquedaNormalizada = string.IsNullOrWhiteSpace(busqueda) ? null : busqueda.Trim();
 
@@ -430,14 +431,16 @@ public class HomeController : Controller
             return View("Reportes", modelo);
         }
 
-        var lista = ObtenerReportesGuardados();
-        var empresaId = ObtenerEmpresaIdActual();
-        var rangoReporte = ObtenerRangoReporte(modelo.PeriodoTiempo);
-        var fechasReporte = ObtenerFechasReporte(modelo.PeriodoTiempo);
-        var dashboard = _inventoryRepository.ObtenerDashboard(rangoReporte, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
+        int usuarioId = BD.ObtenerUsuarioLogueadoID(HttpContext) ?? 0;
+        int empresaId = ObtenerEmpresaIdActual();
+        string rangoReporte = ObtenerRangoReporte(modelo.PeriodoTiempo);
+        (DateTime Inicio, DateTime Fin) fechasReporte = ObtenerFechasReporte(modelo.PeriodoTiempo);
+        DashboardSummary dashboard = _inventoryRepository.ObtenerDashboard(rangoReporte, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
 
-        var nuevoReporte = new ReporteGuardado
+        ReporteGuardado nuevoReporte = new ReporteGuardado
         {
+            UsuarioID = usuarioId,
+            EmpresaID = empresaId,
             Nombre = modelo.Nombre.Trim(),
             TipoReporte = modelo.TipoReporte,
             PeriodoTiempo = modelo.PeriodoTiempo,
@@ -455,29 +458,34 @@ public class HomeController : Controller
             VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard)
         };
 
-        lista.Add(nuevoReporte);
-        HttpContext.Session.SetString("ReportesGuardados", System.Text.Json.JsonSerializer.Serialize(lista));
-        HttpContext.Session.SetString("UltimoReporte", System.Text.Json.JsonSerializer.Serialize(nuevoReporte));
+        int reporteId = BD.GuardarReporte(_configuration, nuevoReporte);
+        if (reporteId <= 0)
+        {
+            ModelState.AddModelError(string.Empty, "No se pudo guardar el reporte.");
+            ViewBag.ReportesGuardados = ObtenerReportesGuardados();
+            return View("Reportes", modelo);
+        }
+
+        nuevoReporte.Id = reporteId;
+        HttpContext.Session.SetString("UltimoReporteID", reporteId.ToString());
         TempData["ReporteGuardadoExito"] = "El reporte se guardó correctamente.";
         return RedirectToAction(nameof(Reportes));
     }
 
     [HttpGet]
-    public IActionResult VistaPreviaReporte()
+    public IActionResult VistaPreviaReporte(int? id)
     {
-        var redirect = RedirigirSiNoHaySesion();
+        IActionResult? redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
         {
             return redirect;
         }
 
-        var json = HttpContext.Session.GetString("UltimoReporte");
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return RedirectToAction(nameof(Reportes));
-        }
+        int usuarioId = BD.ObtenerUsuarioLogueadoID(HttpContext) ?? 0;
+        int empresaId = ObtenerEmpresaIdActual();
+        int reporteId = id ?? ObtenerUltimoReporteId();
+        ReporteGuardado? reporte = BD.ObtenerReporte(_configuration, reporteId, usuarioId, empresaId);
 
-        var reporte = System.Text.Json.JsonSerializer.Deserialize<ReporteGuardado>(json);
         if (reporte is null)
         {
             return RedirectToAction(nameof(Reportes));
@@ -487,28 +495,26 @@ public class HomeController : Controller
     }
 
     [HttpGet]
-    public IActionResult DescargarReporte()
+    public IActionResult DescargarReporte(int? id)
     {
-        var redirect = RedirigirSiNoHaySesion();
+        IActionResult? redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
         {
             return redirect;
         }
 
-        var json = HttpContext.Session.GetString("UltimoReporte");
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return RedirectToAction(nameof(Reportes));
-        }
+        int usuarioId = BD.ObtenerUsuarioLogueadoID(HttpContext) ?? 0;
+        int empresaId = ObtenerEmpresaIdActual();
+        int reporteId = id ?? ObtenerUltimoReporteId();
+        ReporteGuardado? reporte = BD.ObtenerReporte(_configuration, reporteId, usuarioId, empresaId);
 
-        var reporte = System.Text.Json.JsonSerializer.Deserialize<ReporteGuardado>(json);
         if (reporte is null)
         {
             return RedirectToAction(nameof(Reportes));
         }
 
-        var contenido = GenerarContenidoReporte(reporte);
-        var extension = reporte.FormatoReporte switch
+        string contenido = GenerarContenidoReporte(reporte);
+        string extension = reporte.FormatoReporte switch
         {
             "Excel" => ".xlsx",
             "CSV" => ".csv",
@@ -516,7 +522,7 @@ public class HomeController : Controller
             _ => ".pdf"
         };
 
-        var mime = reporte.FormatoReporte switch
+        string mime = reporte.FormatoReporte switch
         {
             "Excel" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "CSV" => "text/csv",
@@ -529,20 +535,20 @@ public class HomeController : Controller
 
     private List<ReporteGuardado> ObtenerReportesGuardados()
     {
-        var json = HttpContext.Session.GetString("ReportesGuardados");
-        if (string.IsNullOrWhiteSpace(json))
+        int usuarioId = BD.ObtenerUsuarioLogueadoID(HttpContext) ?? 0;
+        int empresaId = ObtenerEmpresaIdActual();
+        return BD.ObtenerReportes(_configuration, usuarioId, empresaId);
+    }
+
+    private int ObtenerUltimoReporteId()
+    {
+        List<ReporteGuardado> reportes = ObtenerReportesGuardados();
+        if (reportes.Count == 0)
         {
-            return new List<ReporteGuardado>();
+            return 0;
         }
 
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<List<ReporteGuardado>>(json) ?? new List<ReporteGuardado>();
-        }
-        catch
-        {
-            return new List<ReporteGuardado>();
-        }
+        return reportes[0].Id;
     }
 
     private static string ObtenerRangoReporte(string periodoTiempo)
