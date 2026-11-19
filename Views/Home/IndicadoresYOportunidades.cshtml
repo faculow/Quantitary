@@ -67,7 +67,13 @@
         <div class="row g-3">
             <div class="col-lg-6">
                 <div class="list-card">
-                    <h4>Reponer</h4>
+                    <div class="list-card-header">
+                        <h4>Reponer</h4>
+                        <details class="list-card-help">
+                            <summary class="gain-help-button" aria-label="Ver explicación de Reponer">?</summary>
+                            <p class="list-card-description">Aqui se muestran los productos con una cantidad de stock menor a la indicada</p>
+                        </details>
+                    </div>
                     @if (Model.ProductosReponer.Any())
                     {
                         <ul>
@@ -103,7 +109,13 @@
             </div>
             <div class="col-lg-6">
                 <div class="list-card">
-                    <h4>Comprar más</h4>
+                    <div class="list-card-header">
+                        <h4>Comprar más</h4>
+                        <details class="list-card-help">
+                            <summary class="gain-help-button" aria-label="Ver explicación de Comprar más">?</summary>
+                            <p class="list-card-description">Estos son los productos de alta rotacion que recomendamos comprar mas ya que tienen alta posibilidad de venta adquiriendo mayor stock</p>
+                        </details>
+                    </div>
                     @if (Model.ProductosComprarMas.Any())
                     {
                         <ul>
