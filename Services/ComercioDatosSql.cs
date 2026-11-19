@@ -59,7 +59,7 @@ public sealed class ComercioDatosSql
         if (permisos.VerVentas)
         {
             var existeVentas = await BD.ExisteTablaVentasAsync(_configuration);
-            if (existeVentas == 1)
+            if (existeVentas)
             {
                 var ventas = await BD.ObtenerVentasUltimos30DiasAsync(_configuration, empresaId);
                 sb.AppendLine("Ventas de los últimos 30 días (fecha | operaciones | unidades | total de ventas):");
