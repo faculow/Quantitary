@@ -1137,3 +1137,27 @@ BEGIN
     FOREIGN KEY ([empresaID]) REFERENCES [dbo].[Empresa]([id]);
 END;
 GO
+
+IF COL_LENGTH(N'dbo.Reportes', N'margenNeto') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Reportes] ADD [margenNeto] [decimal](12,2) NOT NULL DEFAULT ((0));
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Reportes', N'productosStockSobra') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Reportes] ADD [productosStockSobra] [int] NOT NULL DEFAULT ((0));
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Reportes', N'hallazgos') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Reportes] ADD [hallazgos] [varchar](max) NOT NULL DEFAULT ('');
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Reportes', N'recomendaciones') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Reportes] ADD [recomendaciones] [varchar](max) NOT NULL DEFAULT ('');
+END;
+GO

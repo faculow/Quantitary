@@ -19,6 +19,8 @@ public sealed class ReporteFormularioViewModel
 
     [Required(ErrorMessage = "Indicá cada cuánto se actualiza.")]
     public string FrecuenciaActualizacion { get; set; } = "Diario";
+
+    public List<int> ProductosIds { get; set; } = new List<int>();
 }
 
 public sealed class ReporteGuardado
@@ -41,4 +43,9 @@ public sealed class ReporteGuardado
     public int TotalProductos { get; set; }
     public int ProductosPocoStock { get; set; }
     public int ProductosSinStock { get; set; }
+    public decimal MargenNeto { get; set; }
+    public int StockSobra { get; set; }
+    public string Hallazgos { get; set; } = string.Empty;
+    public string Recomendaciones { get; set; } = string.Empty;
+    public List<int> ProductosIds { get; set; } = new List<int>();
 }

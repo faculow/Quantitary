@@ -2962,3 +2962,13 @@ p {
 # **27\. Ubicacion de clases cs**
 * Todas las clases deberian ser models fuera de los controllers, nunca en otro lugar
 * Cada clase debe tener su propio archivo
+
+
+# **28\. Indicaciones de Iara**
+* Controllers: no debe existir lógica de negocio ni consultas a la base de datos.
+* Views: no debe haber lógica de programación, salvo el acceso y recorrido de ViewBags o alguna condición particular.
+* JavaScript: el código debe estar organizado en archivos dentro de wwwroot/js.
+* Base de datos: las consultas, en lo posible o especialmente las más complejas, deben realizarse mediante Stored Procedures. No se debe traer información para luego filtrarla desde el código.
+* Tecnologías y conocimientos: no se aceptarán alternativas que reemplacen lo trabajado durante el año, como LINQ, SQL directo en el código, FromSqlRaw, entre otras, salvo casos justificados por necesidades de cada proyecto.
+* Validaciones: se deben validar los datos ingresados por el usuario tanto del lado del cliente como del servidor, según corresponda.
+* Código claro: utilizar nombres descriptivos para clases, métodos y variables. Evitar código innecesario, métodos excesivamente extensos y funcionalidades que no se utilizan.

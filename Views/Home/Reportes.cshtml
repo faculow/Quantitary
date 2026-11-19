@@ -94,6 +94,17 @@
                             <span asp-validation-for="FrecuenciaActualizacion" class="text-danger small"></span>
                         </div>
 
+                        <div class="col-12" id="selectorProductosReporte">
+                            <label class="form-label">Productos a analizar</label>
+                            <select asp-for="ProductosIds" class="form-select" multiple size="6">
+                                @foreach (var producto in ViewBag.ProductosDisponibles as List<Quantitary.Models.Producto> ?? new List<Quantitary.Models.Producto>())
+                                {
+                                    <option value="@producto.Id">@producto.Nombre (@producto.Sku)</option>
+                                }
+                            </select>
+                            <div class="form-text">Solo se aplica al reporte de Productos. Sin selección se incluyen todos.</div>
+                        </div>
+
                         <div class="col-12 d-flex gap-2 justify-content-end">
                             <button type="submit" class="btn btn-primary">Guardar</button>
                             <button type="submit" class="btn btn-outline-secondary" formaction="@Url.Action("CancelarReporte", "Home")" formmethod="post">Cancelar</button>
@@ -244,4 +255,16 @@
 @section Scripts {
     <script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
     <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"></script>
+
+    <script>
+        const tipoReporte = document.querySelector('[name="TipoReporte"]');
+        const selectorProductos = document.getElementById('selectorProductosReporte');
+
+        function actualizarSelectorProductos() {
+            selectorProductos.style.display = tipoReporte?.value === 'Productos' ? '' : 'none';
+        }
+
+        tipoReporte?.addEventListener('change', actualizarSelectorProductos);
+        actualizarSelectorProductos();
+    </script>
 }

@@ -348,6 +348,8 @@ public class HomeController : Controller
         }
 
         var model = new ReporteFormularioViewModel();
+        int empresaIdVista = ObtenerEmpresaIdActual();
+        ViewBag.ProductosDisponibles = _inventoryRepository.ObtenerProductos(null, null, empresaIdVista);
         var reportesGuardados = ObtenerReportesGuardados();
         ViewBag.UltimoReporte = reportesGuardados.FirstOrDefault();
 
@@ -437,6 +439,28 @@ public class HomeController : Controller
         (DateTime Inicio, DateTime Fin) fechasReporte = ObtenerFechasReporte(modelo.PeriodoTiempo);
         DashboardSummary dashboard = _inventoryRepository.ObtenerDashboard(rangoReporte, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
 
+        List<Producto> productosReporte = _inventoryRepository.ObtenerProductos(null, null, empresaId);
+        if (modelo.TipoReporte == "Productos" && modelo.ProductosIds.Count > 0)
+        {
+            productosReporte = productosReporte
+                .Where(producto => modelo.ProductosIds.Contains(producto.Id))
+                .ToList();
+        }
+
+        int stockSobra = productosReporte.Count(producto =>
+            producto.StockActual > 0 && producto.StockActual > producto.StockMinimo * 2);
+        decimal margenNeto = dashboard.TotalVentasMes == 0
+            ? 0
+            : dashboard.GananciaNetaMes / dashboard.TotalVentasMes * 100m;
+
+        string hallazgos = $"{dashboard.ProductosSinStock} productos sin stock, " +
+            $"{dashboard.ProductosPocoStock} con poco stock y {stockSobra} con stock sobrante.";
+        string recomendaciones = dashboard.ProductosSinStock > 0
+            ? "Reponer primero los productos agotados y revisar los mínimos de reposición."
+            : dashboard.ProductosPocoStock > 0
+                ? "Planificar compras para los productos próximos al mínimo."
+                : "Mantener el stock actual y controlar los productos con movimientos lentos.";
+
         ReporteGuardado nuevoReporte = new ReporteGuardado
         {
             UsuarioID = usuarioId,
@@ -455,6 +479,10 @@ public class HomeController : Controller
             TotalProductos = dashboard.TotalProductos,
             ProductosPocoStock = dashboard.ProductosPocoStock,
             ProductosSinStock = dashboard.ProductosSinStock,
+            MargenNeto = margenNeto,
+            StockSobra = stockSobra,
+            Hallazgos = hallazgos,
+            Recomendaciones = recomendaciones,
             VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard)
         };
 
@@ -583,21 +611,21 @@ public class HomeController : Controller
     {
         string filas;
 
-        if (modelo.TipoReporte == "Stock" || modelo.TipoReporte == "Productos")
+        if (modelo.TipoReporte == "Stock")
         {
             filas = $@"
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos totales</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.TotalProductos}</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos con poco stock</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosPocoStock}</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Productos sin stock</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosSinStock}</td>
-                        </tr>";
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos totales</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.TotalProductos}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Stock nulo</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosSinStock}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Stock bajo</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosPocoStock}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Hallazgo clave</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{dashboard.ProductosSinStock} agotados y {dashboard.ProductosPocoStock} por reponer</td></tr>";
+        }
+        else if (modelo.TipoReporte == "Productos")
+        {
+            filas = $@"
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos seleccionados</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{(modelo.ProductosIds.Count == 0 ? dashboard.TotalProductos : modelo.ProductosIds.Count)}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia del período</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GananciaNetaMes.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Margen neto</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{(dashboard.TotalVentasMes == 0 ? 0 : dashboard.GananciaNetaMes / dashboard.TotalVentasMes * 100m).ToString("N2")}%</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Recomendación</td><td style='padding: 8px; border: 1px solid #d1d5db;'>Priorizar rentabilidad y revisar precios de los productos seleccionados.</td></tr>";
         }
         else
         {
