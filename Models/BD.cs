@@ -1155,7 +1155,7 @@ END;
 IF OBJECT_ID(N'dbo.IAMensajes', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.IAMensajes (
-        Id bigint IDENTITY(1,1) NOT NOT NULL PRIMARY KEY,
+        Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
         ChatId uniqueidentifier NOT NULL,
         Rol varchar(16) NOT NULL,
         Texto nvarchar(4000) NOT NULL,
