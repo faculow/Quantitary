@@ -1535,25 +1535,12 @@ OPTION (RECOMPILE);";
 
 
 
-    public static async Task<int> TienePermisoEmpresaAsync(IDbConnection connection, int usuario, int empresa)
-    {
-        return await connection.ExecuteScalarAsync<int>(@"
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM Usuarios u
-                INNER JOIN Rol r ON r.id = u.rolID
-                INNER JOIN Permisos p ON p.id = r.permisoID
-                WHERE u.id = @Usuario
-                  AND u.empresaID = @Empresa
-                  AND ISNULL(p.gestionarUsuarios, 0) = 1
-            ) THEN 1 ELSE 0 END",
-            new { Usuario = usuario, Empresa = empresa });
-    }
-
     public static async Task<int> GuardarEmpresaAsync(IDbConnection connection, string nombre, int empresa)
     {
         return await connection.ExecuteAsync(@"
-            UPDATE Empresa SET nombre = @Nombre WHERE id = @Empresa",
+            UPDATE Empresa
+            SET nombre = @Nombre
+            WHERE id = @Empresa",
             new { Nombre = nombre.Trim(), Empresa = empresa });
     }
 
@@ -1569,8 +1556,45 @@ OPTION (RECOMPILE);";
     public static async Task<int> CambiarContrasenaAsync(IDbConnection connection, string nueva, int usuario, int empresa)
     {
         return await connection.ExecuteAsync(@"
-            UPDATE Usuarios SET contrasena = @Nueva
+            UPDATE Usuarios
+            SET contrasena = @Nueva
             WHERE id = @Usuario AND empresaID = @Empresa",
             new { Nueva = nueva, Usuario = usuario, Empresa = empresa });
+    }
+
+    public static void GarantizarEsquemaActual(IConfiguration configuration)
+    {
+        string? rutaScript = new[]
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), "script.sql"),
+            Path.Combine(AppContext.BaseDirectory, "script.sql"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "script.sql")
+        }.FirstOrDefault(File.Exists);
+
+        if (rutaScript == null)
+        {
+            throw new FileNotFoundException("No se encontró script.sql para garantizar el esquema de la base de datos.");
+        }
+
+        string contenidoScript = File.ReadAllText(rutaScript);
+        string[] lotes = System.Text.RegularExpressions.Regex.Split(
+            contenidoScript,
+            @"(?m)^\s*GO(?:\s+\d+)?\s*$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        SqlConnectionStringBuilder constructorConexion = new SqlConnectionStringBuilder(
+            ObtenerCadenaConexion(configuration));
+        constructorConexion.InitialCatalog = "master";
+
+        using SqlConnection connection = new SqlConnection(constructorConexion.ConnectionString);
+        connection.Open();
+
+        foreach (string lote in lotes)
+        {
+            if (!string.IsNullOrWhiteSpace(lote))
+            {
+                connection.Execute(lote);
+            }
+        }
     }
 }

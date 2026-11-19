@@ -22,6 +22,13 @@
                       LogicalName="Quantitary.DatosDemo.Productos_Demo_Expo.xlsx" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="script.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <Target Name="ReleaseLockedQuantitaryBinary" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="taskkill /F /IM Quantitary.exe /T" IgnoreExitCode="true" ContinueOnError="true" />
     <Delete Files="$(OutputPath)Quantitary.exe;$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\apphost.exe" ContinueOnError="true" />
