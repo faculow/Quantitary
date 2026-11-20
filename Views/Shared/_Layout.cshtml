@@ -9,7 +9,7 @@
     var esAnalisis = controladorActual == "Home" && (accionActual == "AnalisisVentasGanancias" || accionActual == "AnalisisProducto");
     var esIndicadores = controladorActual == "Home" && accionActual == "IndicadoresYOportunidades";
     var esAjustes = controladorActual == "Ajustes";
-    var esReportes = controladorActual == "Home" && accionActual == "Reportes";
+    var esReportes = controladorActual == "Home" && (accionActual == "Reportes" || accionActual == "HistorialReportes");
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -18,6 +18,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Quantitary</title>
     <link rel="icon" type="image/png" href="~/images/quantitary-logo-app.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/quantitary-ia.css" asp-append-version="true" />

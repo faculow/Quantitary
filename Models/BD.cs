@@ -1735,4 +1735,21 @@ END;");
                 Fecha = DateTime.UtcNow
             }, transaction);
     }
+
+    public static bool EliminarReporte(IConfiguration configuration, int reporteId, int usuarioId, int empresaId)
+    {
+        if (reporteId <= 0 || usuarioId <= 0 || empresaId <= 0)
+        {
+            return false;
+        }
+
+        using SqlConnection connection = (SqlConnection)CrearConexion(configuration);
+        string sql = @"
+            DELETE FROM Reportes
+            WHERE id = @ReporteId AND usuarioID = @UsuarioId AND empresaID = @EmpresaId";
+
+        int afectados = connection.Execute(sql,
+            new { ReporteId = reporteId, UsuarioId = usuarioId, EmpresaId = empresaId });
+        return afectados > 0;
+    }
 }

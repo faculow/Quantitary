@@ -419,7 +419,7 @@ public class HomeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult GuardarReporte(ReporteFormularioViewModel modelo)
+    public async Task<IActionResult> GuardarReporte(ReporteFormularioViewModel modelo)
     {
         var redirect = RedirigirSiNoHaySesion();
         if (redirect != null)
@@ -427,9 +427,18 @@ public class HomeController : Controller
             return redirect;
         }
 
+        int empresaIdVista = ObtenerEmpresaIdActual();
+        ViewBag.ProductosDisponibles = _inventoryRepository.ObtenerProductos(null, null, empresaIdVista);
+
+        if (modelo.TipoReporte == "Productos" && (modelo.ProductosIds == null || modelo.ProductosIds.Count == 0))
+        {
+            ModelState.AddModelError(nameof(modelo.ProductosIds), "Seleccioná al menos un producto para generar el reporte.");
+        }
+
         if (!ModelState.IsValid)
         {
             ViewBag.ReportesGuardados = ObtenerReportesGuardados();
+            ViewBag.UltimoReporte = ViewBag.ReportesGuardados is List<ReporteGuardado> reportes ? reportes.FirstOrDefault() : null;
             return View("Reportes", modelo);
         }
 
@@ -440,26 +449,78 @@ public class HomeController : Controller
         DashboardSummary dashboard = _inventoryRepository.ObtenerDashboard(rangoReporte, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
 
         List<Producto> productosReporte = _inventoryRepository.ObtenerProductos(null, null, empresaId);
-        if (modelo.TipoReporte == "Productos" && modelo.ProductosIds.Count > 0)
+        List<ProductoAnalisisResumen> productosDetallados = new List<ProductoAnalisisResumen>();
+
+        if (modelo.TipoReporte == "Productos")
         {
             productosReporte = productosReporte
                 .Where(producto => modelo.ProductosIds.Contains(producto.Id))
                 .ToList();
+
+            using var connection = CrearConexion();
+            await connection.OpenAsync();
+            var analisis = await BD.ObtenerAnalisisProductoAsync(connection, empresaId, fechasReporte.Inicio, fechasReporte.Fin);
+            var ventasPorProducto = analisis.VentasPorProducto
+                .GroupBy(venta => venta.ProductoId)
+                .ToDictionary(grupo => grupo.Key, grupo => grupo.First());
+
+            productosDetallados = productosReporte.Select(producto =>
+            {
+                ventasPorProducto.TryGetValue(producto.Id, out var venta);
+                decimal ventasTotales = venta?.VentasTotales ?? 0m;
+                decimal gastoTotal = venta?.GastoTotal ?? 0m;
+                decimal gananciaTotal = venta?.GananciaTotal ?? 0m;
+                int cantidadVendida = venta?.CantidadVendida ?? 0;
+
+                return new ProductoAnalisisResumen
+                {
+                    Id = producto.Id,
+                    Nombre = producto.Nombre,
+                    Sku = producto.Sku,
+                    Categoria = producto.Categoria,
+                    Precio = producto.Precio,
+                    Costo = producto.CostoCompra,
+                    Gasto = gastoTotal,
+                    Ganancia = gananciaTotal,
+                    Margen = ventasTotales == 0m ? 0m : gananciaTotal / ventasTotales * 100m,
+                    Stock = producto.StockActual,
+                    StockMinimo = producto.StockMinimo,
+                    VentasMes = cantidadVendida,
+                    InteresCompraMes = cantidadVendida,
+                    Rotacion = producto.StockActual == 0 ? 0m : cantidadVendida / (decimal)producto.StockActual,
+                    Reposicion = producto.StockActual <= producto.StockMinimo ? "Reponer" : "Al día"
+                };
+            }).ToList();
         }
 
         int stockSobra = productosReporte.Count(producto =>
             producto.StockActual > 0 && producto.StockActual > producto.StockMinimo * 2);
-        decimal margenNeto = dashboard.TotalVentasMes == 0
+        decimal totalVentasReporte = modelo.TipoReporte == "Productos"
+            ? productosDetallados.Sum(producto => producto.Gasto + producto.Ganancia)
+            : dashboard.TotalVentasMes;
+        decimal totalGananciaReporte = modelo.TipoReporte == "Productos"
+            ? productosDetallados.Sum(producto => producto.Ganancia)
+            : dashboard.GananciaNetaMes;
+        decimal totalGastosReporte = modelo.TipoReporte == "Productos"
+            ? productosDetallados.Sum(producto => producto.Gasto)
+            : dashboard.GastosTotalesMes;
+        decimal cantidadVendidaReporte = productosDetallados.Sum(producto => producto.VentasMes);
+        decimal margenNeto = totalVentasReporte == 0
             ? 0
-            : dashboard.GananciaNetaMes / dashboard.TotalVentasMes * 100m;
+            : totalGananciaReporte / totalVentasReporte * 100m;
 
-        string hallazgos = $"{dashboard.ProductosSinStock} productos sin stock, " +
-            $"{dashboard.ProductosPocoStock} con poco stock y {stockSobra} con stock sobrante.";
-        string recomendaciones = dashboard.ProductosSinStock > 0
-            ? "Reponer primero los productos agotados y revisar los mínimos de reposición."
-            : dashboard.ProductosPocoStock > 0
-                ? "Planificar compras para los productos próximos al mínimo."
-                : "Mantener el stock actual y controlar los productos con movimientos lentos.";
+        string hallazgos = modelo.TipoReporte == "Productos"
+            ? $"{productosReporte.Count} productos seleccionados: {productosReporte.Count(producto => producto.StockActual <= producto.StockMinimo)} requieren reposición y {stockSobra} tienen stock sobrante."
+            : $"{dashboard.ProductosSinStock} productos sin stock, {dashboard.ProductosPocoStock} con poco stock y {stockSobra} con stock sobrante.";
+        string recomendaciones = modelo.TipoReporte == "Productos"
+            ? (productosReporte.Count(producto => producto.StockActual <= producto.StockMinimo) > 0
+                ? "Reponer primero los productos seleccionados con stock agotado o en el mínimo y revisar sus precios."
+                : "Mantener el stock actual y controlar los movimientos de los productos seleccionados.")
+            : (dashboard.ProductosSinStock > 0
+                ? "Reponer primero los productos agotados y revisar los mínimos de reposición."
+                : dashboard.ProductosPocoStock > 0
+                    ? "Planificar compras para los productos próximos al mínimo."
+                    : "Mantener el stock actual y controlar los productos con movimientos lentos.");
 
         ReporteGuardado nuevoReporte = new ReporteGuardado
         {
@@ -471,19 +532,20 @@ public class HomeController : Controller
             FormatoReporte = modelo.FormatoReporte,
             FrecuenciaActualizacion = modelo.FrecuenciaActualizacion,
             FechaCreacion = DateTime.Now,
-            TotalVentas = dashboard.TotalVentasMes,
-            Ganancia = dashboard.GananciaNetaMes,
-            Gastos = dashboard.GastosTotalesMes,
-            VentaPromedio = dashboard.VentaPromedioMes,
-            CantidadProductosVendidos = dashboard.UltimosProductosVendidos.Sum(item => item.Cantidad),
-            TotalProductos = dashboard.TotalProductos,
-            ProductosPocoStock = dashboard.ProductosPocoStock,
-            ProductosSinStock = dashboard.ProductosSinStock,
+            TotalVentas = totalVentasReporte,
+            Ganancia = totalGananciaReporte,
+            Gastos = totalGastosReporte,
+            VentaPromedio = productosDetallados.Count == 0 ? dashboard.VentaPromedioMes : totalVentasReporte / productosDetallados.Count,
+            CantidadProductosVendidos = (int)cantidadVendidaReporte,
+            TotalProductos = modelo.TipoReporte == "Productos" ? productosReporte.Count : dashboard.TotalProductos,
+            ProductosPocoStock = productosReporte.Count(producto => producto.StockActual > 0 && producto.StockActual <= producto.StockMinimo),
+            ProductosSinStock = productosReporte.Count(producto => producto.StockActual <= 0),
             MargenNeto = margenNeto,
             StockSobra = stockSobra,
             Hallazgos = hallazgos,
             Recomendaciones = recomendaciones,
-            VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard)
+            ProductosIds = modelo.ProductosIds.ToList(),
+            VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard, productosDetallados)
         };
 
         int reporteId = BD.GuardarReporte(_configuration, nuevoReporte);
@@ -607,9 +669,10 @@ public class HomeController : Controller
         };
     }
 
-    private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo, DashboardSummary dashboard)
+    private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo, DashboardSummary dashboard, List<ProductoAnalisisResumen>? productosSeleccionados = null)
     {
         string filas;
+        string seccionesDetalle = string.Empty;
 
         if (modelo.TipoReporte == "Stock")
         {
@@ -621,31 +684,57 @@ public class HomeController : Controller
         }
         else if (modelo.TipoReporte == "Productos")
         {
+            var seleccionados = productosSeleccionados ?? new List<ProductoAnalisisResumen>();
+            decimal ventasSeleccionadas = seleccionados.Sum(producto => producto.Gasto + producto.Ganancia);
+            decimal gananciaSeleccionada = seleccionados.Sum(producto => producto.Ganancia);
+            decimal gastosSeleccionados = seleccionados.Sum(producto => producto.Gasto);
+            decimal margenSeleccionado = ventasSeleccionadas == 0m ? 0m : gananciaSeleccionada / ventasSeleccionadas * 100m;
+            int unidadesVendidas = seleccionados.Sum(producto => producto.VentasMes);
+
             filas = $@"
-                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos seleccionados</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{(modelo.ProductosIds.Count == 0 ? dashboard.TotalProductos : modelo.ProductosIds.Count)}</td></tr>
-                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia del período</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GananciaNetaMes.ToString("N2")}</td></tr>
-                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Margen neto</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{(dashboard.TotalVentasMes == 0 ? 0 : dashboard.GananciaNetaMes / dashboard.TotalVentasMes * 100m).ToString("N2")}%</td></tr>
-                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Recomendación</td><td style='padding: 8px; border: 1px solid #d1d5db;'>Priorizar rentabilidad y revisar precios de los productos seleccionados.</td></tr>";
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos seleccionados</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{seleccionados.Count}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Unidades vendidas</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{unidadesVendidas}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Ventas del período</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${ventasSeleccionadas.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Gastos del período</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${gastosSeleccionados.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia del período</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${gananciaSeleccionada.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Margen neto</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{margenSeleccionado.ToString("N2")}%</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos por reponer</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{seleccionados.Count(producto => producto.Stock <= producto.StockMinimo)}</td></tr>";
+
+            var detalle = new StringBuilder();
+            detalle.Append("<h4 style='margin-top: 24px;'>Detalle individual de los productos seleccionados</h4>");
+
+            foreach (var producto in seleccionados)
+            {
+                detalle.Append($@"
+                    <div style='border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; margin-top: 12px;'>
+                        <h5 style='margin: 0 0 8px 0;'>{System.Net.WebUtility.HtmlEncode(producto.Nombre)}</h5>
+                        <table style='width:100%; border-collapse: collapse;'>
+                            <tbody>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>SKU</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Sku)}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Categoría</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Categoria)}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Precio</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>${producto.Precio.ToString("N2")}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Costo</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>${producto.Costo.ToString("N2")}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Ventas</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>${(producto.Gasto + producto.Ganancia).ToString("N2")}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Gastos</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>${producto.Gasto.ToString("N2")}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Ganancia</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>${producto.Ganancia.ToString("N2")}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Margen</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{producto.Margen.ToString("N2")}%</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Unidades vendidas</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{producto.VentasMes}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Stock actual / mínimo</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{producto.Stock} / {producto.StockMinimo}</td></tr>
+                                <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Estado de reposición</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Reposicion)}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>");
+            }
+
+            seccionesDetalle = detalle.ToString();
         }
         else
         {
             filas = $@"
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Total ventas</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.TotalVentasMes.ToString("N2")}</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GananciaNetaMes.ToString("N2")}</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Gastos</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GastosTotalesMes.ToString("N2")}</td>
-                        </tr>
-                        <tr>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>Venta promedio</td>
-                            <td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.VentaPromedioMes.ToString("N2")}</td>
-                        </tr>";
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Total ventas</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.TotalVentasMes.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Ganancia</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GananciaNetaMes.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Gastos</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.GastosTotalesMes.ToString("N2")}</td></tr>
+                        <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Venta promedio</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.VentaPromedioMes.ToString("N2")}</td></tr>";
         }
 
         return $@"
@@ -656,6 +745,7 @@ public class HomeController : Controller
                 <p><strong>Formato:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FormatoReporte)}</p>
                 <p><strong>Actualización:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FrecuenciaActualizacion)}</p>
                 <hr />
+                <h4>Resumen general</h4>
                 <table style='width:100%; border-collapse: collapse; margin-top: 12px;'>
                     <thead>
                         <tr style='background: #f3f4f6;'>
@@ -665,6 +755,7 @@ public class HomeController : Controller
                     </thead>
                     <tbody>{filas}</tbody>
                 </table>
+                {seccionesDetalle}
             </div>";
     }
 
@@ -699,5 +790,86 @@ public class HomeController : Controller
     {
         var limpio = new string(nombre.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == ' ').ToArray()).Trim();
         return string.IsNullOrWhiteSpace(limpio) ? "reporte" : limpio.Replace(' ', '-');
+    }
+
+    public IActionResult HistorialReportes(string? busqueda, string? tipoReporte, string? frecuenciaActualizacion, string? periodoTiempo, DateTime? fechaDesde, DateTime? fechaHasta)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        if (fechaDesde.HasValue && fechaHasta.HasValue && fechaHasta.Value.Date < fechaDesde.Value.Date)
+        {
+            DateTime intermedia = fechaDesde.Value;
+            fechaDesde = fechaHasta;
+            fechaHasta = intermedia;
+        }
+
+        var reportes = ObtenerReportesGuardados().AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(busqueda))
+        {
+            reportes = reportes.Where(reporte => reporte.Nombre.Contains(busqueda.Trim(), StringComparison.CurrentCultureIgnoreCase));
+        }
+        if (!string.IsNullOrWhiteSpace(tipoReporte))
+        {
+            reportes = reportes.Where(reporte => string.Equals(reporte.TipoReporte, tipoReporte, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrWhiteSpace(frecuenciaActualizacion))
+        {
+            reportes = reportes.Where(reporte => string.Equals(reporte.FrecuenciaActualizacion, frecuenciaActualizacion, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrWhiteSpace(periodoTiempo))
+        {
+            reportes = reportes.Where(reporte => string.Equals(reporte.PeriodoTiempo, periodoTiempo, StringComparison.OrdinalIgnoreCase));
+        }
+        if (fechaDesde.HasValue)
+        {
+            reportes = reportes.Where(reporte => reporte.FechaCreacion.Date >= fechaDesde.Value.Date);
+        }
+        if (fechaHasta.HasValue)
+        {
+            reportes = reportes.Where(reporte => reporte.FechaCreacion.Date <= fechaHasta.Value.Date);
+        }
+
+        var resultado = reportes
+            .OrderByDescending(reporte => reporte.FechaCreacion)
+            .ToList();
+
+        ViewBag.ResultadosReportes = resultado.Count;
+        ViewBag.Busqueda = busqueda;
+        ViewBag.TipoReporteFiltro = tipoReporte;
+        ViewBag.FrecuenciaActualizacionFiltro = frecuenciaActualizacion;
+        ViewBag.PeriodoTiempoFiltro = periodoTiempo;
+        ViewBag.FechaDesde = fechaDesde;
+        ViewBag.FechaHasta = fechaHasta;
+
+        return View("HistorialReportes", resultado);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult EliminarReporte(int id)
+    {
+        var redirect = RedirigirSiNoHaySesion();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        int usuarioId = BD.ObtenerUsuarioLogueadoID(HttpContext) ?? 0;
+        int empresaId = ObtenerEmpresaIdActual();
+        if (BD.EliminarReporte(_configuration, id, usuarioId, empresaId))
+        {
+            TempData["ReporteEliminado"] = "El reporte se eliminó correctamente.";
+        }
+        else
+        {
+            TempData["ReporteEliminadoError"] = "No se pudo eliminar el reporte.";
+        }
+
+        return RedirectToAction(nameof(HistorialReportes));
     }
 }

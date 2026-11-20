@@ -13,6 +13,12 @@
     var exito = TempData["ReporteGuardadoExito"] as string;
     var cancelado = TempData["ReporteCancelado"] as string;
 
+    var productosDisponibles = ViewBag.ProductosDisponibles as List<Quantitary.Models.Producto>;
+    if (productosDisponibles == null)
+    {
+        productosDisponibles = new List<Quantitary.Models.Producto>();
+    }
+
     var ultimoReporte = ViewBag.UltimoReporte as Quantitary.Models.ReporteGuardado;
 }
 
@@ -22,6 +28,9 @@
             <h2 class="mb-1">Reportes</h2>
             <p class="text-muted mb-0">Creá y visualizá reportes del negocio.</p>
         </div>
+        <a asp-controller="Home" asp-action="HistorialReportes" class="btn btn-outline-primary">
+            Historial de reportes
+        </a>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(exito))
@@ -35,12 +44,12 @@
     }
 
     <div class="row g-4">
-        <div class="col-lg-5">
+        <div class="col-12">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <h5 class="card-title mb-3">Crear reporte</h5>
 
-                    <form asp-controller="Home" asp-action="GuardarReporte" method="post" class="row g-3">
+                    <form id="formCrearReporte" asp-controller="Home" asp-action="GuardarReporte" method="post" class="row g-3">
                         @Html.AntiForgeryToken()
 
                         <div class="col-12">
@@ -95,161 +104,95 @@
                         </div>
 
                         <div class="col-12" id="selectorProductosReporte">
-                            <label class="form-label">Productos a analizar</label>
-                            <select asp-for="ProductosIds" class="form-select" multiple size="6">
-                                @foreach (var producto in ViewBag.ProductosDisponibles as List<Quantitary.Models.Producto> ?? new List<Quantitary.Models.Producto>())
+                            <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+                                <div>
+                                    <label class="form-label mb-1">Productos a analizar</label>
+                                    <div class="form-text mt-0">Seleccioná uno o más productos.</div>
+                                </div>
+                                <span id="cantidadProductosSeleccionados" class="badge text-bg-primary">0 seleccionados</span>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-7">
+                                    <label for="buscarProductoReporte" class="form-label">Buscar producto</label>
+                                    <input id="buscarProductoReporte" type="search" class="form-control" placeholder="Nombre o SKU" />
+                                </div>
+                                <div class="col-md-5">
+                                    <label for="categoriaProductoReporte" class="form-label">Categoría</label>
+                                    <select id="categoriaProductoReporte" class="form-select">
+                                        <option value="">Todas</option>
+                                        @foreach (var categoria in productosDisponibles.Select(producto => producto.Categoria).Where(categoria => !string.IsNullOrWhiteSpace(categoria)).Distinct().OrderBy(categoria => categoria))
+                                        {
+                                            <option value="@categoria">@categoria</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="reporte-productos-grid" id="ProductosIds">
+                                @foreach (var producto in productosDisponibles)
                                 {
-                                    <option value="@producto.Id">@producto.Nombre (@producto.Sku)</option>
+                                    var seleccionado = Model.ProductosIds != null && Model.ProductosIds.Contains(producto.Id);
+                                    <label class="reporte-producto-card @(seleccionado ? "seleccionada" : "")"
+                                           data-nombre="@producto.Nombre"
+                                           data-sku="@producto.Sku"
+                                           data-categoria="@producto.Categoria">
+                                        <input class="reporte-producto-check" type="checkbox" name="ProductosIds" value="@producto.Id" checked="@seleccionado" />
+                                        <span class="reporte-producto-top">
+                                            <span class="product-sku">@producto.Sku</span>
+                                            <span class="stock-badge @(producto.StockActual <= 0 ? "danger" : producto.StockActual < producto.StockMinimo ? "orange" : "ok")">
+                                                @producto.StockActual uds.
+                                            </span>
+                                        </span>
+                                        <strong class="reporte-producto-nombre">@producto.Nombre</strong>
+                                        <span class="reporte-producto-info">Categoría: @(string.IsNullOrWhiteSpace(producto.Categoria) ? "Sin categoría" : producto.Categoria)</span>
+                                        <span class="reporte-producto-precio">$@producto.Precio.ToString("N2")</span>
+                                        <span class="reporte-producto-seleccion">@(seleccionado ? "Seleccionado" : "Seleccionar")</span>
+                                    </label>
                                 }
-                            </select>
-                            <div class="form-text">Solo se aplica al reporte de Productos. Sin selección se incluyen todos.</div>
+                            </div>
+
+                            <span asp-validation-for="ProductosIds" class="text-danger small"></span>
+                            <div class="form-text">El resumen y el detalle mostrarán únicamente los productos seleccionados.</div>
                         </div>
 
                         <div class="col-12 d-flex gap-2 justify-content-end">
                             <button type="submit" class="btn btn-primary">Guardar</button>
-                            <button type="submit" class="btn btn-outline-secondary" formaction="@Url.Action("CancelarReporte", "Home")" formmethod="post">Cancelar</button>
+                            <button type="reset" class="btn btn-outline-secondary" onclick="setTimeout(actualizarSelectorProductos, 0)">Restablecer parámetros</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-lg-7">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="card-title mb-0">Vista previa</h5>
-                        @if (ultimoReporte != null)
-                        {
-                            <div class="d-flex gap-2">
-                                <a asp-controller="Home" asp-action="VistaPreviaReporte" asp-route-id="@ultimoReporte.Id" target="_blank" class="btn btn-outline-primary btn-sm">Ver</a>
-                                <a asp-controller="Home" asp-action="DescargarReporte" asp-route-id="@ultimoReporte.Id" class="btn btn-success btn-sm">Descargar</a>
-                            </div>
-                        }
+    @if (ultimoReporte != null)
+    {
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#vistaPreviaReporteModal">
+                Ver vista previa
+            </button>
+            <a asp-controller="Home" asp-action="DescargarReporte" asp-route-id="@ultimoReporte.Id" class="btn btn-success">Descargar</a>
+        </div>
+
+        <div class="modal fade" id="vistaPreviaReporteModal" tabindex="-1" aria-labelledby="vistaPreviaReporteTitulo" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="vistaPreviaReporteTitulo">Vista previa: @ultimoReporte.Nombre</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                     </div>
-
-                    @if (ultimoReporte != null)
-                    {
-                        <div class="border rounded p-3 bg-light">
-                            @Html.Raw(ultimoReporte.VistaPreviaHtml)
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="text-muted">Aún no hay un reporte creado para visualizar.</div>
-                    }
+                    <div class="modal-body bg-light">
+                        @Html.Raw(ultimoReporte.VistaPreviaHtml)
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        <a asp-controller="Home" asp-action="DescargarReporte" asp-route-id="@ultimoReporte.Id" class="btn btn-success">Descargar</a>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="mt-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                    <h5 class="card-title mb-0">Reportes guardados</h5>
-                    <span class="text-muted small">@resultadosReportes de @totalReportes reportes</span>
-                </div>
-
-                <form asp-controller="Home" asp-action="Reportes" method="get" class="report-filter-form border rounded p-3 mb-3 bg-light">
-                    <div class="report-filter-grid">
-                        <div class="report-filter-field">
-                            <label for="busquedaReportes" class="form-label">Buscar por nombre</label>
-                            <input id="busquedaReportes" name="busqueda" type="search" class="form-control" value="@busqueda" placeholder="Ej: ventas semanal" />
-                        </div>
-
-                        <div class="report-filter-field">
-                            <label for="tipoReporteFiltro" class="form-label">Tipo</label>
-                            <select id="tipoReporteFiltro" name="tipoReporte" class="form-select">
-                                <option value="">Todos</option>
-                                <option value="Ventas" selected="@(tipoReporteFiltro == "Ventas")">Ventas</option>
-                                <option value="Stock" selected="@(tipoReporteFiltro == "Stock")">Stock</option>
-                                <option value="Productos" selected="@(tipoReporteFiltro == "Productos")">Productos</option>
-                                <option value="Finanzas" selected="@(tipoReporteFiltro == "Finanzas")">Finanzas</option>
-                            </select>
-                        </div>
-
-                        <div class="report-filter-field">
-                            <label for="fechaDesde" class="form-label">Creado desde</label>
-                            <input id="fechaDesde" name="fechaDesde" type="date" class="form-control" value="@(fechaDesde?.ToString("yyyy-MM-dd"))" />
-                        </div>
-
-                        <div class="report-filter-field">
-                            <label for="fechaHasta" class="form-label">Creado hasta</label>
-                            <input id="fechaHasta" name="fechaHasta" type="date" class="form-control" value="@(fechaHasta?.ToString("yyyy-MM-dd"))" />
-                        </div>
-
-                        <div class="report-filter-field">
-                            <label for="frecuenciaFiltro" class="form-label">Actualización</label>
-                            <select id="frecuenciaFiltro" name="frecuenciaActualizacion" class="form-select">
-                                <option value="">Todas</option>
-                                <option value="Manual" selected="@(frecuenciaActualizacionFiltro == "Manual")">Manual</option>
-                                <option value="Diario" selected="@(frecuenciaActualizacionFiltro == "Diario")">Diario</option>
-                                <option value="Semanal" selected="@(frecuenciaActualizacionFiltro == "Semanal")">Semanal</option>
-                                <option value="Mensual" selected="@(frecuenciaActualizacionFiltro == "Mensual")">Mensual</option>
-                            </select>
-                        </div>
-
-                        <div class="report-filter-field">
-                            <label for="periodoFiltro" class="form-label">Período incluido</label>
-                            <select id="periodoFiltro" name="periodoTiempo" class="form-select">
-                                <option value="">Todos</option>
-                                <option value="Diario" selected="@(periodoTiempoFiltro == "Diario")">Diario</option>
-                                <option value="Semanal" selected="@(periodoTiempoFiltro == "Semanal")">Semanal</option>
-                                <option value="Mensual" selected="@(periodoTiempoFiltro == "Mensual")">Mensual</option>
-                                <option value="Trimestral" selected="@(periodoTiempoFiltro == "Trimestral")">Trimestral</option>
-                                <option value="Anual" selected="@(periodoTiempoFiltro == "Anual")">Anual</option>
-                            </select>
-                        </div>
-
-                        <div class="report-filter-actions">
-                            <button type="submit" class="btn btn-primary">Filtrar</button>
-                            <a asp-controller="Home" asp-action="Reportes" class="btn btn-outline-secondary">Limpiar</a>
-                        </div>
-                    </div>
-                </form>
-
-                @if (reportesGuardados.Any())
-                {
-                    <div class="table-responsive">
-                        <table class="table table-striped align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Nombre</th>
-                                    <th>Tipo</th>
-                                    <th>Período incluido</th>
-                                    <th>Formato</th>
-                                    <th>Actualización</th>
-                                    <th>Fecha de creación</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var reporte in reportesGuardados)
-                                {
-                                    <tr>
-                                        <td>@reporte.Nombre</td>
-                                        <td>@reporte.TipoReporte</td>
-                                        <td>@reporte.PeriodoTiempo</td>
-                                        <td>@reporte.FormatoReporte</td>
-                                        <td>@reporte.FrecuenciaActualizacion</td>
-                                        <td>@reporte.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else if (totalReportes > 0)
-                {
-                    <div class="text-muted">No se encontraron reportes con los filtros seleccionados.</div>
-                }
-                else
-                {
-                    <div class="text-muted">Todavía no hay reportes guardados.</div>
-                }
-            </div>
-        </div>
-    </div>
+    }
 </div>
 
 @section Scripts {
@@ -259,12 +202,63 @@
     <script>
         const tipoReporte = document.querySelector('[name="TipoReporte"]');
         const selectorProductos = document.getElementById('selectorProductosReporte');
+        const productosIds = document.querySelectorAll('.reporte-producto-check');
+        const buscarProducto = document.getElementById('buscarProductoReporte');
+        const categoriaProducto = document.getElementById('categoriaProductoReporte');
+        const cantidadSeleccionados = document.getElementById('cantidadProductosSeleccionados');
+        const formCrearReporte = document.getElementById('formCrearReporte');
 
         function actualizarSelectorProductos() {
             selectorProductos.style.display = tipoReporte?.value === 'Productos' ? '' : 'none';
         }
 
+        function actualizarCantidadProductos() {
+            const seleccionados = Array.from(productosIds).filter(check => check.checked).length;
+            if (cantidadSeleccionados) {
+                cantidadSeleccionados.textContent = `${seleccionados} seleccionado${seleccionados === 1 ? '' : 's'}`;
+            }
+
+            productosIds.forEach(check => {
+                const tarjeta = check.closest('.reporte-producto-card');
+                tarjeta?.classList.toggle('seleccionada', check.checked);
+            });
+        }
+
+        function filtrarTarjetasProductos() {
+            const texto = (buscarProducto?.value || '').trim().toLowerCase();
+            const categoria = categoriaProducto?.value || '';
+
+            document.querySelectorAll('.reporte-producto-card').forEach(tarjeta => {
+                const coincideTexto = !texto
+                    || (tarjeta.dataset.nombre || '').toLowerCase().includes(texto)
+                    || (tarjeta.dataset.sku || '').toLowerCase().includes(texto);
+                const coincideCategoria = !categoria
+                    || (tarjeta.dataset.categoria || '') === categoria;
+                tarjeta.style.display = coincideTexto && coincideCategoria ? '' : 'none';
+            });
+        }
+
         tipoReporte?.addEventListener('change', actualizarSelectorProductos);
+        productosIds.forEach(check => check.addEventListener('change', actualizarCantidadProductos));
+        buscarProducto?.addEventListener('input', filtrarTarjetasProductos);
+        categoriaProducto?.addEventListener('change', filtrarTarjetasProductos);
+        formCrearReporte?.addEventListener('submit', function (evento) {
+            const cantidadSeleccionada = Array.from(productosIds).filter(check => check.checked).length;
+            if (tipoReporte?.value === 'Productos' && cantidadSeleccionada === 0) {
+                evento.preventDefault();
+                alert('Seleccioná al menos un producto para generar el reporte.');
+                productosIds[0]?.focus();
+            }
+        });
         actualizarSelectorProductos();
+        actualizarCantidadProductos();
+
+        const reporteGuardado = @Html.Raw(Json.Serialize(!string.IsNullOrWhiteSpace(exito)));
+        const modalVistaPrevia = document.getElementById('vistaPreviaReporteModal');
+
+        if (reporteGuardado && modalVistaPrevia && window.bootstrap) {
+            const modal = new bootstrap.Modal(modalVistaPrevia);
+            modal.show();
+        }
     </script>
 }
