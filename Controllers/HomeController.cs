@@ -1,7 +1,13 @@
 using System.Diagnostics;
 using System.Text;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using Quantitary.Models;
 
 namespace Quantitary.Controllers;
@@ -603,24 +609,224 @@ public class HomeController : Controller
             return RedirectToAction(nameof(Reportes));
         }
 
-        string contenido = GenerarContenidoReporte(reporte);
-        string extension = reporte.FormatoReporte switch
-        {
-            "Excel" => ".xlsx",
-            "CSV" => ".csv",
-            "HTML" => ".html",
-            _ => ".pdf"
-        };
+        string nombreArchivo = SanearNombre(reporte.Nombre);
 
-        string mime = reporte.FormatoReporte switch
+        if (reporte.FormatoReporte == "Excel")
         {
-            "Excel" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "CSV" => "text/csv",
-            "HTML" => "text/html",
-            _ => "application/pdf"
-        };
+            byte[] excel = GenerarExcelReporte(reporte);
+            return File(excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombreArchivo + ".xlsx");
+        }
 
-        return File(Encoding.UTF8.GetBytes(contenido), mime, $"{SanearNombre(reporte.Nombre)}{extension}");
+        if (reporte.FormatoReporte == "CSV")
+        {
+            byte[] csv = GenerarCsvReporte(reporte);
+            return File(csv, "text/csv; charset=utf-8", nombreArchivo + ".csv");
+        }
+
+        if (reporte.FormatoReporte == "HTML")
+        {
+            byte[] html = Encoding.UTF8.GetBytes(reporte.VistaPreviaHtml);
+            return File(html, "text/html; charset=utf-8", nombreArchivo + ".html");
+        }
+
+        byte[] pdf = GenerarPdfReporte(reporte);
+        return File(pdf, "application/pdf", nombreArchivo + ".pdf");
+    }
+
+    private static byte[] GenerarExcelReporte(ReporteGuardado reporte)
+    {
+        using var archivo = new MemoryStream();
+        using (SpreadsheetDocument documento = SpreadsheetDocument.Create(archivo, SpreadsheetDocumentType.Workbook, true))
+        {
+            WorkbookPart workbookPart = documento.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook();
+
+            WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+            Worksheet worksheet = new Worksheet();
+            SheetData sheetData = new SheetData();
+
+            AgregarFilaExcel(sheetData, "Reporte", reporte.Nombre);
+            AgregarFilaExcel(sheetData, "Tipo", reporte.TipoReporte);
+            AgregarFilaExcel(sheetData, "Periodo", reporte.PeriodoTiempo);
+            AgregarFilaExcel(sheetData, "Formato", reporte.FormatoReporte);
+            AgregarFilaExcel(sheetData, "Actualización", reporte.FrecuenciaActualizacion);
+            AgregarFilaExcel(sheetData, "", "");
+
+            if (reporte.TipoReporte == "Stock" || reporte.TipoReporte == "Productos")
+            {
+                AgregarFilaExcel(sheetData, "Productos totales", reporte.TotalProductos.ToString());
+                AgregarFilaExcel(sheetData, "Productos con poco stock", reporte.ProductosPocoStock.ToString());
+                AgregarFilaExcel(sheetData, "Productos sin stock", reporte.ProductosSinStock.ToString());
+                AgregarFilaExcel(sheetData, "Stock sobrante", reporte.StockSobra.ToString());
+            }
+            else
+            {
+                AgregarFilaExcel(sheetData, "Total ventas", reporte.TotalVentas.ToString("N2"));
+                AgregarFilaExcel(sheetData, "Ganancia", reporte.Ganancia.ToString("N2"));
+                AgregarFilaExcel(sheetData, "Gastos", reporte.Gastos.ToString("N2"));
+                AgregarFilaExcel(sheetData, "Venta promedio", reporte.VentaPromedio.ToString("N2"));
+                AgregarFilaExcel(sheetData, "Margen neto", reporte.MargenNeto.ToString("N2") + "%");
+            }
+
+            AgregarFilaExcel(sheetData, "", "");
+            AgregarFilaExcel(sheetData, "Hallazgos", reporte.Hallazgos);
+            AgregarFilaExcel(sheetData, "Recomendaciones", reporte.Recomendaciones);
+
+            worksheet.Append(sheetData);
+            worksheetPart.Worksheet = worksheet;
+
+            Sheets sheets = documento.WorkbookPart!.Workbook.AppendChild(new Sheets());
+            sheets.Append(new Sheet
+            {
+                Id = documento.WorkbookPart.GetIdOfPart(worksheetPart),
+                SheetId = 1,
+                Name = "Reporte"
+            });
+
+            workbookPart.Workbook.Save();
+        }
+
+        return archivo.ToArray();
+    }
+
+    private static void AgregarFilaExcel(SheetData sheetData, string concepto, string valor)
+    {
+        Row fila = new Row();
+        fila.Append(new Cell
+        {
+            DataType = CellValues.InlineString,
+            InlineString = new InlineString { Text = new Text(concepto ?? string.Empty) }
+        });
+        fila.Append(new Cell
+        {
+            DataType = CellValues.InlineString,
+            InlineString = new InlineString { Text = new Text(valor ?? string.Empty) }
+        });
+        sheetData.Append(fila);
+    }
+
+    private static byte[] GenerarCsvReporte(ReporteGuardado reporte)
+    {
+        List<string[]> filas = new List<string[]>();
+
+        if (reporte.TipoReporte == "Stock" || reporte.TipoReporte == "Productos")
+        {
+            filas.Add(new[] { "Nombre", "Tipo", "Periodo", "Formato", "Actualizacion", "ProductosTotales", "ProductosPocoStock", "ProductosSinStock", "StockSobra" });
+            filas.Add(new[]
+            {
+                reporte.Nombre, reporte.TipoReporte, reporte.PeriodoTiempo, reporte.FormatoReporte,
+                reporte.FrecuenciaActualizacion, reporte.TotalProductos.ToString(), reporte.ProductosPocoStock.ToString(),
+                reporte.ProductosSinStock.ToString(), reporte.StockSobra.ToString()
+            });
+        }
+        else
+        {
+            filas.Add(new[] { "Nombre", "Tipo", "Periodo", "Formato", "Actualizacion", "TotalVentas", "Ganancia", "Gastos", "VentaPromedio", "MargenNeto" });
+            filas.Add(new[]
+            {
+                reporte.Nombre, reporte.TipoReporte, reporte.PeriodoTiempo, reporte.FormatoReporte,
+                reporte.FrecuenciaActualizacion, reporte.TotalVentas.ToString("0.00"), reporte.Ganancia.ToString("0.00"),
+                reporte.Gastos.ToString("0.00"), reporte.VentaPromedio.ToString("0.00"), reporte.MargenNeto.ToString("0.00")
+            });
+        }
+
+        StringBuilder contenido = new StringBuilder();
+        foreach (string[] fila in filas)
+        {
+            List<string> campos = new List<string>();
+            foreach (string campo in fila)
+            {
+                campos.Add("\"" + (campo ?? string.Empty).Replace("\"", "\"\"") + "\"");
+            }
+            contenido.AppendLine(string.Join(",", campos));
+        }
+
+        byte[] bom = Encoding.UTF8.GetPreamble();
+        byte[] texto = Encoding.UTF8.GetBytes(contenido.ToString());
+        byte[] resultado = new byte[bom.Length + texto.Length];
+        Buffer.BlockCopy(bom, 0, resultado, 0, bom.Length);
+        Buffer.BlockCopy(texto, 0, resultado, bom.Length, texto.Length);
+        return resultado;
+    }
+
+    private static byte[] GenerarPdfReporte(ReporteGuardado reporte)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        Document document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(40);
+                page.DefaultTextStyle(style => style.FontSize(10));
+
+                page.Header().Text(reporte.Nombre).FontSize(20).SemiBold().FontColor("#1769E8");
+
+                page.Content().Column(columna =>
+                {
+                    columna.Spacing(8);
+                    columna.Item().Text(texto =>
+                    {
+                        texto.Span("Tipo: ").SemiBold();
+                        texto.Span(reporte.TipoReporte);
+                    });
+                    columna.Item().Text(texto =>
+                    {
+                        texto.Span("Periodo: ").SemiBold();
+                        texto.Span(reporte.PeriodoTiempo);
+                    });
+                    columna.Item().Text(texto =>
+                    {
+                        texto.Span("Formato: ").SemiBold();
+                        texto.Span(reporte.FormatoReporte);
+                    });
+                    columna.Item().Text(texto =>
+                    {
+                        texto.Span("Actualización: ").SemiBold();
+                        texto.Span(reporte.FrecuenciaActualizacion);
+                    });
+
+                    columna.Item().PaddingTop(12).Text("Resumen").FontSize(14).SemiBold();
+
+                    if (reporte.TipoReporte == "Stock" || reporte.TipoReporte == "Productos")
+                    {
+                        columna.Item().Text("Productos totales: " + reporte.TotalProductos);
+                        columna.Item().Text("Productos con poco stock: " + reporte.ProductosPocoStock);
+                        columna.Item().Text("Productos sin stock: " + reporte.ProductosSinStock);
+                        columna.Item().Text("Stock sobrante: " + reporte.StockSobra);
+                    }
+                    else
+                    {
+                        columna.Item().Text("Total ventas: $" + reporte.TotalVentas.ToString("N2"));
+                        columna.Item().Text("Ganancia: $" + reporte.Ganancia.ToString("N2"));
+                        columna.Item().Text("Gastos: $" + reporte.Gastos.ToString("N2"));
+                        columna.Item().Text("Venta promedio: $" + reporte.VentaPromedio.ToString("N2"));
+                        columna.Item().Text("Margen neto: " + reporte.MargenNeto.ToString("N2") + "%");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(reporte.Hallazgos))
+                    {
+                        columna.Item().PaddingTop(10).Text("Hallazgos").FontSize(14).SemiBold();
+                        columna.Item().Text(reporte.Hallazgos);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(reporte.Recomendaciones))
+                    {
+                        columna.Item().PaddingTop(10).Text("Recomendaciones").FontSize(14).SemiBold();
+                        columna.Item().Text(reporte.Recomendaciones);
+                    }
+                });
+
+                page.Footer().AlignCenter().Text(texto =>
+                {
+                    texto.Span("Quantitary - Página ");
+                    texto.CurrentPageNumber();
+                });
+            });
+        });
+
+        return document.GeneratePdf();
     }
 
     private List<ReporteGuardado> ObtenerReportesGuardados()

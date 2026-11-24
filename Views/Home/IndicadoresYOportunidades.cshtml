@@ -11,13 +11,13 @@
         && !string.Equals(proximoPaso, "Sin datos", StringComparison.OrdinalIgnoreCase);
 }
 
-<div class="panel indicadores-shell">
+<div class="panel indicadores-shell quantitary-page">
     @if (!string.IsNullOrWhiteSpace(resumenProgramado))
     {
         <div class="alert alert-info alert-compact mt-2 mb-3">@resumenProgramado</div>
     }
 
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 quantitary-page-header">
         <div>
             <p class="eyebrow">Indicadores</p>
             <h2 class="mb-1">Indicadores y oportunidades</h2>

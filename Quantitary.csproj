@@ -15,11 +15,11 @@
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
     <PackageReference Include="ExcelDataReader.DataSet" Version="3.7.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="QuestPDF" Version="2026.9.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="DatosDemo\Productos_Demo_Expo.xlsx"
-                      LogicalName="Quantitary.DatosDemo.Productos_Demo_Expo.xlsx" />
+    <EmbeddedResource Include="DatosDemo\Productos_Demo_Expo.xlsx" LogicalName="Quantitary.DatosDemo.Productos_Demo_Expo.xlsx" />
   </ItemGroup>
 
   <ItemGroup>
