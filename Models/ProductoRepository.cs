@@ -1,111 +1,4 @@
-using Dapper;
-using Microsoft.Data.SqlClient;
-
 namespace Quantitary.Models;
-
-public class VentaRegistro
-{
-    public int Id { get; set; }
-    public int ProductoId { get; set; }
-    public string NombreProducto { get; set; } = string.Empty;
-    public string Sku { get; set; } = string.Empty;
-    public string Categoria { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; } = DateTime.Now;
-    public string MetodoPago { get; set; } = string.Empty;
-    public int Cantidad { get; set; } = 1;
-    public decimal Precio { get; set; }
-    public decimal Costo { get; set; }
-}
-
-public class ProductoRanking
-{
-    public string Nombre { get; set; } = string.Empty;
-    public int Cantidad { get; set; }
-    public decimal Total { get; set; }
-}
-
-public class ChartPoint
-{
-    public string Label { get; set; } = string.Empty;
-    public decimal Valor { get; set; }
-}
-
-public class DashboardCategoryShare
-{
-    public string Nombre { get; set; } = string.Empty;
-    public decimal Valor { get; set; }
-}
-
-public class DashboardSummary
-{
-    public int TotalProductos { get; set; }
-    public int ProductosPocoStock { get; set; }
-    public int ProductosSinStock { get; set; }
-    public decimal GananciasPorMesNetas { get; set; }
-    public decimal GananciaPromedioPorProducto { get; set; }
-    public int VentasTotales { get; set; }
-    public string MesMayorVentas { get; set; } = string.Empty;
-    public decimal VentaPromedioPorMes { get; set; }
-    public List<ProductoRanking> PodioProductosMasVendidos { get; set; } = new();
-    public List<ProductoRanking> PodioProductosMasGanancia { get; set; } = new();
-    public List<VentaRegistro> UltimosProductosVendidos { get; set; } = new();
-    public List<string> BasesDeDatos { get; set; } = new();
-    public decimal TotalVentasMes { get; set; }
-    public decimal GananciaNetaMes { get; set; }
-    public decimal GastosTotalesMes { get; set; }
-    public decimal VentaPromedioMes { get; set; }
-    public string MesActualLabel { get; set; } = string.Empty;
-    public List<ChartPoint> VentasPorPeriodo { get; set; } = new();
-    public List<ChartPoint> GananciaPorCategoria { get; set; } = new();
-    public List<DashboardCategoryShare> ParticipacionVentas { get; set; } = new();
-}
-
-public class ProductoIndicadorRow
-{
-    public int Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string Categoria { get; set; } = string.Empty;
-    public int StockActual { get; set; }
-    public int StockMinimo { get; set; }
-    public int StockMinimoRecomendado { get; set; }
-    public string MinimoReposicionTexto { get; set; } = "Mantener";
-    public decimal Precio { get; set; }
-    public decimal CostoCompra { get; set; }
-    public int CantidadVendida { get; set; }
-    public decimal VentasTotales { get; set; }
-    public decimal GananciaTotal { get; set; }
-    public decimal Rotacion { get; set; }
-    public decimal Margen { get; set; }
-    public string AccionSugerida { get; set; } = "Mantener";
-    public string RecomendacionAbastecimiento { get; set; } = "Sin acción";
-    public string FechaCompraSugerida { get; set; } = "Próximos 5 días";
-    public string CompraPlazoTexto { get; set; } = "Dentro de 7 días";
-    public string FechaVentaSugerida { get; set; } = "Próximos 7 días";
-    public string AjustePrecio { get; set; } = "Sin cambio";
-    public string DiaMasVendido { get; set; } = "Sin datos";
-    public string DiaMenosVendido { get; set; } = "Sin datos";
-    public string FestividadesSugeridas { get; set; } = "Sin datos";
-    public string RecomendacionTexto { get; set; } = string.Empty;
-    public string SiguientePaso { get; set; } = string.Empty;
-}
-
-public class IndicadoresYOportunidadesViewModel
-{
-    public decimal MargenNetoGeneral { get; set; }
-    public string ProductoMayorRotacion { get; set; } = "Sin datos";
-    public string RelacionInteresCompra { get; set; } = "Sin datos";
-    public string CategoriaMasVentas { get; set; } = "Sin datos";
-    public int TotalProductos { get; set; }
-    public string ResumenEstado { get; set; } = "Sin alertas";
-    public string MensajePersonalizadoProximoPaso { get; set; } = string.Empty;
-    public List<string> ProductosReponer { get; set; } = new();
-    public List<string> ProductosComprarMenos { get; set; } = new();
-    public List<string> ProductosComprarMas { get; set; } = new();
-    public List<string> ProductosCambiarMinimo { get; set; } = new();
-    public List<string> RecomendacionesTexto { get; set; } = new();
-    public List<string> ExplicacionesIndicadores { get; set; } = new();
-    public List<ProductoIndicadorRow> Productos { get; set; } = new();
-}
 
 public class ProductoRepository
 {
@@ -157,46 +50,9 @@ public class ProductoRepository
 
     public IndicadoresYOportunidadesViewModel ObtenerIndicadoresYOportunidades(int? empresaId = null)
     {
-        using var connection = BD.CrearConexion(_configuration);
-
-        var productos = connection.Query<ProductoIndicadorBase>(@"
-            SELECT p.id AS Id,
-                   p.nombre AS Nombre,
-                   c.nombre AS Categoria,
-                   p.precioVenta AS Precio,
-                   ISNULL(s.cantidad, 0) AS StockActual,
-                   ISNULL(s.cantidadMinimoAlerta, 0) AS StockMinimo,
-                   p.costoCompra AS CostoCompra,
-                   p.empresaID AS EmpresaId
-            FROM Productos p
-            LEFT JOIN Stock s ON s.productoID = p.id AND s.activo = 1
-            LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            ORDER BY p.nombre",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
-
-        var ventasPorProducto = connection.Query<ProductoVentaAggregate>(@"
-            SELECT d.productoID AS ProductoId,
-                   SUM(d.cantidad) AS CantidadVendida,
-                   SUM(d.precioVenta) AS VentasTotales,
-                   SUM(d.costoCompra) AS CostoTotal
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY d.productoID",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
-
-        var ventasPorCategoria = connection.Query<ProductoCategoriaAggregate>(@"
-            SELECT c.nombre AS Categoria,
-                   SUM(d.precioVenta) AS VentasTotales
-            FROM DetalleVenta d
-            INNER JOIN Ventas v ON v.id = d.ventaID
-            INNER JOIN Productos p ON p.id = d.productoID
-            LEFT JOIN Categoria c ON c.id = p.categoriaID
-            WHERE (@EmpresaId IS NULL OR p.empresaID = @EmpresaId)
-            GROUP BY c.nombre",
-            new { EmpresaId = empresaId == 0 ? null : empresaId }).ToList();
+        List<ProductoIndicadorBase> productos = BD.ObtenerProductosIndicadoresBase(_configuration, empresaId);
+        List<ProductoVentaAggregate> ventasPorProducto = BD.ObtenerVentasPorProductoAggregate(_configuration, empresaId);
+        List<ProductoCategoriaAggregate> ventasPorCategoria = BD.ObtenerVentasPorCategoriaAggregate(_configuration, empresaId);
 
         var ventasDict = ventasPorProducto
             .GroupBy(x => x.ProductoId)
@@ -339,29 +195,4 @@ public class ProductoRepository
         };
     }
 
-    private sealed class ProductoIndicadorBase
-    {
-        public int Id { get; set; }
-        public string Nombre { get; set; } = string.Empty;
-        public string Categoria { get; set; } = string.Empty;
-        public decimal Precio { get; set; }
-        public int StockActual { get; set; }
-        public int StockMinimo { get; set; }
-        public decimal CostoCompra { get; set; }
-        public int EmpresaId { get; set; }
-    }
-
-    private sealed class ProductoVentaAggregate
-    {
-        public int ProductoId { get; set; }
-        public int CantidadVendida { get; set; }
-        public decimal VentasTotales { get; set; }
-        public decimal CostoTotal { get; set; }
-    }
-
-    private sealed class ProductoCategoriaAggregate
-    {
-        public string Categoria { get; set; } = string.Empty;
-        public decimal VentasTotales { get; set; }
-    }
 }
