@@ -1107,8 +1107,58 @@ OPTION (RECOMPILE);";
             new { ReporteId = reporteId, UsuarioId = usuarioId, EmpresaId = empresaId });
     }
 
+    private static void GarantizarBaseDatos(IConfiguration configuration)
+    {
+        var builder = new SqlConnectionStringBuilder(ObtenerCadenaConexion(configuration));
+        string nombreBase = builder.InitialCatalog;
+
+        if (string.IsNullOrWhiteSpace(nombreBase))
+        {
+            return;
+        }
+
+        builder.InitialCatalog = "master";
+        using var connection = new SqlConnection(builder.ConnectionString);
+        connection.Open();
+
+        bool baseExiste = connection.ExecuteScalar<int>(
+            "SELECT CASE WHEN DB_ID(@NombreBase) IS NULL THEN 0 ELSE 1 END;",
+            new { NombreBase = nombreBase }) == 1;
+
+        if (baseExiste)
+        {
+            return;
+        }
+
+        string rutaScript = Path.Combine(AppContext.BaseDirectory, "script.sql");
+        if (!File.Exists(rutaScript))
+        {
+            rutaScript = Path.Combine(Directory.GetCurrentDirectory(), "script.sql");
+        }
+
+        if (!File.Exists(rutaScript))
+        {
+            throw new FileNotFoundException("No se encontro script.sql para crear la base de datos.", rutaScript);
+        }
+
+        string script = File.ReadAllText(rutaScript);
+        string[] bloques = System.Text.RegularExpressions.Regex.Split(
+            script,
+            @"^\s*GO\s*(?:--.*)?$",
+            System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        foreach (string bloque in bloques)
+        {
+            if (!string.IsNullOrWhiteSpace(bloque))
+            {
+                connection.Execute(bloque, commandTimeout: 120);
+            }
+        }
+    }
+
     public static void GarantizarEsquemaActual(IConfiguration configuration)
     {
+        GarantizarBaseDatos(configuration);
         using SqlConnection connection = (SqlConnection)CrearConexion(configuration);
         connection.Open();
 
@@ -1657,11 +1707,11 @@ END;");
             Nombre = nombre,
             Sku = sku,
             Categoria = string.IsNullOrWhiteSpace(categoria) ? "Sin categoría" : categoria,
-            Descripcion = descripcion,
+            Descripcion = descripcion ?? string.Empty,
             PrecioVenta = precio,
             StockActual = stock,
             StockMinimo = stockMinimo,
-            Proveedor = proveedor,
+            Proveedor = proveedor ?? string.Empty,
             CostoCompra = costo,
             Activo = true,
             FechaCarga = DateTime.Now

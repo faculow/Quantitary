@@ -29,15 +29,4 @@
     </Content>
   </ItemGroup>
 
-  <Target Name="ReleaseLockedQuantitaryBinary" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
-    <Exec Command="taskkill /F /IM Quantitary.exe /T" IgnoreExitCode="true" ContinueOnError="true" />
-    <Delete Files="$(OutputPath)Quantitary.exe;$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\apphost.exe" ContinueOnError="true" />
-  </Target>
-
-  <Target Name="ForceDisableAppHost" BeforeTargets="_GetAppHostCreationConfiguration">
-    <PropertyGroup>
-      <UseAppHost>false</UseAppHost>
-    </PropertyGroup>
-  </Target>
-
 </Project>

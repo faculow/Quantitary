@@ -435,8 +435,9 @@ public class HomeController : Controller
 
         int empresaIdVista = ObtenerEmpresaIdActual();
         ViewBag.ProductosDisponibles = _inventoryRepository.ObtenerProductos(null, null, empresaIdVista);
+        List<int> productosIds = modelo.ProductosIds ?? new List<int>();
 
-        if (modelo.TipoReporte == "Productos" && (modelo.ProductosIds == null || modelo.ProductosIds.Count == 0))
+        if (modelo.TipoReporte == "Productos" && productosIds.Count == 0)
         {
             ModelState.AddModelError(nameof(modelo.ProductosIds), "Seleccioná al menos un producto para generar el reporte.");
         }
@@ -460,7 +461,7 @@ public class HomeController : Controller
         if (modelo.TipoReporte == "Productos")
         {
             productosReporte = productosReporte
-                .Where(producto => modelo.ProductosIds.Contains(producto.Id))
+                .Where(producto => productosIds.Contains(producto.Id))
                 .ToList();
 
             using var connection = CrearConexion();
@@ -550,7 +551,7 @@ public class HomeController : Controller
             StockSobra = stockSobra,
             Hallazgos = hallazgos,
             Recomendaciones = recomendaciones,
-            ProductosIds = modelo.ProductosIds.ToList(),
+            ProductosIds = productosIds.ToList(),
             VistaPreviaHtml = GenerarVistaPrevia(modelo, dashboard, productosDetallados)
         };
 
