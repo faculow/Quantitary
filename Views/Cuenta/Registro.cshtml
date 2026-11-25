@@ -1,42 +1,75 @@
 @model Quantitary.Models.Usuario
 @{
-    ViewData["Title"] = "Registro";
+    Layout = null;
+    ViewData["Title"] = "Crear cuenta";
 }
 
-<div class="auth-page">
-    <div class="auth-card">
-        <h2>Crear cuenta</h2>
-        @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
-        {
-            <div class="alert alert-danger">@ViewBag.Error</div>
-        }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Quantitary</title>
+    <link rel="icon" type="image/png" href="~/images/quantitary-logo-app.png" />
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+</head>
+<body class="auth-page">
+    <main class="auth-layout auth-layout-register" aria-labelledby="auth-title">
+        <section class="auth-brand-panel">
+            <a asp-controller="Home" asp-action="Index" class="auth-brand">
+                <img src="~/images/quantitary-logo-app.png" alt="Quantitary" />
+                <span>Quantitary</span>
+            </a>
+            <div class="auth-brand-copy">
+                <span class="auth-kicker">Empezá ahora</span>
+                <h1>Todo tu comercio en un solo sistema.</h1>
+                <p>Registrá tu empresa y mantené stock, ventas y ganancias conectados.</p>
+            </div>
+        </section>
 
-        <form method="post" asp-action="Registro" asp-controller="Cuenta">
-            <div class="mb-3">
-                <label class="form-label">Nombre de usuario</label>
-                <input asp-for="NombreUsuario" class="form-control" required />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Correo</label>
-                <input asp-for="Mail" type="email" class="form-control" required />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Contraseña</label>
-                <input asp-for="Contrasena" type="password" class="form-control" required />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Nombre de la empresa</label>
-                <input asp-for="NombreEmpresa" class="form-control" placeholder="Ej: La Esquina del Café" required />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Teléfono</label>
-                <input asp-for="NumeroTelefono" class="form-control" />
-            </div>
-            <button type="submit" class="btn btn-success w-100">Registrarme</button>
-        </form>
+        <section class="auth-form-panel">
+            <div class="auth-card">
+                <div class="auth-card-heading">
+                    <span class="auth-kicker">Nueva cuenta</span>
+                    <h2 id="auth-title">Crear cuenta</h2>
+                    <p>Completá los datos para configurar tu acceso.</p>
+                </div>
 
-        <div class="mt-3 text-center">
-            <a asp-action="Login" asp-controller="Cuenta">Ya tengo cuenta</a>
-        </div>
-    </div>
-</div>
+                @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
+                {
+                    <div class="alert alert-danger" role="alert">@ViewBag.Error</div>
+                }
+
+                <form method="post" asp-action="Registro" asp-controller="Cuenta">
+                    <div class="auth-form-grid">
+                        <div class="auth-field">
+                            <label class="form-label" asp-for="NombreUsuario">Nombre de usuario</label>
+                            <input asp-for="NombreUsuario" class="form-control" autocomplete="username" placeholder="Tu nombre" required />
+                        </div>
+                        <div class="auth-field">
+                            <label class="form-label" asp-for="Mail">Correo</label>
+                            <input asp-for="Mail" type="email" class="form-control" autocomplete="email" placeholder="nombre@empresa.com" required />
+                        </div>
+                        <div class="auth-field">
+                            <label class="form-label" asp-for="Contrasena">Contraseña</label>
+                            <input asp-for="Contrasena" type="password" class="form-control" autocomplete="new-password" placeholder="Mínimo recomendado: 8 caracteres" required />
+                        </div>
+                        <div class="auth-field">
+                            <label class="form-label" asp-for="NombreEmpresa">Nombre de la empresa</label>
+                            <input asp-for="NombreEmpresa" class="form-control" autocomplete="organization" placeholder="Ej: La Esquina del Café" required />
+                        </div>
+                        <div class="auth-field auth-field-full">
+                            <label class="form-label" asp-for="NumeroTelefono">Teléfono <span>(opcional)</span></label>
+                            <input asp-for="NumeroTelefono" class="form-control" autocomplete="tel" placeholder="Ej: 11 1234-5678" />
+                        </div>
+                    </div>
+                    <button type="submit" class="auth-submit auth-submit-success">Registrarme</button>
+                </form>
+
+                <p class="auth-switch">¿Ya tenés una cuenta? <a asp-action="Login" asp-controller="Cuenta">Iniciar sesión</a></p>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
