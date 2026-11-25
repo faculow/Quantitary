@@ -1,60 +1,33 @@
 @{
-    Layout = null;
     ViewData["Title"] = "Iniciar sesión";
 }
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Quantitary</title>
-    <link rel="icon" type="image/png" href="~/images/quantitary-logo-app.png" />
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
-</head>
-<body class="auth-page">
-    <main class="auth-layout" aria-labelledby="auth-title">
-        <section class="auth-brand-panel">
-            <a asp-controller="Home" asp-action="Index" class="auth-brand">
-                <img src="~/images/quantitary-logo-app.png" alt="Quantitary" />
-                <span>Quantitary</span>
-            </a>
-            <div class="auth-brand-copy">
-                <span class="auth-kicker">Tu negocio, organizado</span>
-                <h1>Control simple para decisiones mejores.</h1>
-                <p>Consultá ventas, stock y resultados desde un solo lugar.</p>
+<div class="auth-page">
+    <div class="auth-card">
+        <img src="~/images/quantitary-logo-app.png" alt="Quantitary" class="auth-card-logo" />
+        <h2>Iniciar sesión</h2>
+        <p class="auth-card-subtitle">Ingresá tus datos para continuar</p>
+
+        @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
+        {
+            <div class="alert alert-danger" role="alert">@ViewBag.Error</div>
+        }
+
+        <form method="post" asp-action="Login" asp-controller="Cuenta">
+            <div class="mb-3">
+                <label class="form-label" for="mail">Correo electrónico</label>
+                <input id="mail" type="email" name="mail" class="form-control" autocomplete="email" placeholder="usuario@ejemplo.com" required />
             </div>
-        </section>
-
-        <section class="auth-form-panel">
-            <div class="auth-card">
-                <div class="auth-card-heading">
-                    <span class="auth-kicker">Bienvenido</span>
-                    <h2 id="auth-title">Iniciar sesión</h2>
-                    <p>Ingresá con tus datos para continuar.</p>
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
-                {
-                    <div class="alert alert-danger" role="alert">@ViewBag.Error</div>
-                }
-
-                <form method="post" asp-action="Login" asp-controller="Cuenta">
-                    <div class="auth-field">
-                        <label class="form-label" for="mail">Correo</label>
-                        <input id="mail" type="email" name="mail" class="form-control" autocomplete="email" placeholder="nombre@empresa.com" required />
-                    </div>
-                    <div class="auth-field">
-                        <label class="form-label" for="contrasena">Contraseña</label>
-                        <input id="contrasena" type="password" name="contrasena" class="form-control" autocomplete="current-password" placeholder="Ingresá tu contraseña" required />
-                    </div>
-                    <button type="submit" class="auth-submit">Ingresar</button>
-                </form>
-
-                <p class="auth-switch">¿Todavía no tenés cuenta? <a asp-action="Registro" asp-controller="Cuenta">Crear cuenta</a></p>
+            <div class="mb-3">
+                <label class="form-label" for="contrasena">Contraseña</label>
+                <input id="contrasena" type="password" name="contrasena" class="form-control" autocomplete="current-password" placeholder="••••••••" required />
             </div>
-        </section>
-    </main>
-</body>
-</html>
+            <button type="submit" class="btn btn-primary w-100 auth-login-button">Iniciar sesión</button>
+        </form>
+
+        <p class="auth-switch">
+            ¿Olvidaste tu contraseña?
+            <a asp-action="Registro" asp-controller="Cuenta">Crear cuenta</a>
+        </p>
+    </div>
+</div>
