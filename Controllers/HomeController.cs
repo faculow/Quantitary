@@ -345,6 +345,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
+    // recibe los filtros de la pantalla y devuelve el formulario con los reportes encontrados
     public IActionResult Reportes(string? busqueda, string? tipoReporte, DateTime? fechaDesde, DateTime? fechaHasta, string? frecuenciaActualizacion, string? periodoTiempo)
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -425,6 +426,7 @@ public class HomeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // recibe los datos del formulario, arma el resumen y devuelve la pantalla con el reporte guardado
     public async Task<IActionResult> GuardarReporte(ReporteFormularioViewModel modelo)
     {
         var redirect = RedirigirSiNoHaySesion();
@@ -570,6 +572,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
+    // recibe el id del reporte y devuelve una pagina html lista para abrir en otra pestana
     public IActionResult VistaPreviaReporte(int? id)
     {
         IActionResult? redirect = RedirigirSiNoHaySesion();
@@ -588,10 +591,12 @@ public class HomeController : Controller
             return RedirectToAction(nameof(Reportes));
         }
 
-        return Content(reporte.VistaPreviaHtml, "text/html");
+        string documento = GenerarDocumentoVistaPrevia(reporte.VistaPreviaHtml, reporte.Nombre);
+        return Content(documento, "text/html; charset=utf-8");
     }
 
     [HttpGet]
+    // recibe el id y devuelve el archivo en el formato que eligio el usuario
     public IActionResult DescargarReporte(int? id)
     {
         IActionResult? redirect = RedirigirSiNoHaySesion();
@@ -626,7 +631,7 @@ public class HomeController : Controller
 
         if (reporte.FormatoReporte == "HTML")
         {
-            byte[] html = Encoding.UTF8.GetBytes(reporte.VistaPreviaHtml);
+            byte[] html = Encoding.UTF8.GetBytes(GenerarDocumentoVistaPrevia(reporte.VistaPreviaHtml, reporte.Nombre));
             return File(html, "text/html; charset=utf-8", nombreArchivo + ".html");
         }
 
@@ -876,6 +881,7 @@ public class HomeController : Controller
         };
     }
 
+    // recibe el formulario y los calculos del negocio y devuelve el bloque html de la vista previa
     private static string GenerarVistaPrevia(ReporteFormularioViewModel modelo, DashboardSummary dashboard, List<ProductoAnalisisResumen>? productosSeleccionados = null)
     {
         string filas;
@@ -908,14 +914,15 @@ public class HomeController : Controller
                         <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Productos por reponer</td><td style='padding: 8px; border: 1px solid #d1d5db;'>{seleccionados.Count(producto => producto.Stock <= producto.StockMinimo)}</td></tr>";
 
             var detalle = new StringBuilder();
-            detalle.Append("<h4 style='margin-top: 24px;'>Detalle individual de los productos seleccionados</h4>");
+            detalle.Append("<h4 class='reporte-subtitulo'>Detalle individual de los productos seleccionados</h4>");
 
             foreach (var producto in seleccionados)
             {
                 detalle.Append($@"
-                    <div style='border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; margin-top: 12px;'>
-                        <h5 style='margin: 0 0 8px 0;'>{System.Net.WebUtility.HtmlEncode(producto.Nombre)}</h5>
-                        <table style='width:100%; border-collapse: collapse;'>
+                    <section class='reporte-producto-detalle'>
+                        <h5>{System.Net.WebUtility.HtmlEncode(producto.Nombre)}</h5>
+                        <div class='reporte-tabla-scroll'>
+                        <table class='reporte-tabla reporte-tabla-detalle'>
                             <tbody>
                                 <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>SKU</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Sku)}</td></tr>
                                 <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Categoría</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Categoria)}</td></tr>
@@ -930,7 +937,8 @@ public class HomeController : Controller
                                 <tr><td style='padding: 6px; border: 1px solid #e5e7eb;'>Estado de reposición</td><td style='padding: 6px; border: 1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(producto.Reposicion)}</td></tr>
                             </tbody>
                         </table>
-                    </div>");
+                        </div>
+                    </section>");
             }
 
             seccionesDetalle = detalle.ToString();
@@ -944,26 +952,89 @@ public class HomeController : Controller
                         <tr><td style='padding: 8px; border: 1px solid #d1d5db;'>Venta promedio</td><td style='padding: 8px; border: 1px solid #d1d5db;'>${dashboard.VentaPromedioMes.ToString("N2")}</td></tr>";
         }
 
-        return $@"
-            <div style='font-family: Arial, sans-serif; padding: 20px; color: #1f2937;'>
-                <h3>{System.Net.WebUtility.HtmlEncode(modelo.Nombre)}</h3>
-                <p><strong>Tipo:</strong> {System.Net.WebUtility.HtmlEncode(modelo.TipoReporte)}</p>
-                <p><strong>Período:</strong> {System.Net.WebUtility.HtmlEncode(modelo.PeriodoTiempo)}</p>
-                <p><strong>Formato:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FormatoReporte)}</p>
-                <p><strong>Actualización:</strong> {System.Net.WebUtility.HtmlEncode(modelo.FrecuenciaActualizacion)}</p>
-                <hr />
-                <h4>Resumen general</h4>
-                <table style='width:100%; border-collapse: collapse; margin-top: 12px;'>
-                    <thead>
-                        <tr style='background: #f3f4f6;'>
-                            <th style='padding: 8px; border: 1px solid #d1d5db; text-align: left;'>Concepto</th>
-                            <th style='padding: 8px; border: 1px solid #d1d5db; text-align: left;'>Valor</th>
-                        </tr>
-                    </thead>
-                    <tbody>{filas}</tbody>
-                </table>
-                {seccionesDetalle}
-            </div>";
+        const string estilos = @"
+            <style>
+                .reporte-documento, .reporte-documento * { box-sizing: border-box; }
+                .reporte-documento { width: 100%; max-width: 1080px; margin: 0 auto; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; color: #1f2937; font-family: Arial, sans-serif; box-shadow: 0 16px 40px rgba(15, 23, 42, .08); }
+                .reporte-encabezado { padding: 28px 30px; color: #fff; background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); }
+                .reporte-marca { margin: 0 0 8px; color: #bfdbfe; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+                .reporte-encabezado h1 { margin: 0; font-size: clamp(24px, 4vw, 36px); line-height: 1.15; overflow-wrap: anywhere; }
+                .reporte-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 20px 30px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+                .reporte-meta-item { min-width: 0; padding: 12px 14px; border: 1px solid #dbeafe; border-radius: 12px; background: #fff; }
+                .reporte-meta-item span, .reporte-meta-item strong { display: block; }
+                .reporte-meta-item span { margin-bottom: 4px; color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+                .reporte-meta-item strong { color: #0f172a; font-size: 14px; overflow-wrap: anywhere; }
+                .reporte-contenido { padding: 28px 30px 32px; }
+                .reporte-subtitulo { margin: 0 0 14px; color: #0f172a; font-size: 20px; }
+                .reporte-tabla-scroll { width: 100%; overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; }
+                .reporte-tabla { width: 100%; min-width: 480px; margin: 0; border-collapse: collapse; }
+                .reporte-tabla th, .reporte-tabla td { padding: 12px 14px !important; border: 0 !important; border-bottom: 1px solid #e2e8f0 !important; text-align: left; vertical-align: top; }
+                .reporte-tabla th { background: #eff6ff !important; color: #1e3a8a; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+                .reporte-tabla td:first-child { width: 58%; color: #475569; font-weight: 600; }
+                .reporte-tabla tbody tr:last-child td { border-bottom: 0 !important; }
+                .reporte-tabla tbody tr:nth-child(even) td { background: #f8fafc; }
+                .reporte-producto-detalle { margin-top: 16px; padding: 18px; border: 1px solid #dbeafe; border-radius: 14px; background: #f8fafc; }
+                .reporte-producto-detalle h5 { margin: 0 0 12px; color: #0f172a; font-size: 17px; overflow-wrap: anywhere; }
+                .reporte-tabla-detalle { min-width: 560px; background: #fff; }
+                @media (max-width: 700px) {
+                    .reporte-documento { border-radius: 14px; }
+                    .reporte-encabezado, .reporte-contenido { padding: 22px 18px; }
+                    .reporte-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 18px; }
+                    .reporte-tabla th, .reporte-tabla td { padding: 10px 12px !important; }
+                }
+                @media (max-width: 430px) {
+                    .reporte-meta { grid-template-columns: 1fr; }
+                }
+            </style>";
+
+        return estilos + $@"
+            <article class='reporte-documento'>
+                <header class='reporte-encabezado'>
+                    <p class='reporte-marca'>Quantitary · reporte</p>
+                    <h1>{System.Net.WebUtility.HtmlEncode(modelo.Nombre)}</h1>
+                </header>
+                <section class='reporte-meta'>
+                    <div class='reporte-meta-item'><span>Tipo</span><strong>{System.Net.WebUtility.HtmlEncode(modelo.TipoReporte)}</strong></div>
+                    <div class='reporte-meta-item'><span>Período</span><strong>{System.Net.WebUtility.HtmlEncode(modelo.PeriodoTiempo)}</strong></div>
+                    <div class='reporte-meta-item'><span>Formato</span><strong>{System.Net.WebUtility.HtmlEncode(modelo.FormatoReporte)}</strong></div>
+                    <div class='reporte-meta-item'><span>Actualización</span><strong>{System.Net.WebUtility.HtmlEncode(modelo.FrecuenciaActualizacion)}</strong></div>
+                </section>
+                <section class='reporte-contenido'>
+                    <h2 class='reporte-subtitulo'>Resumen general</h2>
+                    <div class='reporte-tabla-scroll'>
+                        <table class='reporte-tabla'>
+                            <thead><tr><th>Concepto</th><th>Valor</th></tr></thead>
+                            <tbody>{filas}</tbody>
+                        </table>
+                    </div>
+                    {seccionesDetalle}
+                </section>
+            </article>";
+    }
+
+    // recibe el bloque guardado y devuelve un documento completo para abrir o descargar
+    private static string GenerarDocumentoVistaPrevia(string vistaPreviaHtml, string titulo)
+    {
+        string tituloSeguro = System.Net.WebUtility.HtmlEncode(titulo);
+
+        return $@"<!doctype html>
+<html lang='es'>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>{tituloSeguro} - Quantitary</title>
+    <style>
+        html {{ background: #f4f7fb; }}
+        body {{ min-width: 0; margin: 0; padding: clamp(14px, 3vw, 36px); background: #f4f7fb; }}
+        .reporte-vista-standalone {{ width: 100%; max-width: 1120px; margin: 0 auto; overflow-x: auto; }}
+        .reporte-vista-standalone > div {{ width: 100%; max-width: 1080px; margin: 0 auto; padding: clamp(16px, 3vw, 28px) !important; overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 18px; background: #fff; box-shadow: 0 16px 40px rgba(15, 23, 42, .08); }}
+        .reporte-vista-standalone > div table {{ min-width: 480px; }}
+    </style>
+</head>
+<body>
+    <main class='reporte-vista-standalone'>{vistaPreviaHtml}</main>
+</body>
+</html>";
     }
 
     private static string GenerarContenidoReporte(ReporteGuardado reporte)
@@ -999,6 +1070,7 @@ public class HomeController : Controller
         return string.IsNullOrWhiteSpace(limpio) ? "reporte" : limpio.Replace(' ', '-');
     }
 
+    // recibe los filtros y devuelve solo los reportes del usuario y la empresa actuales
     public IActionResult HistorialReportes(string? busqueda, string? tipoReporte, string? frecuenciaActualizacion, string? periodoTiempo, DateTime? fechaDesde, DateTime? fechaHasta)
     {
         var redirect = RedirigirSiNoHaySesion();
