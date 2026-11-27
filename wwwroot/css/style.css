@@ -1755,6 +1755,32 @@ body {
     color: #6b7280;
 }
 
+/* reportes */
+.quantitary-page.reports-page,
+.quantitary-page.historial-page {
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.reports-page .card {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--panel);
+    color: inherit;
+}
+
+.reports-page .card-body {
+    padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.reports-page .form-control,
+.reports-page .form-select {
+    min-height: 42px;
+    border-color: #d7dfeb;
+}
+
 .historial-page {
     font-family: Arial, sans-serif;
     color: #1f2937;
@@ -1777,8 +1803,55 @@ body {
     border-radius: 12px;
 }
 
+.historial-filtros {
+    display: grid;
+    grid-template-columns: minmax(230px, 1fr) auto;
+    gap: 14px;
+    align-items: end;
+    padding: 14px;
+}
+
+.historial-buscador {
+    min-width: 0;
+}
+
+.historial-filtros-desplegable {
+    position: relative;
+}
+
+.historial-filtros-desplegable > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.historial-filtros-desplegable > summary::-webkit-details-marker {
+    display: none;
+}
+
+.historial-filtros-grid {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: min(760px, calc(100vw - 330px));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
+}
+
+.historial-filtros-actions {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+}
+
 .historial-tabla-card {
-    overflow: hidden;
+    overflow-x: auto;
 }
 
 .historial-filtros .form-control,
@@ -1793,6 +1866,7 @@ body {
     --bs-table-color: #24324a;
     --bs-table-hover-bg: #f3f7fc;
     margin: 0;
+    min-width: 880px;
 }
 
 .historial-tabla-card thead th {
@@ -1805,6 +1879,60 @@ body {
 
 .historial-tabla-card tbody td {
     border-color: #edf1f6;
+}
+
+.historial-tabla-card th,
+.historial-tabla-card td {
+    padding: 0.85rem 0.75rem;
+    white-space: nowrap;
+}
+
+/* vista previa del reporte */
+.reporte-preview-modal-body {
+    padding: clamp(0.75rem, 2vw, 1.5rem);
+    overflow-x: hidden;
+    background: var(--bg);
+}
+
+.reporte-preview-shell {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+/* mantiene acomodados tambien los reportes que ya estaban guardados */
+.reporte-preview-shell > div {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: clamp(1rem, 3vw, 1.75rem) !important;
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    background: #fff;
+}
+
+.reporte-preview-shell > div table {
+    min-width: 480px;
+}
+
+#vistaPreviaReporteModal .modal-dialog {
+    width: min(1180px, calc(100vw - 2rem));
+    max-width: none;
+    margin-inline: auto;
+}
+
+#vistaPreviaReporteModal .modal-content {
+    max-height: calc(100vh - 2rem);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--panel);
+}
+
+#vistaPreviaReporteModal .modal-header,
+#vistaPreviaReporteModal .modal-footer {
+    border-color: var(--border);
 }
 
 .reporte-productos-grid {
@@ -1903,6 +2031,200 @@ html[data-quantitary-theme="dark"] .reporte-producto-precio {
 
 html[data-quantitary-theme="dark"] .reporte-producto-info {
     color: #aebed1;
+}
+
+/* editar producto flotante */
+.producto-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: none;
+    place-items: center;
+    padding: 1.5rem;
+}
+
+.producto-modal.show {
+    display: grid;
+}
+
+.producto-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.58);
+    backdrop-filter: blur(3px);
+    animation: producto-modal-fondo 0.16s ease-out;
+}
+
+.producto-modal-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(760px, 100%);
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--panel);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+    animation: producto-modal-entrada 0.18s ease-out;
+}
+
+.producto-modal-content {
+    padding: clamp(1.1rem, 3vw, 1.75rem);
+    color: #1f2937;
+}
+
+.producto-modal-header {
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.producto-modal-header h2 {
+    color: var(--dark);
+    font-size: clamp(1.35rem, 3vw, 1.8rem);
+    font-weight: 800;
+}
+
+.producto-modal .form-control {
+    min-height: 42px;
+    border-color: #d7dfeb;
+}
+
+.producto-modal textarea.form-control {
+    min-height: 92px;
+}
+
+html[data-quantitary-theme="dark"] .producto-modal-content {
+    color: #dbe7f5;
+}
+
+html[data-quantitary-theme="dark"] .producto-modal .form-control {
+    border-color: var(--border);
+    background: #0e1929;
+    color: #eef4ff;
+}
+
+@keyframes producto-modal-fondo {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes producto-modal-entrada {
+    from { opacity: 0; transform: translateY(12px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 575px) {
+    .producto-modal {
+        align-items: end;
+        padding: 0.5rem;
+    }
+
+    .producto-modal-dialog {
+        width: 100%;
+        max-height: calc(100vh - 1rem);
+        border-radius: 16px;
+    }
+
+    .producto-modal-content {
+        padding: 1rem;
+    }
+
+    .producto-modal form > .col-12:last-child {
+        flex-direction: column-reverse;
+    }
+
+    .producto-modal form > .col-12:last-child .btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .producto-modal-backdrop,
+    .producto-modal-dialog {
+        animation: none;
+    }
+}
+
+html[data-quantitary-theme="dark"] .reports-page .card,
+html[data-quantitary-theme="dark"] #vistaPreviaReporteModal .modal-content,
+html[data-quantitary-theme="dark"] .historial-filtros-grid {
+    background: var(--panel);
+    color: #dbe7f5;
+}
+
+html[data-quantitary-theme="dark"] .reports-page .form-control,
+html[data-quantitary-theme="dark"] .reports-page .form-select,
+html[data-quantitary-theme="dark"] .historial-filtros .form-control,
+html[data-quantitary-theme="dark"] .historial-filtros .form-select {
+    background: #0e1929;
+    color: #eef4ff;
+    border-color: var(--border);
+}
+
+html[data-quantitary-theme="dark"] .historial-tabla-card .table {
+    --bs-table-bg: var(--panel);
+    --bs-table-color: #dbe7f5;
+    --bs-table-hover-bg: #17243a;
+}
+
+html[data-quantitary-theme="dark"] .historial-tabla-card tbody td {
+    border-color: var(--border);
+}
+
+@media (max-width: 767px) {
+    .quantitary-page.reports-page,
+    .quantitary-page.historial-page {
+        padding: 1rem;
+        border-radius: 14px;
+    }
+
+    .reports-page .quantitary-page-header,
+    .historial-page > .d-flex:first-child {
+        align-items: stretch !important;
+    }
+
+    .reports-page .quantitary-page-header > .btn,
+    .historial-page > .d-flex:first-child .btn {
+        width: 100%;
+    }
+
+    .historial-filtros {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .historial-filtros-desplegable > summary {
+        width: 100%;
+    }
+
+    .historial-filtros-grid {
+        position: static;
+        width: 100%;
+        grid-template-columns: 1fr;
+        margin-top: 12px !important;
+        padding: 12px 0 0;
+        border: 0;
+        border-top: 1px solid var(--border);
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .historial-filtros-actions .btn {
+        flex: 1;
+    }
+
+    #vistaPreviaReporteModal .modal-dialog {
+        width: calc(100vw - 1rem);
+        margin: 0.5rem auto;
+    }
+
+    #vistaPreviaReporteModal .modal-content {
+        max-height: calc(100vh - 1rem);
+    }
+
+    .reporte-preview-modal-body {
+        padding: 0.5rem;
+    }
 }
 /* ASISTENTE IA */
 /* el asistente queda separado del resto de la app */
