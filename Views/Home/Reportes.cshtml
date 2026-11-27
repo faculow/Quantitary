@@ -182,8 +182,10 @@
                         <h5 class="modal-title" id="vistaPreviaReporteTitulo">Vista previa: @ultimoReporte.Nombre</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                     </div>
-                    <div class="modal-body bg-light">
-                        @Html.Raw(ultimoReporte.VistaPreviaHtml)
+                    <div class="modal-body reporte-preview-modal-body">
+                        <div class="reporte-preview-shell">
+                            @Html.Raw(ultimoReporte.VistaPreviaHtml)
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
@@ -208,10 +210,12 @@
         const cantidadSeleccionados = document.getElementById('cantidadProductosSeleccionados');
         const formCrearReporte = document.getElementById('formCrearReporte');
 
+        // muestra el selector solo cuando el reporte necesita productos
         function actualizarSelectorProductos() {
             selectorProductos.style.display = tipoReporte?.value === 'Productos' ? '' : 'none';
         }
 
+        // recibe los checks actuales y actualiza la cantidad y el estado visual
         function actualizarCantidadProductos() {
             const seleccionados = Array.from(productosIds).filter(check => check.checked).length;
             if (cantidadSeleccionados) {
@@ -224,6 +228,7 @@
             });
         }
 
+        // recibe el texto y la categoria elegida y deja visibles las coincidencias
         function filtrarTarjetasProductos() {
             const texto = (buscarProducto?.value || '').trim().toLowerCase();
             const categoria = categoriaProducto?.value || '';
@@ -242,6 +247,7 @@
         productosIds.forEach(check => check.addEventListener('change', actualizarCantidadProductos));
         buscarProducto?.addEventListener('input', filtrarTarjetasProductos);
         categoriaProducto?.addEventListener('change', filtrarTarjetasProductos);
+        // evita guardar un reporte de productos sin ninguna seleccion
         formCrearReporte?.addEventListener('submit', function (evento) {
             const cantidadSeleccionada = Array.from(productosIds).filter(check => check.checked).length;
             if (tipoReporte?.value === 'Productos' && cantidadSeleccionada === 0) {
